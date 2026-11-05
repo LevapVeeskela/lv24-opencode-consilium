@@ -3,28 +3,68 @@
  * @module opencode-consilium
  */
 
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type {
   ConsiliumConfig,
   ConsiliumResult,
   AgentResult,
+  AgentUsage,
   RunOptions,
   ProgressCallback,
   ProgressEvent,
   ConsiliumStatus,
   ConsiliumPlugin
 } from './types.js';
-import { loadConfig, createMinimalConfig } from './config.js';
-import { 
-  callExpertsParallel, 
-  callChair, 
+import { loadConfig, mergeWithDefaults, cloneConfig } from './config.js';
+import {
+  callExpertsParallel,
+  callChair,
   checkOpenCodeAvailable,
-  cancel,
-  resetCancel,
-  isCancelled
+  createRunController,
+  type RunController
 } from './agents.js';
-import { DEFAULT_CONFIG } from './defaults.js';
+import { DEFAULT_CONFIG, DEFAULT_EXPERT_PROMPTS, DEFAULT_CHAIR_PROMPT_TEMPLATE } from './defaults.js';
+import { applyPreset } from './presets.js';
+
+function sumUsage(results: AgentResult[]): AgentUsage | undefined {
+  let found = false;
+  const total: Required<AgentUsage> = {
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    cost: 0
+  };
+
+  for (const result of results) {
+    const usage = result.usage;
+    if (!usage) continue;
+    found = true;
+    total.inputTokens += usage.inputTokens ?? 0;
+    total.outputTokens += usage.outputTokens ?? 0;
+    total.reasoningTokens += usage.reasoningTokens ?? 0;
+    total.cacheReadTokens += usage.cacheReadTokens ?? 0;
+    total.cacheWriteTokens += usage.cacheWriteTokens ?? 0;
+    total.cost += usage.cost ?? 0;
+  }
+
+  return found ? total : undefined;
+}
+
+function buildExpertPrompt(expertName: string, prompt: unknown, task: string): string {
+  if (typeof prompt === 'function') {
+    return prompt(task);
+  }
+  if (typeof prompt === 'string' && prompt.trim().length > 0) {
+    return prompt.replace(/\$\{task\}/g, task);
+  }
+  const fallback = Object.prototype.hasOwnProperty.call(DEFAULT_EXPERT_PROMPTS, expertName)
+    ? DEFAULT_EXPERT_PROMPTS[expertName]
+    : DEFAULT_EXPERT_PROMPTS.default;
+  return typeof fallback === 'function' ? fallback(task) : task;
+}
 
 /**
  * Класс Consilium - основной интерфейс для работы с консилиумом
@@ -33,29 +73,38 @@ export class Consilium {
   private config: ConsiliumConfig;
   private status: ConsiliumStatus = 'idle';
   private progressCallbacks: Set<ProgressCallback> = new Set();
-  private startTime: number = 0;
+  private plugins: ConsiliumPlugin[] = [];
+  private warnings: string[] = [];
+  private controller: RunController | null = null;
+  private startTime = 0;
 
   constructor(config?: Partial<ConsiliumConfig> | string) {
     if (typeof config === 'string') {
-      // Путь к файлу конфигурации
       const result = loadConfig(config);
       this.config = result.config;
-      this.logWarnings(result.warnings);
+      this.warnings = result.warnings;
     } else if (config) {
-      // Частичный конфиг
-      this.config = this.mergeConfig(config);
+      this.config = mergeWithDefaults(config);
     } else {
-      // Конфиг по умолчанию
       const result = loadConfig();
       this.config = result.config;
+      this.warnings = result.warnings;
     }
+    this.plugins = this.config.plugins ? [...this.config.plugins] : [];
   }
 
   /**
-   * Получить текущую конфигурацию
+   * Получить копию текущей конфигурации
    */
   getConfig(): ConsiliumConfig {
-    return { ...this.config };
+    return cloneConfig(this.config);
+  }
+
+  /**
+   * Предупреждения, полученные при загрузке конфигурации
+   */
+  getWarnings(): string[] {
+    return [...this.warnings];
   }
 
   /**
@@ -70,13 +119,16 @@ export class Consilium {
    */
   onProgress(callback: ProgressCallback): () => void {
     this.progressCallbacks.add(callback);
-    return () => this.progressCallbacks.delete(callback);
+    return () => {
+      this.progressCallbacks.delete(callback);
+    };
   }
 
   /**
-   * Зарегистрировать плагин
+   * Зарегистрировать плагин (инициализируется перед запуском)
    */
   use(plugin: ConsiliumPlugin): this {
+    this.plugins.push(plugin);
     if (plugin.hooks) {
       this.config.hooks = {
         ...this.config.hooks,
@@ -90,133 +142,176 @@ export class Consilium {
    * Отменить текущий запуск
    */
   cancel(): void {
-    cancel();
+    this.controller?.cancel();
   }
 
   /**
    * Запустить консилиум
    */
   async run(task: string, options: RunOptions = {}): Promise<ConsiliumResult> {
-    if (this.status !== 'idle') {
+    if (!task || task.trim().length === 0) {
+      throw new Error('Задача не может быть пустой');
+    }
+
+    if (this.status === 'running_experts' || this.status === 'running_chair') {
       throw new Error(`Consilium уже запущен (статус: ${this.status})`);
     }
 
-    resetCancel();
-    this.startTime = Date.now();
+    // Захватываем запуск синхронно, до любых await, чтобы исключить гонку.
+    const controller = createRunController();
+    this.controller = controller;
     this.status = 'running_experts';
+    this.startTime = Date.now();
 
-    const mergedOptions = this.mergeOptions(options);
-
-    // Проверяем доступность OpenCode
-    if (!(await checkOpenCodeAvailable())) {
-      throw new Error('OpenCode CLI не найден. Установите opencode-cli.');
-    }
-
-    // Объединяем хуки
-    const hooks = this.mergeHooks(mergedOptions.hooks);
+    let hooks: ConsiliumConfig['hooks'] | undefined;
 
     try {
-      // Хук onStart
-      if (hooks?.onStart) {
-        await hooks.onStart(task, this.config);
+    let runConfig = cloneConfig(this.config);
+    runConfig.hooks = { ...this.config.hooks, ...options.hooks };
+
+    for (const plugin of this.plugins) {
+      if (plugin.init) {
+        runConfig = await plugin.init(runConfig);
+      }
+    }
+
+    if (options.preset) {
+      runConfig = applyPreset(runConfig, options.preset);
+    }
+
+    if (options.timeout !== undefined && Number.isFinite(options.timeout) && options.timeout > 0) {
+      runConfig.timeouts.expert = options.timeout;
+      runConfig.experts = runConfig.experts.map(expert => ({ ...expert, timeout: options.timeout }));
+    }
+
+    const baseHooks = runConfig.hooks ?? {};
+    runConfig.hooks = {
+      ...baseHooks,
+      onExpertStart: async (expert: string, expertTask: string) => {
+        this.emitProgress({
+          type: 'expert_start',
+          agent: expert,
+          status: 'running_experts',
+          progress: 0,
+          timestamp: Date.now()
+        });
+        await baseHooks.onExpertStart?.(expert, expertTask);
+      },
+      onExpertEnd: async (result: AgentResult) => {
+        this.emitProgress({
+          type: 'expert_end',
+          agent: result.agent,
+          status: 'running_experts',
+          progress: 0,
+          timestamp: Date.now(),
+          data: result
+        });
+        await baseHooks.onExpertEnd?.(result);
+      },
+      onChairStart: async (chairTask: string, expertResults: AgentResult[]) => {
+        this.emitProgress({
+          type: 'chair_start',
+          status: 'running_chair',
+          progress: 50,
+          timestamp: Date.now()
+        });
+        await baseHooks.onChairStart?.(chairTask, expertResults);
+      },
+      onChairEnd: async (result: AgentResult) => {
+        this.emitProgress({
+          type: 'chair_end',
+          agent: result.agent,
+          status: 'running_chair',
+          progress: 95,
+          timestamp: Date.now(),
+          data: result
+        });
+        await baseHooks.onChairEnd?.(result);
+      }
+    };
+    hooks = runConfig.hooks;
+
+      if (!(await checkOpenCodeAvailable(runConfig))) {
+        throw new Error(
+          'OpenCode CLI не найден. Установите: npm install -g opencode-ai (или укажите opencodePath в конфиге)'
+        );
       }
 
-      // Определяем экспертов
-      const experts = mergedOptions.experts 
-        ? this.config.experts.filter(e => mergedOptions.experts!.includes(e.name))
-        : this.config.experts.filter(e => e.enabled !== false);
+      await hooks.onStart?.(task, runConfig);
 
-      if (experts.length === 0) {
-        throw new Error('Нет активных экспертов для консилиума');
-      }
+      const selectedExperts = this.selectExperts(runConfig, options.experts, hooks);
+      const parallelStarted = Date.now();
+      const expertResults = await callExpertsParallel(selectedExperts, task, runConfig, { controller });
+      const parallelTime = Date.now() - parallelStarted;
 
-      // Эмитим прогресс
-      this.emitProgress({
-        type: 'expert_start',
-        status: 'running_experts',
-        progress: 0,
-        timestamp: Date.now()
-      });
-
-      // Запускаем экспертов параллельно
-      const expertResults = await callExpertsParallel(experts, task, this.config);
-
-      if (isCancelled()) {
+      if (controller.isCancelled()) {
+        const result = this.createCancelledResult(expertResults, undefined, parallelTime, runConfig);
         this.status = 'cancelled';
-        return this.createCancelledResult(expertResults);
+        await hooks.onEnd?.(result);
+        return result;
       }
 
       this.status = 'running_chair';
+      const chairAgent = options.chair ?? runConfig.chair.agent;
+      runConfig.chair.agent = chairAgent;
 
-      this.emitProgress({
-        type: 'chair_start',
-        status: 'running_chair',
-        progress: 50,
-        timestamp: Date.now()
-      });
+      const chairResult = await callChair(expertResults, task, runConfig, { controller });
 
-      // Определяем председателя
-      const chairAgent = mergedOptions.chair || this.config.chair.agent;
-
-      // Временно переопределяем агента председателя
-      const originalChairAgent = this.config.chair.agent;
-      this.config.chair.agent = chairAgent;
-
-      // Вызываем председателя
-      const chairResult = await callChair(expertResults, task, this.config);
-
-      this.config.chair.agent = originalChairAgent;
-
-      if (isCancelled()) {
+      if (controller.isCancelled()) {
+        const result = this.createCancelledResult(expertResults, chairResult, parallelTime, runConfig);
         this.status = 'cancelled';
-        return this.createCancelledResult(expertResults, chairResult);
+        await hooks.onEnd?.(result);
+        return result;
       }
 
       this.status = 'completed';
 
-      const totalTime = Date.now() - this.startTime;
-      const parallelTime = expertResults.reduce(
-        (max, r) => Math.max(max, r.duration || 0),
-        0
-      );
+      const models: Record<string, string> = {};
+      for (const expert of expertResults) {
+        if (expert.model) models[expert.agent] = expert.model;
+      }
+      if (chairResult.model) models[chairResult.agent] = chairResult.model;
 
       const result: ConsiliumResult = {
         text: chairResult.text,
         experts: expertResults,
         chair: chairResult,
-        totalTime,
+        totalTime: Date.now() - this.startTime,
         parallelTime,
         success: chairResult.success,
-        metadata: mergedOptions.metadata ?? undefined
+        usage: sumUsage([...expertResults, chairResult]),
+        metadata: {
+          ...options.metadata,
+          models
+        }
       };
 
-      // Сохраняем результат
-      const outputPath = mergedOptions.outputFile;
-      if (outputPath !== undefined && this.config.output.file) {
-        await this.saveResult(result, outputPath);
+      const explicitOutput = options.outputFile;
+      const configuredFile = runConfig.output.file;
+      const outputTarget = explicitOutput ?? (configuredFile !== false ? configuredFile : undefined);
+
+      if (outputTarget) {
+        try {
+          const fullPath = this.saveResult(result, outputTarget, runConfig);
+          result.metadata = { ...result.metadata, savedFile: fullPath };
+        } catch (error) {
+          result.metadata = {
+            ...result.metadata,
+            saveError: (error as Error).message
+          };
+          hooks.onLog?.('warn', `Не удалось сохранить результат: ${(error as Error).message}`);
+        }
       }
 
-      // Хук onEnd
-      if (hooks?.onEnd) {
-        await hooks.onEnd(result);
-      }
-
-      this.emitProgress({
-        type: 'chair_end',
-        status: 'completed',
-        progress: 100,
-        timestamp: Date.now()
-      });
-
+      await hooks.onEnd?.(result);
       return result;
-
     } catch (error) {
       this.status = 'failed';
-
-      if (hooks?.onError) {
-        await hooks.onError(error as Error, { task, options: mergedOptions });
+      try {
+        await hooks?.onError?.(error as Error, { task, options });
+      } catch {
+        // Ошибка в хуке не должна маскировать исходную
       }
-
       this.emitProgress({
         type: 'error',
         status: 'failed',
@@ -224,8 +319,11 @@ export class Consilium {
         timestamp: Date.now(),
         data: error
       });
-
       throw error;
+    } finally {
+      if (this.controller === controller) {
+        this.controller = null;
+      }
     }
   }
 
@@ -233,7 +331,7 @@ export class Consilium {
    * Запустить консилиум и вернуть только текст
    */
   async runSimple(task: string, options: RunOptions = {}): Promise<string> {
-    const result = await this.run(task, { ...options, silent: true });
+    const result = await this.run(task, options);
     return result.text;
   }
 
@@ -241,21 +339,27 @@ export class Consilium {
    * Dry run - возвращает сформированные промпты без вызова агентов
    */
   dryRun(task: string): {
-    expertPrompts: Array<{ agent: string; prompt: string }>;
+    expertPrompts: Array<{ agent: string; prompt: string; model?: string }>;
     chairPromptTemplate: string;
   } {
-    const experts = this.config.experts.filter(e => e.enabled !== false);
+    const experts = this.config.experts.filter(expert => expert.enabled !== false);
 
     const expertPrompts = experts.map(expert => ({
       agent: expert.name,
-      prompt: typeof expert.prompt === 'function' 
-        ? expert.prompt(task) 
-        : (expert.prompt?.replace(/\$\{task\}/g, task) || task)
+      model: expert.model,
+      prompt: buildExpertPrompt(expert.name, expert.prompt, task)
+    }));
+
+    const placeholderResults: AgentResult[] = experts.map(expert => ({
+      agent: expert.name,
+      model: expert.model,
+      text: `[ответ эксперта ${expert.name}]`,
+      success: true
     }));
 
     const chairPromptTemplate = this.config.chair.promptTemplate
-      ? this.config.chair.promptTemplate(task, [])
-      : '';
+      ? this.config.chair.promptTemplate(task, placeholderResults)
+      : DEFAULT_CHAIR_PROMPT_TEMPLATE(task, placeholderResults);
 
     return {
       expertPrompts,
@@ -263,30 +367,34 @@ export class Consilium {
     };
   }
 
-  // Private methods
+  private selectExperts(
+    config: ConsiliumConfig,
+    requested: string[] | undefined,
+    hooks: ConsiliumConfig['hooks']
+  ): ConsiliumConfig['experts'] {
+    if (requested && requested.length > 0) {
+      const wanted = new Set(requested);
+      const available = new Set(config.experts.map(expert => expert.name));
+      const missing = requested.filter(name => !available.has(name));
+      if (missing.length > 0) {
+        hooks?.onLog?.('warn', `Неизвестные эксперты пропущены: ${missing.join(', ')}`);
+      }
+      const experts = config.experts.filter(
+        expert => wanted.has(expert.name) && expert.enabled !== false
+      );
+      if (experts.length === 0) {
+        throw new Error(
+          `Выбранные эксперты недоступны: ${requested.join(', ')}. Доступны: ${[...available].join(', ')}`
+        );
+      }
+      return experts;
+    }
 
-  private mergeConfig(partial: Partial<ConsiliumConfig>): ConsiliumConfig {
-    return {
-      ...DEFAULT_CONFIG,
-      ...partial,
-      timeouts: { ...DEFAULT_CONFIG.timeouts, ...partial.timeouts },
-      retry: { ...DEFAULT_CONFIG.retry, ...partial.retry },
-      output: { ...DEFAULT_CONFIG.output, ...partial.output }
-    };
-  }
-
-  private mergeOptions(options: RunOptions): RunOptions {
-    return {
-      ...options,
-      timeout: options.timeout ?? this.config.timeouts.expert
-    };
-  }
-
-  private mergeHooks(extraHooks?: Partial<ConsiliumConfig['hooks']>): Partial<ConsiliumConfig['hooks']> {
-    return {
-      ...this.config.hooks,
-      ...extraHooks
-    };
+    const experts = config.experts.filter(expert => expert.enabled !== false);
+    if (experts.length === 0) {
+      throw new Error('Нет активных экспертов для консилиума');
+    }
+    return experts;
   }
 
   private emitProgress(event: ProgressEvent): void {
@@ -294,35 +402,30 @@ export class Consilium {
       try {
         callback(event);
       } catch {
-        // Игнорируем ошибки в callback
+        // Ошибки подписчиков не влияют на запуск
       }
     }
   }
 
-  private async saveResult(
+  private saveResult(
     result: ConsiliumResult,
-    outputPath?: string | false
-  ): Promise<void> {
-    // Определяем путь для сохранения
-    let filePath: string | false;
-    if (outputPath !== undefined && outputPath !== false) {
-      filePath = outputPath;
-    } else if (this.config.output.file !== false) {
-      filePath = this.config.output.file;
-    } else {
-      return; // Сохранение отключено
-    }
-
-    const fullPath = resolve(process.cwd(), filePath);
+    outputPath: string,
+    config: ConsiliumConfig
+  ): string {
+    const baseDir = config.cwd ? resolve(config.cwd) : process.cwd();
+    const fullPath = resolve(baseDir, outputPath);
     const dir = dirname(fullPath);
+
+    if (outputPath.trim().length === 0) {
+      throw new Error('Пустой путь для сохранения результата');
+    }
 
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
 
     let content: string;
-
-    switch (this.config.output.format) {
+    switch (config.output.format) {
       case 'json':
         content = JSON.stringify(result, null, 2);
         break;
@@ -333,23 +436,37 @@ export class Consilium {
         content = result.text;
     }
 
-    writeFileSync(fullPath, content, 'utf-8');
-
-    if (!this.config.output.progress) {
-      console.log(`💾 Результат сохранён: ${fullPath}`);
+    const temporary = `${fullPath}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+    try {
+      writeFileSync(temporary, content, 'utf-8');
+      renameSync(temporary, fullPath);
+    } catch (error) {
+      try {
+        if (existsSync(temporary)) {
+          unlinkSync(temporary);
+        }
+      } catch {
+        // Очистка необязательна
+      }
+      throw error;
     }
+    return fullPath;
   }
 
   private formatAsMarkdown(result: ConsiliumResult): string {
     let md = `# Результат консилиума\n\n`;
     md += `**Время выполнения:** ${(result.totalTime / 1000).toFixed(1)}с\n\n`;
+    if (result.usage?.cost) {
+      md += `**Стоимость:** $${result.usage.cost.toFixed(6)}\n\n`;
+    }
     md += `---\n\n`;
     md += result.text;
     md += `\n\n---\n\n`;
     md += `## Мнения экспертов\n\n`;
 
     for (const expert of result.experts) {
-      md += `### ${expert.agent.toUpperCase()}\n`;
+      const model = expert.model ? ` (${expert.model})` : '';
+      md += `### ${expert.agent.toUpperCase()}${model}\n`;
       md += `${expert.success ? '' : '⚠️ '}${expert.text}\n\n`;
     }
 
@@ -358,23 +475,25 @@ export class Consilium {
 
   private createCancelledResult(
     experts: AgentResult[],
-    chair?: AgentResult
+    chair: AgentResult | undefined,
+    parallelTime: number,
+    config: ConsiliumConfig
   ): ConsiliumResult {
     return {
       text: '[Консилиум отменён]',
       experts,
-      chair: chair || { agent: this.config.chair.agent, text: '[Отменено]', success: false },
+      chair: chair || {
+        agent: config.chair.agent,
+        text: '[Отменено]',
+        success: false,
+        errorCode: 'CANCELLED'
+      },
       totalTime: Date.now() - this.startTime,
-      parallelTime: 0,
+      parallelTime,
       success: false,
+      usage: sumUsage(chair ? [...experts, chair] : experts),
       metadata: { cancelled: true }
     };
-  }
-
-  private logWarnings(warnings: string[]): void {
-    for (const warning of warnings) {
-      console.warn(`⚠️ ${warning}`);
-    }
   }
 }
 
@@ -413,4 +532,7 @@ export async function askConsilium(
 export * from './types.js';
 export * from './config.js';
 export * from './agents.js';
+export * from './models.js';
+export * from './presets.js';
+export * from './verify.js';
 export { DEFAULT_CONFIG } from './defaults.js';

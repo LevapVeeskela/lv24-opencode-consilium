@@ -1,12 +1,14 @@
 {
   "name": "opencode-consilium",
-  "version": "1.0.2",
-  "description": "Консилиум ИИ-экспертов через OpenCode CLI - параллельный опрос агентов и синтез ответов",
+  "version": "1.1.0",
+  "description": "Консилиум ИИ-экспертов для OpenCode CLI: мульти-модельный совет, MCP-сервер и подбор сильнейших бесплатных моделей",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "consilium": "bin/cli.js"
+    "consilium": "bin/cli.js",
+    "consilium-mcp": "bin/mcp.js",
+    "opencode-consilium": "bin/cli.js"
   },
   "exports": {
     ".": {
@@ -14,11 +16,18 @@
       "types": "./dist/index.d.ts"
     },
     "./config": "./dist/config.js",
-    "./agents": "./dist/agents.js"
+    "./agents": "./dist/agents.js",
+    "./models": "./dist/models.js",
+    "./presets": "./dist/presets.js",
+    "./doctor": "./dist/doctor.js",
+    "./verify": "./dist/verify.js",
+    "./mcp": "./dist/mcp.js"
   },
   "files": [
     "dist",
     "bin",
+    "schema",
+    "consilium.config.example.json",
     "README.md",
     "README.ru.md",
     "README.zh.md",
@@ -27,8 +36,10 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "node --test dist/**/*.test.js",
-    "lint": "eslint src/"
+    "prepack": "npm run build",
+    "test": "npm run build && node --test \"test/*.test.mjs\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
   },
   "keywords": [
     "opencode",
@@ -37,7 +48,10 @@
     "consilium",
     "llm",
     "code-review",
-    "architecture"
+    "architecture",
+    "mcp",
+    "model-context-protocol",
+    "free-models"
   ],
   "author": "LevapVeeskela (paulalexeev10@gmail.com)",
   "license": "MIT",

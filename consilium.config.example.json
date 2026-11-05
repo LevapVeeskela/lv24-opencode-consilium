@@ -1,38 +1,43 @@
 {
-  "$schema": "https://raw.githubusercontent.com/LevapVeeskela/opencode-consilium/main/schema/config.schema.json",
-  "version": "1.0.0",
+  "$schema": "./schema/config.schema.json",
+  "version": "1.1.0",
 
   "experts": [
     {
       "name": "arch",
+      "model": "opencode/glm-5.3-flash-free",
       "enabled": true,
       "priority": 1,
       "timeout": 300000,
       "retries": 1,
-      "prompt": "Как архитектор, проанализируй задачу кратко (3-5 предложений): ${task}"
+      "prompt": "Как архитектор, проанализируй задачу кратко (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     },
     {
       "name": "ux",
+      "model": "opencode/mimo-v2.6-flash-free",
       "enabled": true,
       "priority": 2,
-      "prompt": "Как UX-специалист, оцени задачу с точки зрения пользователя (3-5 предложений): ${task}"
+      "prompt": "Как UX-специалист, оцени задачу с точки зрения пользователя (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     },
     {
       "name": "ba",
+      "model": "opencode/flint-40b-free",
       "enabled": true,
       "priority": 3,
-      "prompt": "Как бизнес-аналитик, оцени ценность и риски (3-5 предложений): ${task}"
+      "prompt": "Как бизнес-аналитик, оцени ценность и риски (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     },
     {
       "name": "sec",
+      "model": "opencode/nemotron-3.5-lightning-free",
       "enabled": true,
       "priority": 4,
-      "prompt": "Как эксперт по безопасности, проанализируй риски (3-5 предложений): ${task}"
+      "prompt": "Как эксперт по безопасности, проанализируй риски (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     }
   ],
 
   "chair": {
     "agent": "consilium",
+    "model": "opencode/deepseek-v4.1-flash-free",
     "timeout": 600000,
     "maxExpertTextLength": 3000
   },
@@ -58,16 +63,19 @@
     "expertRetries": 1,
     "chairRetries": 1,
     "delay": 1000,
-    "exponentialBackoff": true
+    "exponentialBackoff": true,
+    "maxConcurrency": 3
   },
 
   "output": {
-    "file": "consilium_result.md",
+    "file": false,
     "format": "markdown",
     "progress": true,
     "logLevel": "info"
   },
 
+  "standalone": true,
+  "autoApprove": false,
   "autoDiscoverAgents": true,
   "opencodeConfigPath": "opencode.json"
 }

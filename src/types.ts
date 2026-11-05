@@ -1,24 +1,53 @@
 /**
- * @fileoverview TypeScript типы для Consilium API
+ * @fileoverview Типы публичного API Consilium
  * @module opencode-consilium
  */
 
+/** Код ошибки агента */
+export type AgentErrorCode =
+  | 'TIMEOUT'
+  | 'EMPTY_RESPONSE'
+  | 'SPAWN_ERROR'
+  | 'PARSE_ERROR'
+  | 'EXIT_ERROR'
+  | 'CANCELLED'
+  | 'AGENT_NOT_FOUND'
+  | 'MODEL_UNAVAILABLE';
+
+/** Расход токенов и стоимость одного вызова */
+export interface AgentUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cost?: number;
+}
+
 /**
- * Результат выполнения агента
+ * Результат одного агента
  */
 export interface AgentResult {
   /** Имя агента */
   agent: string;
-  /** Текстовый ответ */
+  /** Фактически использованная модель (provider/model) */
+  model?: string;
+  /** Текст ответа */
   text: string;
   /** Успешность выполнения */
   success: boolean;
-  /** Время выполнения в мс */
+  /** Длительность в мс (включая retry) */
   duration?: number;
   /** Код ошибки (если есть) */
-  errorCode?: 'TIMEOUT' | 'EMPTY_RESPONSE' | 'SPAWN_ERROR' | 'PARSE_ERROR';
-  /** Попытка выполнения */
+  errorCode?: AgentErrorCode;
+  /** Человекочитаемое сообщение об ошибке */
+  errorMessage?: string;
+  /** Номер попытки */
   attempt?: number;
+  /** Код выхода процесса OpenCode */
+  exitCode?: number | null;
+  /** Токены и стоимость */
+  usage?: AgentUsage;
 }
 
 /**
@@ -27,17 +56,19 @@ export interface AgentResult {
 export interface ConsiliumResult {
   /** Итоговый текст председателя */
   text: string;
-  /** Результаты всех экспертов */
+  /** Результаты экспертов */
   experts: AgentResult[];
   /** Результат председателя */
   chair: AgentResult;
-  /** Общее время выполнения в мс */
+  /** Общее время выполнения, мс */
   totalTime: number;
-  /** Время параллельного опроса экспертов в мс */
+  /** Реальное wall-clock время параллельной фазы экспертов, мс */
   parallelTime: number;
-  /** Успешность всего консилиума */
+  /** Успешность */
   success: boolean;
-  /** Метаданные */
+  /** Суммарный расход токенов и стоимость */
+  usage?: AgentUsage;
+  /** Дополнительные данные */
   metadata?: Record<string, unknown>;
 }
 
@@ -45,17 +76,19 @@ export interface ConsiliumResult {
  * Конфигурация эксперта
  */
 export interface ExpertConfig {
-  /** Имя эксперта */
+  /** Имя агента */
   name: string;
-  /** Промпт для эксперта (может быть строкой или функцией) */
+  /** Модель в формате provider/model (передаётся как --model) */
+  model?: string;
+  /** Промпт эксперта (${task} заменяется на задачу) */
   prompt?: string | ((task: string) => string);
-  /** Таймаут для эксперта (переопределяет глобальный) */
+  /** Таймаут в мс */
   timeout?: number;
   /** Количество повторных попыток */
   retries?: number;
-  /** Приоритет (для будущей сортировки) */
+  /** Приоритет (для сортировки) */
   priority?: number;
-  /** Включён/выключен */
+  /** Включён ли эксперт */
   enabled?: boolean;
 }
 
@@ -65,11 +98,13 @@ export interface ExpertConfig {
 export interface ChairConfig {
   /** Имя агента-председателя */
   agent: string;
-  /** Таймаут для председателя */
+  /** Модель в формате provider/model */
+  model?: string;
+  /** Таймаут в мс */
   timeout?: number;
-  /** Кастомный промпт (функция принимает мнения экспертов) */
+  /** Кастомный шаблон промпта */
   promptTemplate?: (task: string, experts: AgentResult[]) => string;
-  /** Максимальная длина ответа эксперта для включения в промпт */
+  /** Максимальная длина текста одного эксперта в промпте */
   maxExpertTextLength?: number;
 }
 
@@ -77,25 +112,15 @@ export interface ChairConfig {
  * Хуки жизненного цикла
  */
 export interface ConsiliumHooks {
-  /** Вызывается перед стартом консилиума */
   onStart?: (task: string, config: ConsiliumConfig) => void | Promise<void>;
-  /** Вызывается перед опросом каждого эксперта */
   onExpertStart?: (expert: string, task: string) => void | Promise<void>;
-  /** Вызывается после ответа эксперта */
   onExpertEnd?: (result: AgentResult) => void | Promise<void>;
-  /** Вызывается при ошибке эксперта */
   onExpertError?: (result: AgentResult) => void | Promise<void>;
-  /** Вызывается перед синтезом председателя */
   onChairStart?: (task: string, experts: AgentResult[]) => void | Promise<void>;
-  /** Вызывается после ответа председателя */
   onChairEnd?: (result: AgentResult) => void | Promise<void>;
-  /** Вызывается при ошибке председателя */
   onChairError?: (result: AgentResult) => void | Promise<void>;
-  /** Вызывается по завершении консилиума */
   onEnd?: (result: ConsiliumResult) => void | Promise<void>;
-  /** Вызывается при критической ошибке */
   onError?: (error: Error, context?: unknown) => void | Promise<void>;
-  /** Вызывается при логировании */
   onLog?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
 }
 
@@ -103,114 +128,106 @@ export interface ConsiliumHooks {
  * Настройки таймаутов
  */
 export interface TimeoutConfig {
-  /** Таймаут для экспертов по умолчанию (мс) */
+  /** Таймаут эксперта, мс */
   expert: number;
-  /** Таймаут для председателя (мс) */
+  /** Таймаут председателя, мс */
   chair: number;
-  /** Буфер для graceful shutdown (мс) */
+  /** Таймаут graceful shutdown, мс */
   shutdown: number;
 }
 
 /**
- * Настройки повторных попыток
+ * Настройки retry
  */
 export interface RetryConfig {
-  /** Количество попыток для экспертов */
   expertRetries: number;
-  /** Количество попыток для председателя */
   chairRetries: number;
-  /** Задержка между попытками (мс) */
   delay: number;
-  /** Экспоненциальная задержка */
   exponentialBackoff: boolean;
+  /** Максимальное число одновременно работающих агентов */
+  maxConcurrency: number;
 }
 
 /**
  * Настройки вывода
  */
 export interface OutputConfig {
-  /** Файл для сохранения результата */
+  /** Файл для сохранения результата (false — не сохранять) */
   file: string | false;
-  /** Формат вывода: text, markdown, json */
+  /** Формат файла: text, markdown, json */
   format: 'text' | 'markdown' | 'json';
-  /** Выводить прогресс в консоль */
+  /** Показывать прогресс */
   progress: boolean;
   /** Уровень логирования */
   logLevel: 'silent' | 'error' | 'warn' | 'info' | 'debug';
 }
 
 /**
- * Полная конфигурация консилиума
+ * Полная конфигурация
  */
 export interface ConsiliumConfig {
-  /** Версия конфигурации */
   version?: string;
-  /** Список экспертов */
   experts: ExpertConfig[];
-  /** Конфигурация председателя */
   chair: ChairConfig;
-  /** Агенты, исключённые из списка экспертов */
   excludedAgents?: string[];
-  /** Настройки таймаутов */
   timeouts: TimeoutConfig;
-  /** Настройки повторных попыток */
   retry: RetryConfig;
-  /** Настройки вывода */
   output: OutputConfig;
-  /** Хуки жизненного цикла */
   hooks?: ConsiliumHooks;
-  /** Рабочая директория */
+  /** Рабочая директория для запуска opencode */
   cwd?: string;
   /** Путь к opencode CLI */
   opencodePath?: string;
-  /** Дополнительные аргументы для opencode CLI */
+  /** Дополнительные аргументы opencode */
   opencodeArgs?: string[];
-  /** Автоопределение экспертов из opencode.json */
+  /** Автоопределение агентов из opencode.json */
   autoDiscoverAgents?: boolean;
   /** Путь к opencode.json */
   opencodeConfigPath?: string;
-  /** Плагины (функции-расширения) */
+  /** Использовать приватный сервер (--standalone), чтобы не конфликтовать с запущенным OpenCode */
+  standalone?: boolean;
+  /** Авто-подтверждение разрешений (--auto) */
+  autoApprove?: boolean;
+  /** Плагины (инициализируются перед запуском) */
   plugins?: ConsiliumPlugin[];
 }
 
 /**
- * Плагин консилиума
+ * Плагин
  */
 export interface ConsiliumPlugin {
-  /** Имя плагина */
   name: string;
-  /** Версия плагина */
   version?: string;
-  /** Функция инициализации */
   init?: (config: ConsiliumConfig) => ConsiliumConfig | Promise<ConsiliumConfig>;
-  /** Расширение хуков */
   hooks?: Partial<ConsiliumHooks>;
 }
 
 /**
- * Опции запуска консилиума (для API)
+ * Опции запуска
  */
 export interface RunOptions {
-  /** Переопределение экспертов */
+  /** Имена экспертов */
   experts?: string[];
-  /** Переопределение председателя */
+  /** Имя председателя */
   chair?: string;
-  /** Переопределение таймаута */
+  /** Общий таймаут (переопределяет expert timeout) */
   timeout?: number;
-  /** Переопределение выходного файла */
+  /** Файл для сохранения */
   outputFile?: string;
-  /** Silent режим (без вывода в консоль) */
+  /** Тихий режим */
   silent?: boolean;
-  /** Дополнительные хуки для этого запуска */
+  /** Дополнительные хуки */
   hooks?: Partial<ConsiliumHooks>;
-  /** Метаданные (передаются в результат) */
+  /** Метаданные */
   metadata?: Record<string, unknown>;
+  /** Пресет (fast, deep, security, review) */
+  preset?: string;
 }
 
 /**
  * Статус консилиума
  */
-export type ConsiliumStatus = 
+export type ConsiliumStatus =
   | 'idle'
   | 'running_experts'
   | 'running_chair'
@@ -225,52 +242,63 @@ export interface ProgressEvent {
   type: 'expert_start' | 'expert_end' | 'chair_start' | 'chair_end' | 'error';
   agent?: string;
   status: ConsiliumStatus;
-  progress: number; // 0-100
+  progress: number;
   timestamp: number;
   data?: unknown;
 }
 
-/**
- * Callback для отслеживания прогресса
- */
 export type ProgressCallback = (event: ProgressEvent) => void;
 
 /**
  * Опции CLI
  */
 export interface CLIOptions {
-  /** Задача */
   task: string;
-  /** Файл конфигурации */
+  command?: 'run' | 'init' | 'models' | 'doctor' | 'mcp' | 'help' | 'version';
   config?: string;
-  /** Эксперты через запятую */
   experts?: string;
-  /** Председатель */
   chair?: string;
-  /** Таймаут экспертов */
   expertTimeout?: number;
-  /** Таймаут председателя */
   chairTimeout?: number;
-  /** Выходной файл */
   output?: string;
-  /** Формат вывода */
   format?: 'text' | 'markdown' | 'json';
-  /** Уровень логирования */
   logLevel?: 'silent' | 'error' | 'warn' | 'info' | 'debug';
-  /** Количество повторных попыток */
   retries?: number;
-  /** Silent режим */
   silent?: boolean;
-  /** Показать помощь */
   help?: boolean;
-  /** Показать версию */
   version?: boolean;
-  /** Верbose режим */
   verbose?: boolean;
-  /** Список доступных агентов */
   listAgents?: boolean;
-  /** Инициализация конфига */
   init?: boolean;
-  /** Dry run (без реального вызова) */
   dryRun?: boolean;
+  /** Пресет */
+  preset?: string;
+  /** Скачать/использовать бесплатные модели */
+  free?: boolean;
+  /** Обновить кэш каталога моделей */
+  refresh?: boolean;
+  /** Лимит вывода моделей */
+  limit?: number;
+  /** Только доступные (есть ключ) модели */
+  available?: boolean;
+  /** JSON-вывод */
+  json?: boolean;
+  /** Применить изменения (init --free) */
+  apply?: boolean;
+  /** Перезаписать существующие модели агентов */
+  force?: boolean;
+  /** Файл с задачей */
+  taskFile?: string;
+  /** Добавить git diff к задаче */
+  diff?: boolean;
+  /** git diff --staged */
+  diffStaged?: boolean;
+  /** git diff <base> */
+  diffBase?: string;
+  /** Не сохранять результат */
+  noSave?: boolean;
+  /** Проверить модели реальным коротким запросом */
+  verify?: boolean;
+  /** Пропустить проверку моделей */
+  noVerify?: boolean;
 }
