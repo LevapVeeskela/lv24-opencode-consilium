@@ -1,5 +1,7 @@
 # lv24-opencode-consilium
 
+[English](../README.md) · **Русский** · [中文](README.zh.md)
+
 Консилиум ИИ-экспертов для [OpenCode](https://opencode.ai): несколько ролей-агентов **параллельно отвечают на разных моделях**, затем председатель синтезирует итоговый план. В комплекте — подбор сильнейших бесплатных моделей, CLI, библиотека и **MCP-сервер** для любого харнесса (Claude Desktop, Codex, Cursor, VS Code, свои агенты).
 
 ```
@@ -381,7 +383,7 @@ PR-отчёт — это markdown для комментария GitHub с мар
 | `opencodePath` | `opencode` | Свой путь к CLI |
 | `cwd` | текущая | Рабочая директория OpenCode |
 
-Полная схема: [`schema/config.schema.json`](schema/config.schema.json); пример: [`consilium.config.example.json`](consilium.config.example.json).
+Полная схема: [`schema/config.schema.json`](../schema/config.schema.json); пример: [`consilium.config.example.json`](../consilium.config.example.json).
 
 ## Библиотека
 
@@ -471,6 +473,12 @@ npm run typecheck   # tsc --noEmit
 | --- | --- | --- |
 | Slash-команда `consilium` для TUI | Вызов совета одной командой внутри OpenCode | S |
 | Экспорт отчёта в тикет-системы | Готовый артефакт для Jira/Linear | S |
+
+## Изменения 1.4.1
+
+- npm-пакет переименован в **`lv24-opencode-consilium`** (npm не умеет переименовывать на месте; старый `opencode-consilium@1.0.2` остаётся в реестре и помечен deprecated).
+- На странице npm теперь показывается этот `README.md`; русская и китайская версии перенесены в `docs/README.ru.md` и `docs/README.zh.md`, чтобы не конкурировать за единственный readme-слот npm.
+- Функциональных изменений относительно 1.4.0 нет.
 
 ## Изменения 1.4.0
 

@@ -1,8 +1,10 @@
 # lv24-opencode-consilium
 
+[English](../README.md) · [Русский](README.ru.md) · **中文**
+
 面向 [OpenCode](https://opencode.ai) 的 AI 专家委员会：多个角色在**不同模型上并行**回答同一个任务，最后由主席模型综合成最终方案。内置免费模型自动挑选、CLI、库 API，以及可在任意宿主中使用的 **MCP 服务器**（Claude Desktop、Codex、Cursor、VS Code、自有 Agent）。
 
-> 完整文档以英文和俄文为准：[README.md](README.md) · [README.ru.md](README.ru.md)
+> 完整文档以英文和俄文为准：[README.md](../README.md) · [README.ru.md](README.ru.md)
 
 ## 快速开始
 
@@ -148,6 +150,12 @@ consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
 
 新增配置键：`report`、`reportFile`、`variant`、`debounceMs`。`--replay <id>` 现在还会恢复主席 agent/模型、专家模型以及产物的 consensus/smartExperts/fallbackModels/session 标志。测试 224 个。
 
+## 1.4.1
+
+- npm 包已更名为 **`lv24-opencode-consilium`**（npm 不支持原地改名；旧的 `opencode-consilium@1.0.2` 仍留在注册表并标记 deprecated）。
+- npm 页面现在显示英文 `README.md`；俄语和中文版本移到 `docs/README.ru.md` 与 `docs/README.zh.md`。
+- 相比 1.4.0 无功能变化。
+
 ## 分析、产物与成本（1.3.0）
 
 - `--consensus` / `--no-consensus`：专家一致性的**词法**分析（关键词交集，Jaccard，中俄英停用词），不是 LLM 评分。简版注入主席提示词，完整报告写入结果与 `metadata.consensus`。
@@ -161,7 +169,7 @@ consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
 
 ## 配置
 
-配置查找顺序：`consilium.config.json`、`consilium.json`、`.consiliumrc`、`.consiliumrc.json`。完整 JSON Schema：[`schema/config.schema.json`](schema/config.schema.json)。
+配置查找顺序：`consilium.config.json`、`consilium.json`、`.consiliumrc`、`.consiliumrc.json`。完整 JSON Schema：[`schema/config.schema.json`](../schema/config.schema.json)。
 
 ```json
 {

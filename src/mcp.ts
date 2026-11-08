@@ -32,7 +32,7 @@ import { verifyModels } from './verify.js';
 import { applyPreset, listPresets } from './presets.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 
-const DEFAULT_VERSION = '1.4.0';
+const DEFAULT_VERSION = '1.4.1';
 const SERVER_NAME = 'lv24-opencode-consilium';
 const MAX_LINE_BYTES = 4 * 1024 * 1024;
 const FALLBACK_PROTOCOL_VERSION = '2025-06-18';

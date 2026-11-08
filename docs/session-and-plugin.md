@@ -600,7 +600,7 @@ V1 вызовет `server()`, V2 прочитает `id`/`setup` и проигн
 | `schema/config.schema.json` | добавить `session` (сейчас поля нет), `forkSession` | Схема отстаёт от `types.ts` |
 | `opencode.json` | блок `plugins` (dogfood) — только после публикации или через `./plugin` | Проверка «в бою» |
 | `test/plugin.test.mjs` | **новый**: валидация входа инструмента, маппинг аргументов, отмена по `signal` | Регрессии |
-| `README.md`, `README.ru.md`, `README.zh.md`, `docs/*` | раздел «Плагин OpenCode v2» с примером `plugins` | Пользовательская документация |
+| `README.md`, `docs/README.ru.md`, `docs/README.zh.md`, `docs/*` | раздел «Плагин OpenCode v2» с примером `plugins` | Пользовательская документация |
 | `bin/cli.js`, `bin/mcp.js` | без изменений | Точки входа CLI/MCP не затрагиваются |
 
 Порядок безопасного включения:

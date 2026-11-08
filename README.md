@@ -1,5 +1,11 @@
 # lv24-opencode-consilium
 
+**Languages:** English · [Русский](docs/README.ru.md) · [中文](docs/README.zh.md)
+
+> **Кратко по-русски.** Консилиум ИИ-экспертов для OpenCode V1 и V2: роли `arch`, `ux`, `ba`, `sec` параллельно отвечают на разных моделях, а председатель синтезирует итоговый план. Бесплатные модели подбираются и проверяются автоматически (`consilium init --free`). В комплекте: CLI `consilium`, MCP-сервер, нативный плагин OpenCode V2 (`consilium.run`), артефакты запусков с replay/diff, анализ согласия, HTML/PR-отчёты, watch-режим, git-hooks и варианты моделей.
+>
+> Установка: `npm install -g lv24-opencode-consilium`, затем `consilium doctor` и `consilium "ваша задача"`. Полная документация — [docs/README.ru.md](docs/README.ru.md).
+
 A council of AI experts for [OpenCode](https://opencode.ai): several agent personas answer your task **in parallel on different models**, then a chair model synthesizes a final plan. Ships with a zero-config free-model bootstrap, a CLI, a library API, and an **MCP server** that works in any harness (Claude Desktop, Codex, Cursor, VS Code, custom agents).
 
 ```
@@ -450,6 +456,12 @@ Remaining ideas (1.3.0 shipped artifacts, consensus, smart-experts, model fallba
 | --- | --- | --- |
 | `consilium` slash command for the TUI | Invoke the council with one command inside OpenCode | S |
 | Report export to ticket systems | Ready-made artifact for Jira/Linear | S |
+
+## 1.4.1 changes
+
+- npm package renamed to **`lv24-opencode-consilium`** (npm cannot rename in place; the old `opencode-consilium@1.0.2` stays in the registry and is deprecated).
+- The npm page now shows this `README.md`; Russian and Chinese translations moved to `docs/README.ru.md` and `docs/README.zh.md` so they no longer compete for npm's single readme slot.
+- No functional changes since 1.4.0.
 
 ## 1.4.0 changes
 

@@ -87,7 +87,7 @@ test('JSONC-строки с ,} и ,] не повреждаются', () => {
 
 test('generateExampleConfig — валидный JSON с ключевыми полями', () => {
   const config = JSON.parse(generateExampleConfig());
-  assert.equal(config.version, '1.4.0');
+  assert.equal(config.version, '1.4.1');
   assert.equal(config.output.file, false);
   assert.equal(config.retry.maxConcurrency, 3);
   assert.equal(config.standalone, true);
