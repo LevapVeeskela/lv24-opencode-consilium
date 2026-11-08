@@ -1,0 +1,57 @@
+# lv24-opencode-consilium
+
+> A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
+
+Version: 1.4.1 · License: MIT · Node: >= 18 · Runtime dependencies: none
+
+## Install
+
+- `npm install -g lv24-opencode-consilium`
+- `npx -y lv24-opencode-consilium --help`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1`
+- Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
+
+## Commands
+
+- `consilium doctor` — environment, config, agents and model diagnostics.
+- `consilium init --free [--dry-run] [--force] [--no-verify] [--native-v2]` — discover, rank, probe and write free models.
+- `consilium models [--available] [--verify] [--limit N] [--refresh] [--json]` — ranked free models.
+- `consilium [options] "<task>"` — run the council; `-f json` prints one JSON document on stdout.
+- `consilium mcp [--install] [--global]` — stdio MCP server or config registration.
+- `consilium watch [--debounce <ms>] [task]` — rerun on file changes.
+- `consilium hooks install|uninstall` — managed git pre-commit review hook.
+- `consilium --replay <id>` / `consilium --diff-runs <a> <b>` — rerun or compare saved artifacts.
+
+## Machine contract
+
+- stdout: data only. stderr: progress and logs.
+- JSON mode: `consilium -f json "<task>"` → result + `metadata` (models, usage, cost, consensus, artifacts, errorCode).
+- Models JSON: `consilium models --json`.
+- Exit codes: `0` success, `1` run failed, `2` usage error.
+- Typed errors: `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`.
+- Cost cap: `--max-cost <usd>`; when exceeded before the chair, a partial result with `errorCode: COST_LIMIT` is returned.
+- Sessions: `--session <id>`; each agent gets `ses_<base>-<agent>`, the chair continues the base session.
+- State: files under `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); no daemon, no database.
+
+## MCP
+
+- Command: `npx -y lv24-opencode-consilium mcp` (stdio JSON-RPC 2.0).
+- Tools: `consilium_run`, `consilium_list_agents`, `consilium_free_models`, `consilium_doctor`, `consilium_init_free`.
+- `consilium_init_free` is dry-run unless `"apply": true`; `consilium_run` streams progress with a `progressToken`.
+
+## Configuration
+
+- Discovery order: `consilium.config.json`, `consilium.json`, `.consiliumrc`, `.consiliumrc.json`.
+- OpenCode config: `opencode.json(c)`, `.opencode/opencode.json(c)`, parent directories, `~/.config/opencode`.
+- Schema: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/schema/config.schema.json
+- Example: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/consilium.config.example.json
+
+## Docs
+
+- README: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/README.md
+- Russian: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/README.ru.md
+- Chinese: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/README.zh.md
+- Sessions and plugin internals: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/session-and-plugin.md
+- Architecture (layers, barrels, extension guides): https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/architecture.md
+- npm: https://www.npmjs.com/package/lv24-opencode-consilium
+- Container: https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium

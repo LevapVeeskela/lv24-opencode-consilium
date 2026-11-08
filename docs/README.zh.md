@@ -1,112 +1,89 @@
+![Consilium — a council of AI experts for OpenCode](https://raw.githubusercontent.com/LevapVeeskela/lv24-opencode-consilium/master/.github/assets/banner.jpg)
+
 # lv24-opencode-consilium
 
-[English](../README.md) · [Русский](README.ru.md) · **中文**
+**语言：** [English](../README.md) · [Русский](README.ru.md) · 中文
 
-面向 [OpenCode](https://opencode.ai) 的 AI 专家委员会：多个角色在**不同模型上并行**回答同一个任务，最后由主席模型综合成最终方案。内置免费模型自动挑选、CLI、库 API，以及可在任意宿主中使用的 **MCP 服务器**（Claude Desktop、Codex、Cursor、VS Code、自有 Agent）。
+> **四位专家，四个模型，一份方案。** 面向 [OpenCode](https://opencode.ai)：`arch`、`ux`、`ba`、`sec` 在不同模型上并行作答，主席把答案合并成一份可执行方案。
 
-> 完整文档以英文和俄文为准：[README.md](../README.md) · [README.ru.md](README.ru.md)
+> 精简中文版；完整文档：[README.md](../README.md) · [README.ru.md](README.ru.md)。
+## 30 秒演示
+```bash
+$ consilium "Review the authentication design"
 
-## 快速开始
+  arch  → flint-40b-free          architecture, trade-offs
+  ux    → inkling-2-small-free    flows, error states
+  ba    → deepseek-v4.1-flash-free  scope, edge cases
+  sec   → iceman-free             threats, authz, abuse
 
+  chair → beam-free               ← synthesizes one plan
+  ✓ 4 experts in parallel · free models · no API bill
+```
+
+主席不做摘要：它解决分歧、丢弃薄弱论点，输出带明确取舍的方案；专家跑在不同模型上，盲点不重叠。
+## 为什么选择 consilium
+- **不同模型 = 不同盲点。** 一个模型漏掉的，另一个能发现；主席把冲突摆明，而不是取平均。
+- **默认零成本。** 自动发现免费、支持 tool 的模型，排序、实测后写入配置。
+- **复用现有环境。** 认证、provider、agent 都交给 OpenCode CLI，无需额外密钥。
+- **同一引擎。** 终端、MCP、原生 V2 插件、库 API 共用一套实现。
+## 能力一览
+并行议会、主席综合、免费模型引导、`doctor` 预检、运行产物（`--replay`/`--diff-runs`）、HTML/PR 报告、watch、git hooks、MCP、V2 插件、stdin 安全执行器；零运行时依赖，Node >= 18。
+## 议会角色
+| 角色 | Agent | 关注点 | 典型问题 |
+| --- | --- | --- | --- |
+| 🏛 | `arch` | 架构与取舍 | 10 倍负载下什么先崩？ |
+| 🎨 | `ux` | 流程、API 易用性、错误态 | 失败时用户看到什么？ |
+| 📋 | `ba` | 需求与范围 | 什么不在范围内？ |
+| 🛡 | `sec` | 威胁、授权、滥用 | 谁能调用？会泄露什么？ |
+| ⚖️ | `consilium` | 主席 | 合并答案、解决冲突 |
+
+想少几个声音：`-e arch,sec`、`--smart-experts` 或预设。
+## 安装
 ```bash
 npm install -g lv24-opencode-consilium
-
-consilium doctor          # 检查 OpenCode、配置、Agent、模型
-consilium init --free     # 自动挑选并验证最强的免费模型，写入配置
-consilium "为公共 API 设计限流方案"
+npx -y lv24-opencode-consilium --help   # 不安装直接运行
 ```
 
-`init --free` 会：
-
-1. 读取 `models.dev/api.json` 与 `openrouter.ai/api/v1/models`；
-2. 只保留免费（`cost = 0`）、可用、支持 tools、上下文 >= 32K 的聊天模型；
-3. 排序并用一次极短的真实请求验证候选模型（`--no-verify` 可跳过）；
-4. 把胜出的模型写入 `opencode.json`（Agent：`arch`、`ux`、`ba`、`sec`、`consilium`）和 `consilium.config.json`；
-5. 默认不覆盖你已有的 Agent 模型，除非加 `--force`。
-
-只看方案不写文件：`consilium init --free --dry-run`。
-
-写入原生 V2 格式（`agents` + `system`）：`consilium init --free --native-v2`。
-
-## 容器镜像（GHCR）
-
-自包含镜像（Node.js、OpenCode CLI、`git`）发布在 GitHub Container Registry，
-支持 `linux/amd64` 与 `linux/arm64`：
-
-```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # 或 :latest
-docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.1
-```
-
-在项目目录运行：
+要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
+### 容器镜像（GHCR）
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.1`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
   -v "$PWD:/workspace" \
   -v "$HOME/.local/share/opencode:/home/node/.local/share/opencode" \
   -v "$HOME/.config/opencode:/home/node/.config/opencode:ro" \
+  -u "$(id -u):$(id -g)" \
   ghcr.io/levapveeskela/lv24-opencode-consilium:latest \
-  "为公共 API 设计限流方案"
+  "Design a rate limiter for a public API"
 ```
 
-入口命令是 `consilium`，所有 CLI 参数可直接使用；MCP 服务器用
-`--entrypoint consilium-mcp` 启动。镜像内 `HOME=/home/node`，凭据挂载到
-`/home/node/.local/share/opencode`，配置挂载到 `/home/node/.config/opencode`。
+入口是 `consilium`（所有参数可用），MCP 用 `--entrypoint consilium-mcp`；镜像内 `HOME=/home/node`，配置在 `/home/node/.config/opencode`，凭据在 `/home/node/.local/share/opencode`。Windows 去掉 `-u`，用 `%CD%` / `%USERPROFILE%`。
+## 快速开始
+```bash
+consilium doctor                    # 检查 CLI、配置、Agent、模型
+consilium init --free               # 挑选并验证免费模型，写入配置
+consilium "Design a rate limiter for a public API"
+```
 
+`init --free` 从 `https://models.dev/api.json` 与 `https://openrouter.ai/api/v1/models` 只保留免费（`cost = 0`）、活跃、支持 tool calling、上下文 >= 32K 的模型，排序并做一次真实请求探测（`--no-verify` 跳过），把胜出者写入 `opencode.json`（`arch`、`ux`、`ba`、`sec`、`consilium`）和 `consilium.config.json`；默认不覆盖已有模型，除非 `--force`。另有两个开关：`--dry-run`（只预览）、`--native-v2`（原生 V2 的 `agents` + `system`）。
 ## OpenCode V1 / V2 兼容
+两个分支都支持，配置形态自动识别。
 
-包同时支持 OpenCode V1 与 V2，并自动识别配置格式：
-
-| 项目 | V1 | V2 |
+| 项目 | OpenCode V1 | OpenCode V2 |
 | --- | --- | --- |
 | `opencode.json` Agent | `agent` + `prompt` | `agents` + `system` |
 | MCP 服务器 | `mcp.<name>` + `enabled` | `mcp.servers.<name>` + `disabled` |
+| 命令 | `command` + `subtask` | `commands` + `subagent` |
 | `run --agent` 的模型 | 从配置应用 | **被忽略**，必须显式 `--model` |
 
-- 默认写入 V1 格式：两版都能读取，无需迁移。
-- 原生 V2 只在 `--native-v2` 或文件已使用 V2 键时写入。
-- 模型始终通过 `--model` 传递，V2 不会退回根模型。
-- 自动读取 `agent` 与 `agents`、`.opencode/opencode.json(c)` 及父目录。
-- `RATE_LIMITED`（429/免费额度）不再无意义重试，并显示下次可重试时间。
-- `consilium doctor` 新增 `opencode-v2-compat` 检查。
+默认写 V1 格式（两版都能读），原生 V2 仅在 `--native-v2` 或文件已用 V2 键时写入；模型始终以 `--model` 传递；Agent 从 `agent`/`agents`、`.opencode/opencode.json(c)` 及父目录读取。`RATE_LIMITED` 短时限（<= 30 秒）自动重试，长时限立即失败并给出延迟；`doctor` 报告 CLI 版本、配置格式与 V2 兼容问题。一键注册 MCP：`consilium mcp --install`（项目）、`consilium mcp --install --global`（全局），再用 `opencode mcp list` 验证。
+## 免费模型自动挑选
+`consilium models`（前 20）、`--available`（仅可用提供商）、`--verify`（真实请求）、`--refresh`（忽略 12 小时缓存）、`--json`。来源：`models.dev`、OpenRouter 的 `:free` 变体和内置精选清单；缓存 `%TEMP%/lv24-opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
 
-MCP 一键注册（格式随已安装的 OpenCode 版本）：
-
-```bash
-consilium mcp --install            # ./opencode.json
-consilium mcp --install --global   # 全局 OpenCode 配置
-```
-
-## 免费模型
-
-```bash
-consilium models                 # 前 20 名
-consilium models --available     # 仅你可用的提供商
-consilium models --verify        # 真实请求验证
-consilium models --refresh       # 忽略 12 小时缓存
-consilium models --json
-```
-
-来源：`models.dev` + OpenRouter + 内置精选回退。缓存路径 `%TEMP%/lv24-opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
-
-当前推荐组合（2026-11-08 目录）：`arch → opencode/flint-40b-free`、`ux → opencode/inkling-2-small-free`、`ba → opencode/deepseek-v4.1-flash-free`、`sec → opencode/iceman-free`、`chair → opencode/beam-free`。免费模型会轮换，`consilium init --free` 会重新验证并替换 stealth/alpha 模型。
-
-## MCP 服务器（任意宿主）
-
-```bash
-consilium mcp
-# 或
-consilium-mcp
-```
-
-OpenCode V1/V2（自动选择格式）：
-
-```bash
-consilium mcp --install
-```
-
-Claude Desktop / 任意 MCP 客户端：
+当前推荐：`arch → opencode/flint-40b-free`、`ux → opencode/inkling-2-small-free`、`ba → opencode/deepseek-v4.1-flash-free`、`sec → opencode/iceman-free`、`chair → opencode/beam-free`。`opencode-go` 的免费模型（`*-free` 等）也参与排序，但 `opencode-go/muse-spark-1.3-contributor` 这类付费模型不会被 `--free` 选中，需在 `experts[].model` 或 `chair.model` 指定。免费模型会轮换，`init --free` 复核目录与真实响应，`--refresh` 挑选替代者；排序（0–1.2）按上下文、tool calling、结构化输出、推理、新旧、输出上限、家族先验和付费同级“影子价格”加权。
+## 在任意宿主中使用（MCP）
+`consilium mcp` 或直接二进制 `consilium-mcp` 启动 stdio 服务器。**Claude Desktop**（`claude_desktop_config.json`）示例：
 
 ```json
 {
@@ -119,83 +96,90 @@ Claude Desktop / 任意 MCP 客户端：
 }
 ```
 
-Codex（`~/.codex/config.toml`）：
+Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_servers.consilium]`），任何 stdio JSON-RPC 2.0 客户端都可用；日志只写 **stderr**，stdout 仅承载协议。
 
-```toml
-[mcp_servers.consilium]
-command = "npx"
-args = ["-y", "lv24-opencode-consilium", "mcp"]
-```
-
-工具：`consilium_run`、`consilium_list_agents`、`consilium_free_models`、`consilium_doctor`、`consilium_init_free`。日志只写 stderr，stdout 仅承载协议。
-
-## 主要 CLI 选项
-
-| 选项 | 说明 |
+| 工具 | 参数 / 结果 |
 | --- | --- |
-| `-e, --experts a,b` | 选择专家 |
-| `--chair <agent>` | 主席 Agent |
-| `--preset fast\|deep\|security\|review\|free` | 预设 |
-| `-f json` | stdout 输出纯 JSON |
-| `--diff [--staged] [--base ref]` | 把 git diff 加入任务 |
-| `--task-file <file>` / `-` | 从文件或 stdin 读取任务 |
-| `--verify` / `--no-verify` | 是否真实验证模型 |
-| `--native-v2` | 写入原生 V2 配置 |
-| `--install` / `--global` | 在项目或全局配置中注册 MCP |
-| `-o <file>` / `--no-save` | 保存 / 不保存结果 |
-| `--report <html\|pr\|markdown>` / `--report-file <file>` | 运行后报告（`.html` → html，`.md` → pr；无文件则 stdout，`-f json` 除外） |
-| `--variant <name>` | 全员模型 variant（`provider/model#high`），非法则退出 2 |
-| `watch [--debounce <ms>]` | 监听变化并重跑（400 ms 防抖，直到 Ctrl+C） |
-| `hooks install\|uninstall` | 安装/删除 git pre-commit hook（`git commit` 前评审 staged） |
+| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts` → 方案 + 意见 + 元数据 |
+| `consilium_list_agents` | 专家、模型、主席、预设、配置路径 |
+| `consilium_free_models` | `limit`、`available_only`、`refresh` |
+| `consilium_doctor` | 环境/配置诊断 |
+| `consilium_init_free` | `apply`、`force`、`verify`；默认只给方案 |
 
-示例：`git diff | consilium - "审查这些改动"`。
-
-## 报告、watch 与 git hooks（1.4.0）
-
-```bash
-consilium --report html --report-file report.html "审查当前改动"  # 自包含 HTML
-consilium --report pr "审查当前改动"                              # GitHub 评论 markdown（<!-- consilium:report --> + <details>）
-consilium --report-file notes.md "..."                           # .html → html，.md → pr；无文件则输出到 stdout（-f json 除外）
-consilium --variant high "..."                                   # 所有模型加 #high，非法的 variant 退出码 2
-consilium watch [--debounce <ms>] "审查当前改动"                 # 监听项目变化（忽略 .git/node_modules/dist/.consilium/coverage/*.tmp/*.log），400 ms 防抖，附带 git diff，直到 Ctrl+C
-consilium hooks install    # 每次 git commit 前评审 staged 改动，失败则阻止提交
-consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
-```
-
-## OpenCode V2 插件（1.4.0，仅 V2，V1 不可用）
-
-在 TUI 内部直接运行委员会，无需 MCP 与外部 CLI：
-
+`consilium_run` 支持 `progressToken`，响应含 `cost`、共识摘要和 `**Artifacts:**` 行。
+## 面向 AI 代理
 ```json
 {
-  "plugins": [{ "package": "lv24-opencode-consilium" }]
+  "package": "lv24-opencode-consilium",
+  "version": "1.4.1",
+  "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
+  "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
+  "json_mode": "consilium -f json \"<task>\"",
+  "models_json": "consilium models --json",
+  "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
+  "config_schema": "schema/config.schema.json",
+  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error" },
+  "docs_index": "llms.txt"
 }
 ```
 
-包导出 `./server` → `dist/plugin.js`，提供 `consilium.run` 工具（参数：`task`、`experts`、`chair`、`timeout_ms`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`preset`）。插件无运行时依赖（`@opencode/plugin` 仅用于类型）。TUI 内用插件，外部宿主用 MCP，终端/脚本/CI 用 CLI。
+- **stdout 放数据，stderr 放进度。** 用 `-f json`、`consilium models --json` 或 MCP，不要解析人类文本。
+- **错误类型化。** `errorCode` 为 `RATE_LIMITED`、`MODEL_UNAVAILABLE`、`EMPTY_RESPONSE`、`AGENT_NOT_FOUND`、`COST_LIMIT`、`TIMEOUT` 等，退出码 `0/1/2`。
+- **状态是文件。** 产物在 `.consilium/runs/<id>/`，`--replay <id>` 复原；`--auto` 默认关闭。
 
-新增配置键：`report`、`reportFile`、`variant`、`debounceMs`。`--replay <id>` 现在还会恢复主席 agent/模型、专家模型以及产物的 consensus/smartExperts/fallbackModels/session 标志。测试 224 个。
+机器索引：[`llms.txt`](../llms.txt)；内部实现：[`session-and-plugin.md`](session-and-plugin.md)。
+## CLI 参考
+```text
+consilium [options] <task>
+consilium <task> -                  # read the task from stdin
+consilium init [--free] [--dry-run] [--force] [--no-verify] [--native-v2]
+consilium models [--available] [--verify] [--limit N] [--refresh] [--json]
+consilium doctor
+consilium mcp [--install] [--global]
+consilium watch [--debounce <ms>] [task]
+consilium hooks install|uninstall
+```
 
-## 1.4.1
+| 选项 | 说明 |
+| --- | --- |
+| `-c, --config <file>` / `-e, --experts a,b` / `--chair <agent>` | 配置文件 / 专家子集 / 主席 |
+| `--preset <name>` | `fast`、`deep`、`security`、`review`、`free` |
+| `--expert-timeout`、`--chair-timeout`、`-r, --retries <n>` | 每次尝试超时（ms）、重试（0 = 一次） |
+| `-o, --output <file>` / `--no-save` / `-f, --format <fmt>` | 保存 / 不保存 / `text`、`markdown`、`json` |
+| `--task-file <file>` / `-s, --silent` / `-V, --verbose` / `-v, --version` / `-h, --help` | 文件或 stdin 读任务 / 只出结果 / 原始事件 / 版本 / 帮助 |
+| `--consensus` / `--no-consensus` / `--smart-experts` | 词法一致性 / 启发式选 2–3 个角色 |
+| `--max-cost <usd>` / `--fallback-models a,b` | 成本上限（`COST_LIMIT`）/ 换模型重试（最多 2 次） |
+| `--session <id>` / `--variant <name>` | 会话基 id（`ses_<base>-<agent>`）/ variant，非法退出 2 |
+| `--artifacts`、`--no-artifacts`、`--artifacts-dir <path>`、`--replay <id>`、`--diff-runs <a> <b>` | 产物 / 目录 / 重跑 / 对比 |
+| `--report <html\|pr\|markdown>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告 / 写文件 / git diff / watch 防抖 |
+| `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
 
-- npm 包已更名为 **`lv24-opencode-consilium`**（npm 不支持原地改名；旧的 `opencode-consilium@1.0.2` 仍留在注册表并标记 deprecated）。
-- npm 页面现在显示英文 `README.md`；俄语和中文版本移到 `docs/README.ru.md` 与 `docs/README.zh.md`。
-- 相比 1.4.0 无功能变化。
+退出码：`0` 成功，`1` 运行失败，`2` 用法错误。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
+## 运行产物/报告/watch/git hooks
+```bash
+consilium --report html --report-file report.html "Review the current changes"
+consilium --report pr "Review the current changes"
+consilium --report-file notes.md "..."      # .html → html，.md → pr
+consilium watch --debounce 500 "Review the current changes"
+consilium hooks install                     # 提交前评审 staged，失败则阻止提交
+consilium hooks uninstall                   # 只删托管块
+```
 
-## 分析、产物与成本（1.3.0）
+产物是普通文件：`.consilium/runs/<id>/` 下的 `run.json`、`report.md`、`experts/<agent>.md`。PR 报告带 `<!-- consilium:report -->` 和 `<details>`；HTML 自包含；hook 只写 `# >>> consilium >>>` … `# <<< consilium <<<` 块。
+## OpenCode V2 插件
+在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
-- `--consensus` / `--no-consensus`：专家一致性的**词法**分析（关键词交集，Jaccard，中俄英停用词），不是 LLM 评分。简版注入主席提示词，完整报告写入结果与 `metadata.consensus`。
-- `--smart-experts`：按任务/ diff 启发式挑选 2–3 个相关角色（默认 2，最多 3，被丢弃的角色会打日志），存于 `metadata.smartExperts`。
-- `--max-cost <usd>`：累计成本上限；主席启动前超限则跳过主席，返回带专家意见与共识的部分结果（`errorCode: COST_LIMIT`），明细在 `metadata.cost`。
-- `--fallback-models a,b`：遇到 `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` 时，同一专家在备用模型上重试（每专家最多换 2 次），用量累加。
-- `--session <id>`：会话基 id，每个 Agent 独占 `ses_<base>-<agent>`（OpenCode 要求 `ses_` 前缀）；未知 Agent 自动用默认 Agent/默认会话运行。该标志**不会**把会话从列表中隐藏。
-- `--artifacts` / `--artifacts-dir <path>` / `--no-artifacts`：把运行保存为普通文件 `.consilium/runs/<id>/`（`run.json`、`report.md`、`experts/<agent>.md`）；`consilium --replay <id>` 重跑（恢复专家/主席模型），`consilium --diff-runs <a> <b>` 输出两轮运行的 markdown 对比。
-- MCP `consilium_run` 新增参数 `consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`；返回含 `cost`、共识摘要与 `**Artifacts:**` 行。
-- 配置新增键：`artifacts`（bool|string）、`consensus`（bool）、`smartExperts`（bool）、`maxCost`（number ≥ 0）、`fallbackModels`（string[]）、`session`（string）。
-
+配置 `{ "plugins": [{ "package": "lv24-opencode-consilium" }] }`。导出 `./server`（`dist/plugin.js`），无运行时依赖；`consilium.run` 接受 `task`、`experts`、`chair`、`timeout_ms`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`preset`。
+## 预设
+| 预设 | 专家 | 行为 |
+| --- | --- | --- |
+| `fast` | arch, sec | 专家 3 分钟超时，不重试 |
+| `deep` | 全部四个 | 超时翻倍，启用重试 |
+| `security` | sec, arch, ba | 安全评审 |
+| `review` | arch, sec, ux | 代码评审 |
+| `free` | 全部四个 | 免费模型引导 |
 ## 配置
-
-配置查找顺序：`consilium.config.json`、`consilium.json`、`.consiliumrc`、`.consiliumrc.json`。完整 JSON Schema：[`schema/config.schema.json`](../schema/config.schema.json)。
+当前目录查找 `consilium.config.json`、`consilium.json`、`.consiliumrc`、`.consiliumrc.json`，或用 `-c` 指定；`opencode.json(c)` 允许 JSONC 注释。
 
 ```json
 {
@@ -208,15 +192,54 @@ consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
 }
 ```
 
-关键点：`standalone` 默认 `true`（避免与已运行的 OpenCode 端口冲突）；`autoApprove` 默认 `false`；任务文本通过 **stdin** 传递，不经过 shell。密钥始终由 OpenCode 管理，Consilium 不读取、不打印。
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `experts[].model` / `chair.model` | — | `provider/model`，以 `--model` 传入并覆盖 Agent 模型 |
+| `timeouts.expert` / `.chair`；`retry.expertRetries` / `.chairRetries` | 300000 / 600000；1 | 每次尝试 ms；重试次数（0 = 一次） |
+| `retry.jitter` / `retry.maxConcurrency` / `output.file` | `false` / 3 / `false` | 随机延迟（50–100%）/ 并行 1–8 / 关闭保存 |
+| `standalone` / `autoApprove` / `autoDiscoverAgents` | `true` / `false` / `true` | 私有服务器 / `--auto` / 复用 Agent |
+| `artifacts` / `consensus` / `smartExperts` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色 |
+| `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式 / 报告文件 / variant / watch 防抖 |
+| `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录 |
 
-## 开发
+完整 Schema：[`../schema/config.schema.json`](../schema/config.schema.json)。
+## 库 API
+```ts
+import { Consilium, runConsilium, fetchFreeModels, selectCouncilModels } from 'lv24-opencode-consilium';
 
-```bash
-npm install
-npm run build
-npm test
-npm run typecheck
+const council = new Consilium();
+council.onProgress(event => console.error(event.type, event.agent ?? ''));
+const result = await council.run('Design a cache invalidation strategy');
+console.log(result.text, result.usage?.cost);   // chair synthesis, total cost
+const oneShot = await runConsilium('...');      // ConsiliumResult
+const { models } = await fetchFreeModels({ includeUnavailable: true });
+const top = selectCouncilModels(models, 5);
 ```
 
-许可证：MIT
+`Consilium` 实例可复用（完成、失败或取消后仍可 `run()`），`cancel()` 停止当前运行的所有子进程。
+## 工作原理
+每个专家和主席都通过 `opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provider/model]` 启动；提示词经子进程 **stdin**（UTF-8）传入，任意文本都安全。NDJSON 事件增量解析（`text`、`step_finish` 的用量/成本、带 `type`/`status`/`retryAfterMs` 的 `error`）；模型始终以 `--model` 传递，Agent 缺失时用默认 Agent 加同一模型重试一次。
+## 安全
+- 任务文本从不拼进 shell，一律经 stdin；Agent 名和模型 ID 使用前校验；`--auto` 默认**关闭**，`--standalone` 隔离端口。
+- 不打印或写入 API 密钥；`doctor` 只检查环境变量并告警，认证由 OpenCode 负责。
+## 故障排查
+| 症状 | 处理 |
+| --- | --- |
+| `OpenCode CLI не найден` | `npm install -g opencode-ai` 或设置 `opencodePath` |
+| `Model unavailable` | 模型轮换/区域受限；`consilium models --verify --refresh` |
+| `Agent not found` | 角色缺失；自动退回默认 Agent + 你的模型，用 `consilium init --free` 补齐 |
+| `RATE_LIMITED` / 429 | 免费额度用尽；按错误延迟重试或换提供商 |
+| V2 上模型被忽略 | 已传 `--model`；运行 `consilium doctor`（`opencode-v2-compat`） |
+| `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
+| V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
+## 更新日志
+- **1.4.1** — 包更名 `lv24-opencode-consilium`（`opencode-consilium@1.0.2` 保持 deprecated）；译文移到 `docs/`；GHCR 镜像；无功能变化。
+- **1.4.0** — `--report`/`--report-file`、`--variant`、`watch`、`hooks`、V2 插件、`--replay` 恢复模型与标志；新增 `report`、`reportFile`、`variant`、`debounceMs`；224 个测试。
+- **1.3.0** — 运行产物、`--replay`/`--diff-runs`、`--consensus`、`--smart-experts`、`--max-cost`、`--fallback-models`、`--session` 及对应 MCP 参数。
+- **1.2.0** — 支持 V2 并保留 V1：双配置段、目录合并、始终传 `--model`、`mcp.servers`、`--native-v2`。
+## 路线图
+- TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
+## 开发
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，224 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+## 许可证
+[MIT](../LICENSE)

@@ -1,87 +1,98 @@
+![Consilium — a council of AI experts for OpenCode](https://raw.githubusercontent.com/LevapVeeskela/lv24-opencode-consilium/master/.github/assets/banner.jpg)
+
 # lv24-opencode-consilium
+
+[![npm](https://img.shields.io/npm/v/lv24-opencode-consilium?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-opencode-consilium)
+[![downloads](https://img.shields.io/npm/dm/lv24-opencode-consilium?color=cb3837)](https://www.npmjs.com/package/lv24-opencode-consilium)
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Flevapveeskela%2Flv24--opencode--consilium-2496ED?logo=docker&logoColor=white)](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)
+[![license](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
+[![OpenCode](https://img.shields.io/badge/OpenCode-V1%20%7C%20V2-6C5CE7)](https://opencode.ai)
 
 **Languages:** English · [Русский](docs/README.ru.md) · [中文](docs/README.zh.md)
 
-> **Кратко по-русски.** Консилиум ИИ-экспертов для OpenCode V1 и V2: роли `arch`, `ux`, `ba`, `sec` параллельно отвечают на разных моделях, а председатель синтезирует итоговый план. Бесплатные модели подбираются и проверяются автоматически (`consilium init --free`). В комплекте: CLI `consilium`, MCP-сервер, нативный плагин OpenCode V2 (`consilium.run`), артефакты запусков с replay/diff, анализ согласия, HTML/PR-отчёты, watch-режим, git-hooks и варианты моделей.
+> **Four experts. Four models. One plan.** Consilium runs `arch`, `ux`, `ba` and `sec` in parallel on different models, then a chair model merges their answers into a single actionable plan. Works inside OpenCode, Claude Desktop, Codex, Cursor, VS Code, CI and your own agents.
+
+> **Кратко по-русски.** Консилиум ИИ-экспертов для OpenCode V1 и V2: роли `arch`, `ux`, `ba`, `sec` параллельно отвечают на разных моделях, а председатель синтезирует итоговый план. Бесплатные модели подбираются и проверяются автоматически (`consilium init --free`). В комплекте: CLI, MCP-сервер, нативный плагин V2, артефакты запусков с replay/diff, анализ согласия, HTML/PR-отчёты, watch-режим и git-hooks.
 >
 > Установка: `npm install -g lv24-opencode-consilium`, затем `consilium doctor` и `consilium "ваша задача"`. Полная документация — [docs/README.ru.md](docs/README.ru.md).
 
-A council of AI experts for [OpenCode](https://opencode.ai): several agent personas answer your task **in parallel on different models**, then a chair model synthesizes a final plan. Ships with a zero-config free-model bootstrap, a CLI, a library API, and an **MCP server** that works in any harness (Claude Desktop, Codex, Cursor, VS Code, custom agents).
-
-```
-consilium "Review the authentication design"
-  arch  → flint-40b-free
-  ux    → inkling-2-small-free
-  ba    → deepseek-v4.1-flash-free
-  sec   → iceman-free
-  chair → beam-free   ← synthesis
-```
-
-## Why
-
-- **Different models = different blind spots.** One model often misses what another catches; the chair resolves disagreements.
-- **Zero cost by default.** Discovers free, tool-capable models from public catalogs, ranks them, verifies they actually work in your region, and wires them into your config.
-- **Works with what you already have.** Uses the OpenCode CLI (agents, auth, providers), not a parallel provider stack.
-- **Works inside any harness.** The same engine is exposed as an MCP server over stdio.
-
-## Features
-
-- Parallel experts with per-expert `agent` and `model` routing, bounded concurrency.
-- Chair synthesis with configurable prompt template and per-expert text limits.
-- Dynamic free-model discovery: `models.dev` + OpenRouter + curated offline fallback; cached 12 h.
-- Quality ranking heuristic (context, tools, structured output, reasoning, recency, family prior, shadow price of the paid sibling).
-- Optional real verification: each candidate gets a tiny probe request, region-blocked/unavailable models are dropped.
-- Robust runner: prompt via stdin (no shell injection, no Windows 8 KB limit), `--standalone` isolation, retries with backoff, timeouts, cancellation, usage/cost accounting.
-- `doctor` preflight, presets, git-diff review mode, clean JSON output.
-- MCP tools: run the council, list agents, list free models, diagnose, bootstrap free models.
-- TypeScript strict, zero runtime dependencies, Node >= 18.
-
-## Requirements
-
-- Node.js **>= 18**
-- [OpenCode CLI](https://opencode.ai) installed and authenticated (`npm install -g opencode-ai`), **V1 or V2**
-- Optional: `OPENROUTER_API_KEY` to use OpenRouter's free models
-
-## OpenCode V1 and V2 compatibility
-
-The package supports both OpenCode branches and picks the right config shape itself:
-
-| Area | OpenCode V1 | OpenCode V2 |
+| 🚀 Start | 🧠 Use | 🛠 Build |
 | --- | --- | --- |
-| `opencode.json` agents | `agent` + `prompt` | `agents` + `system` |
-| MCP servers | `mcp.<name>` + `enabled` | `mcp.servers.<name>` + `disabled` |
-| Commands | `command` + `subtask` | `commands` + `subagent` |
-| Agent model on `run --agent` | applied from config | **ignored**, `--model` required |
+| [Install](#install) · [Quick start](#quick-start) · [Free models](#free-models-automatically) | [MCP server](#use-it-from-any-harness-mcp) · [For AI agents](#for-ai-agents) · [CLI](#cli-reference) · [Reports & hooks](#artifacts-reports-watch-and-git-hooks) | [V2 plugin](#opencode-v2-plugin) · [Presets](#presets) · [Config](#configuration) · [Library API](#library-api) · [Security](#security) · [Troubleshooting](#troubleshooting) |
 
-In practice:
-
-- **V1 shape is the safe default.** Both versions read it, so `consilium init --free` writes it unless you ask otherwise.
-- **Native V2 agents** (`agents` + `system`) are written only with `consilium init --free --native-v2` or when the file already uses V2 keys. MCP registration is separate: `consilium mcp --install`.
-- **Models are always passed explicitly** via `--model`, so V2 cannot silently fall back to the root model.
-- **Agents are read from both sections.** `opencode.json(c)`, `.opencode/opencode.json(c)`, and parent directories are merged in OpenCode's own order (`.opencode` wins).
-- **`RATE_LIMITED`** from V2 structured errors retries short limits (up to 30 s) and fails fast with the retry delay for long ones.
-- **`doctor` checks compatibility**: CLI major, config flavor, `agent`/`agents` duplicates, V2-ignored fields, flat MCP entries.
-
-One-command MCP registration (shape follows the installed OpenCode version):
+## See it work
 
 ```bash
-consilium mcp --install            # ./opencode.json
-consilium mcp --install --global   # ~/.config/opencode/opencode.json
-opencode mcp list                  # verify
+$ consilium "Review the authentication design"
+
+  arch  → flint-40b-free          architecture, trade-offs
+  ux    → inkling-2-small-free    flows, error states
+  ba    → deepseek-v4.1-flash-free  scope, edge cases
+  sec   → iceman-free             threats, authz, abuse
+
+  chair → beam-free               ← synthesizes one plan
+  ✓ 4 experts in parallel · free models · no API bill
 ```
+
+The chair does not summarize — it resolves disagreements, drops weak points and returns one plan with explicit trade-offs. Every expert runs on its own model, so blind spots do not overlap.
+
+## Why consilium
+
+- **Different models = different blind spots.** One model misses what another catches; the chair makes the conflict explicit instead of averaging it away.
+- **Zero cost by default.** Discovers free, tool-capable models from public catalogs, ranks them, verifies they actually answer in your region, and writes them into your config.
+- **Uses what you already have.** OpenCode CLI does auth, providers and agents — no parallel provider stack, no extra keys.
+- **Same engine everywhere.** Terminal, MCP server for any harness, native V2 plugin, library API.
+
+## What you get
+
+| | Feature | What it does |
+| --- | --- | --- |
+| 🧠 | **Parallel council** | Per-expert `agent` + `model`, bounded concurrency, isolated sessions |
+| 🪑 | **Chair synthesis** | Configurable prompt template, per-expert text limits, usage and cost accounting |
+| 🆓 | **Free-model bootstrap** | `models.dev` + OpenRouter + curated offline list, cached 12 h, optional live probe |
+| 🩺 | **`doctor` preflight** | CLI version, config flavor, agents, models, MCP shape, V1/V2 pitfalls |
+| 🧾 | **Run artifacts** | `run.json`, `report.md`, `experts/*.md`; `--replay` and `--diff-runs` |
+| 📊 | **Reports** | Self-contained HTML or GitHub-ready PR markdown |
+| 🔁 | **Watch mode** | Rerun on file changes with debounce, current git diff appended |
+| 🪝 | **Git pre-commit hook** | Reviews staged changes and blocks the commit on failure |
+| 🔌 | **MCP server** | stdio JSON-RPC for Claude Desktop, Codex, Cursor, VS Code, custom agents |
+| 🧩 | **V2 plugin** | `consilium.run` tool inside the OpenCode V2 TUI |
+| 🔒 | **Safe runner** | Prompt via stdin (no shell injection), `--standalone`, retries, timeouts, cost cap |
+| 📦 | **Small and strict** | Zero runtime dependencies, TypeScript strict, Node >= 18 |
+
+## Meet the council
+
+| Role | Agent name | Looks at | Typical questions |
+| --- | --- | --- | --- |
+| 🏛 | `arch` | Architecture and trade-offs | What breaks at 10× load? Which boundary is wrong? |
+| 🎨 | `ux` | Flows, API ergonomics, error states | What does the user see on failure? Is this obvious? |
+| 📋 | `ba` | Requirements and scope | What is out of scope? Which edge case is unowned? |
+| 🛡 | `sec` | Threats, authz, abuse | Who can call this? What leaks? How is it rate-limited? |
+| ⚖️ | `consilium` | Chair | Merges answers, resolves conflicts, returns one plan |
+
+Want fewer voices? `-e arch,sec`, `--smart-experts` (heuristic role pick) or a preset.
 
 ## Install
 
 ```bash
 npm install -g lv24-opencode-consilium
-# or run without installing:
+
+# or run without installing
 npx -y lv24-opencode-consilium --help
 ```
 
-## Container image (GHCR)
+**Requirements**
 
-A self-contained image (Node.js, the OpenCode CLI, `git`) is published to GitHub
-Container Registry for `linux/amd64` and `linux/arm64`:
+| Need | Details |
+| --- | --- |
+| Node.js | **>= 18** |
+| OpenCode CLI | `npm install -g opencode-ai`, authenticated, **V1 or V2** |
+| Optional | `OPENROUTER_API_KEY` for OpenRouter's free models |
+
+### Container image (GHCR)
+
+A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
 docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # or :latest
@@ -89,9 +100,7 @@ docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
 # consilium v1.4.1
 ```
 
-Run the council on a project directory. Mount your OpenCode credentials and
-config so the CLI can use your providers, and keep the project writable because
-`--diff`, artifacts and reports write into it:
+Run it on a project — mount credentials and config, keep the project writable:
 
 ```bash
 docker run --rm -it \
@@ -103,28 +112,12 @@ docker run --rm -it \
   "Design a rate limiter for a public API"
 ```
 
-The image entrypoint is `consilium`, so every CLI flag works directly
-(`doctor`, `init --free`, `models`, `mcp`). To use the MCP server from another
-container or harness:
-
-```bash
-docker run --rm -i --entrypoint consilium-mcp \
-  ghcr.io/levapveeskela/lv24-opencode-consilium:latest
-```
-
-Notes:
-
-- `HOME` inside the image is `/home/node`; mount config to `/home/node/.config/opencode`
-  and credentials to `/home/node/.local/share/opencode`.
-- Without mounted credentials the council cannot call any model — `consilium doctor`
-  will report the missing OpenCode config.
-- `-u "$(id -u):$(id -g)"` keeps generated files owned by you (Linux/macOS). On
-  Windows omit it and use `%CD%` and `%USERPROFILE%` in the `-v` arguments.
+The entrypoint is `consilium`, so every flag works (`doctor`, `init --free`, `models`, `mcp`). For the MCP server use `--entrypoint consilium-mcp`. Inside the image `HOME=/home/node`; config mounts to `/home/node/.config/opencode`, credentials to `/home/node/.local/share/opencode`. On Windows omit `-u` and use `%CD%` / `%USERPROFILE%` in `-v`.
 
 ## Quick start
 
 ```bash
-# 1. Check the environment (CLI, config, agents, models)
+# 1. Check the environment: CLI, config, agents, models
 consilium doctor
 
 # 2. Pick the strongest working free models and write the config
@@ -138,23 +131,42 @@ consilium "Design a rate limiter for a public API"
 
 1. downloads `https://models.dev/api.json` and `https://openrouter.ai/api/v1/models`;
 2. keeps only free (`cost = 0`), active, chat models with tool calling and >= 32K context;
-3. ranks them and probes the top candidates with a tiny request (unless `--no-verify`);
-4. writes the winning models into `opencode.json` (agents `arch`, `ux`, `ba`, `sec`, `consilium`) and `consilium.config.json`;
-5. never overwrites your existing agent models unless you pass `--force`.
-
-Preview without writes:
+3. ranks them and probes the top candidates with a tiny real request (unless `--no-verify`);
+4. writes the winners into `opencode.json` (agents `arch`, `ux`, `ba`, `sec`, `consilium`) and `consilium.config.json`;
+5. never overwrites existing agent models unless you pass `--force`.
 
 ```bash
-consilium init --free --dry-run
+consilium init --free --dry-run      # preview, write nothing
+consilium init --free --native-v2    # native V2 agents (agents + system)
 ```
 
-Write native V2 agents (`agents` + `system`):
+## Works on OpenCode V1 and V2
+
+Both branches are supported and the config shape is detected automatically.
+
+| Area | OpenCode V1 | OpenCode V2 |
+| --- | --- | --- |
+| `opencode.json` agents | `agent` + `prompt` | `agents` + `system` |
+| MCP servers | `mcp.<name>` + `enabled` | `mcp.servers.<name>` + `disabled` |
+| Commands | `command` + `subtask` | `commands` + `subagent` |
+| Agent model on `run --agent` | applied from config | **ignored**, `--model` required |
+
+- **V1 shape is the safe default** — both versions read it, so `init --free` writes it.
+- **Native V2 agents** only with `--native-v2` or when the file already uses V2 keys.
+- **Models are always passed via `--model`**, so V2 cannot silently fall back to the root model.
+- **Agents are read from both sections**, including `.opencode/opencode.json(c)` and parent directories.
+- `RATE_LIMITED` retries short limits (up to 30 s) and fails fast with the retry delay for long ones.
+- `doctor` reports CLI major, config flavor, `agent`/`agents` duplicates, dead V2 fields and flat MCP entries.
+
+One-command MCP registration:
 
 ```bash
-consilium init --free --native-v2
+consilium mcp --install            # ./opencode.json
+consilium mcp --install --global   # ~/.config/opencode/opencode.json
+opencode mcp list                  # verify
 ```
 
-## Free models
+## Free models, automatically
 
 ```bash
 consilium models                 # top 20 ranked models
@@ -164,17 +176,15 @@ consilium models --refresh       # ignore the 12 h cache
 consilium models --json          # machine-readable
 ```
 
-Sources and fallbacks:
-
 | Source | What it gives |
 | --- | --- |
-| `https://models.dev/api.json` | Full catalog, cost/limits/capabilities, canonical links to paid siblings |
+| `https://models.dev/api.json` | Full catalog, cost/limits/capabilities, links to paid siblings |
 | `https://openrouter.ai/api/v1/models` | `:free` variants, context, `tools` support, expiry |
 | Built-in curated list | Known-good OpenCode free models if a catalog rotates them out |
 
 Cache: `%TEMP%/lv24-opencode-consilium/models-cache.json` (or `CONSILIUM_MODELS_CACHE`), TTL 12 h.
 
-The `opencode-go` provider is no longer excluded wholesale: its free models (`*-free`, `iceman-contributor-free`, and similar) take part in ranking. Paid models of that provider, such as `opencode-go/muse-spark-1.3-contributor`, are not selected by `--free`; set them manually in `experts[].model` or `chair.model`.
+The `opencode-go` provider is not excluded wholesale: its free models (`*-free`, `iceman-contributor-free`, …) take part in ranking. Paid models such as `opencode-go/muse-spark-1.3-contributor` are not selected by `--free`; set them manually in `experts[].model` or `chair.model`.
 
 Current recommended set (catalog as of 2026-11-08):
 
@@ -186,28 +196,18 @@ Current recommended set (catalog as of 2026-11-08):
 | sec | `opencode/iceman-free` | newest reasoning model, 262k (stealth) |
 | chair | `opencode/beam-free` | top score, 1M, structured, coding/agentic |
 
-Free models rotate: `consilium init --free` re-checks the catalog and real responses. Stealth/alpha models (`iceman`, `crouton`) can disappear — `--refresh` will pick replacements.
+Free models rotate: `init --free` re-checks the catalog and real responses. Stealth/alpha models (`iceman`, `crouton`) can disappear — `--refresh` picks replacements.
 
-Ranking (0-1.2) is transparent and deterministic: context window 30%, tool calling 20%, structured output 10%, reasoning 10%, recency 10%, output limit 10%, family prior 10%, paid-sibling "shadow price" 15%; alpha/preview/stealth penalties.
+Ranking (0–1.2) is deterministic: context window 30%, tool calling 20%, structured output 10%, reasoning 10%, recency 10%, output limit 10%, family prior 10%, paid-sibling "shadow price" 15%, plus alpha/preview/stealth penalties.
 
-## MCP server (any harness)
-
-Start it over stdio:
+## Use it from any harness (MCP)
 
 ```bash
-consilium mcp
-# or directly:
-consilium-mcp
+consilium mcp          # stdio server
+consilium-mcp          # same, direct binary
 ```
 
-OpenCode V1/V2 — install into config (shape detected automatically):
-
-```bash
-consilium mcp --install            # ./opencode.json → mcp.servers.consilium or mcp.consilium
-consilium mcp --install --global   # global OpenCode config
-```
-
-Claude Desktop (`claude_desktop_config.json`):
+**Claude Desktop** (`claude_desktop_config.json`):
 
 ```json
 {
@@ -220,7 +220,7 @@ Claude Desktop (`claude_desktop_config.json`):
 }
 ```
 
-Codex (`~/.codex/config.toml`):
+**Codex** (`~/.codex/config.toml`):
 
 ```toml
 [mcp_servers.consilium]
@@ -228,27 +228,63 @@ command = "npx"
 args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```
 
-Any MCP client that supports stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carries only the protocol.
-
-### MCP tools
+Any MCP client with stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carries only the protocol.
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file` | Chair synthesis + expert opinions + JSON metadata (time, usage, models) |
+| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts` | Chair synthesis + expert opinions + JSON metadata (time, usage, cost, models) |
 | `consilium_list_agents` | — | Configured experts, models, chair, presets, config path |
 | `consilium_free_models` | `limit`, `available_only`, `refresh` | Ranked free models table |
 | `consilium_doctor` | — | Environment/config diagnostics |
 | `consilium_init_free` | `apply`, `force`, `verify` | Proposal (default) or writes `opencode.json` + `consilium.config.json` |
 
-MCP `consilium_init_free` is dry-run by default; pass `"apply": true` to write files. `consilium_run` reports live progress when the client sends a `progressToken`.
+`consilium_init_free` is dry-run by default — pass `"apply": true` to write files. `consilium_run` reports live progress when the client sends a `progressToken`, and its response includes `cost`, a consensus summary and an `**Artifacts:**` line when artifacts are enabled.
 
-`consilium_run` also accepts `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, and `artifacts`. Its response includes `cost` and a consensus summary in the JSON metadata plus an `**Artifacts:**` line with the saved run path.
+## For AI agents
+
+If you are an agent, these are the stable contracts. Prefer them over scraping prose.
+
+```json
+{
+  "package": "lv24-opencode-consilium",
+  "version": "1.4.1",
+  "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
+  "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
+  "json_mode": "consilium -f json \"<task>\"",
+  "models_json": "consilium models --json",
+  "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
+  "config_schema": "schema/config.schema.json",
+  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error" },
+  "docs_index": "llms.txt"
+}
+```
+
+Rules that matter when you drive it:
+
+1. **stdout is for data, stderr is for progress.** `-f json` prints one JSON document on stdout; logs and progress stay on stderr.
+2. **Do not parse human text.** Use `-f json` (result + `metadata`), `consilium models --json`, or MCP tools.
+3. **Errors are typed.** `errorCode` is one of `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, … and exit codes are `0/1/2`.
+4. **State is files, not a daemon.** Artifacts live in `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` restores a run.
+5. **No interactive prompts.** Every command is non-interactive; `--auto` is off by default and must be enabled deliberately.
+6. **Cheap first.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; add `--max-cost` for a hard budget.
+
+Copy-paste prompt for an agent:
+
+```text
+Run the consilium council on this task with a hard cost cap:
+  npx -y lv24-opencode-consilium --max-cost 0.50 -f json "<task>"
+Parse stdout as JSON. If errorCode is COST_LIMIT, report the partial expert
+opinions and metadata.cost; do not retry. If RATE_LIMITED, read
+metadata.retryAfterMs before retrying. Use --replay <id> to reproduce a run.
+```
+
+Full machine index: [`llms.txt`](llms.txt). Deep internals (sessions, plugin API): [`docs/session-and-plugin.md`](docs/session-and-plugin.md).
 
 ## CLI reference
 
-```
+```text
 consilium [options] <task>
-consilium <task> -                 # read the task from stdin
+consilium <task> -                  # read the task from stdin
 consilium init [--free] [--dry-run] [--force] [--no-verify] [--native-v2]
 consilium models [--available] [--verify] [--limit N] [--refresh] [--json]
 consilium doctor
@@ -257,7 +293,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 ```
 
-Flags:
+**Core**
 
 | Flag | Meaning |
 | --- | --- |
@@ -269,34 +305,42 @@ Flags:
 | `-r, --retries <n>` | Retry count (0 = single attempt) |
 | `-o, --output <file>` | Save the result (text/markdown/json by `-f`) |
 | `--no-save` | Never write a file |
-| `-f, --format <fmt>` | `text` (stdout), `markdown`, `json` (pure JSON on stdout) |
-| `--diff [--staged] [--base <ref>]` | Append the current git diff to the task |
+| `-f, --format <fmt>` | `text`, `markdown`, `json` (pure JSON on stdout) |
 | `--task-file <file>` | Read the task from a file (`-` = stdin) |
-| `--verify` / `--no-verify` | Probe models before selecting (`models` / `init --free`) |
-| `--consensus` / `--no-consensus` | Lexical expert-agreement analysis (term overlap, Jaccard); compact summary goes into the chair prompt, full report into the result |
-| `--smart-experts` | Heuristically pick 2–3 relevant roles from the task/diff (dropped roles are logged) |
-| `--max-cost <usd>` | Cost limit in USD; when exceeded before the chair starts, it is skipped (`COST_LIMIT`, partial result with consensus) |
-| `--fallback-models a,b` | Fallback models: on `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` the same expert is retried on the next model (chain capped at 2) |
-| `--session <id>` | Base OpenCode session id; each agent gets its own `ses_<base>-<agent>` (parallel agents never share a session) |
-| `--artifacts` / `--no-artifacts` | Save / don't save run artifacts (off by default) |
-| `--artifacts-dir <path>` | Save artifacts to a custom directory (instead of `.consilium/runs/<id>/`) |
-| `--replay <id>` | Rerun a saved run (restores the chair agent/model, expert models, and the artifact's consensus/smartExperts/fallbackModels/session flags) |
-| `--report <format>` | Report after the run: `html`, `pr`, `markdown` (`markdown` = PR variant) |
-| `--report-file <file>` | Write the report to a file (`.html` → html, `.md` → pr; without a file prints to stdout, except with `-f json`) |
-| `--variant <name>` | Model variant for all agents (`provider/model` → `provider/model#variant`); invalid variant exits 2 |
-| `--debounce <ms>` | Watch-mode debounce delay (default 400) |
-| `watch [--debounce <ms>] [task]` | Watch the project and rerun the council on changes (until Ctrl+C) |
-| `hooks install\|uninstall` | Install/remove a git pre-commit hook (staged review before commit) |
-| `--diff-runs <a> <b>` | Print a markdown comparison of two saved runs |
-| `--native-v2` | Write native V2 config (`agents`/`system`) |
-| `--install`, `--global` | Register the MCP server in the project or global config |
 | `-s, --silent` | Only the final result |
 | `-V, --verbose` | Raw progress events |
 | `-v, --version`, `-h, --help` | Version / help |
 
-Exit codes: `0` success, `1` run failed, `2` usage error.
+**Analysis and budget**
 
-Examples:
+| Flag | Meaning |
+| --- | --- |
+| `--consensus` / `--no-consensus` | Lexical expert-agreement analysis (term overlap, Jaccard); summary into the chair prompt, full report into the result |
+| `--smart-experts` | Heuristically pick 2–3 relevant roles from the task/diff (dropped roles are logged) |
+| `--max-cost <usd>` | Cost limit; when exceeded before the chair, it is skipped (`COST_LIMIT`, partial result with consensus) |
+| `--fallback-models a,b` | On `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` retry the same expert on the next model (chain capped at 2) |
+| `--session <id>` | Base OpenCode session id; each agent gets `ses_<base>-<agent>` (parallel agents never share a session) |
+| `--variant <name>` | Model variant for all agents (`provider/model` → `provider/model#variant`); invalid variant exits 2 |
+| `--verify` / `--no-verify` | Probe models before selecting (`models` / `init --free`) |
+
+**Artifacts, reports, automation**
+
+| Flag | Meaning |
+| --- | --- |
+| `--artifacts` / `--no-artifacts` | Save / don't save run artifacts (off by default) |
+| `--artifacts-dir <path>` | Custom artifact directory (instead of `.consilium/runs/<id>/`) |
+| `--replay <id>` | Rerun a saved run (restores chair/expert models and consensus/smartExperts/fallbackModels/session flags) |
+| `--diff-runs <a> <b>` | Print a markdown comparison of two saved runs |
+| `--report <format>` | Report after the run: `html`, `pr`, `markdown` |
+| `--report-file <file>` | Write the report to a file (`.html` → html, `.md` → pr) |
+| `--diff [--staged] [--base <ref>]` | Append the current git diff to the task |
+| `--debounce <ms>` | Watch-mode debounce delay (default 400) |
+| `watch [--debounce <ms>] [task]` | Watch the project and rerun on changes (until Ctrl+C) |
+| `hooks install\|uninstall` | Install/remove a git pre-commit hook (staged review before commit) |
+| `--native-v2` | Write native V2 config (`agents`/`system`) |
+| `--install`, `--global` | Register the MCP server in the project or global config |
+
+Exit codes: `0` success, `1` run failed, `2` usage error.
 
 ```bash
 consilium -e arch,sec "Threat-model the file upload endpoint"
@@ -313,48 +357,41 @@ consilium watch --debounce 500 "Review the current changes"
 consilium hooks install
 ```
 
-## Analysis, artifacts, and cost
-
-`--consensus` computes lexical expert agreement: shared significant terms (Jaccard, RU+EN stopwords) per pair, an average score, and an `agreement` level (`high`/`medium`/`low`). This is a deterministic count over answer texts, not an LLM judgement. A compact summary is injected into the chair prompt; the full report is appended to the result and stored in `metadata.consensus` (`agreement`, `averageSimilarity`, `pairs`, `sharedTerms`, `uniqueTerms`).
-
-`--smart-experts` picks 2–3 relevant roles with a heuristic (arch/ux/ba/sec lexicons, RU+EN) over the task and diff; dropped roles are logged to progress. The selection is stored in `metadata.smartExperts`.
-
-`--max-cost <usd>` tracks accumulated expert+chair cost. When the limit is exceeded before the chair starts, the chair is skipped: a partial result with expert opinions and consensus is returned with `errorCode: COST_LIMIT`. The breakdown lives in `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`); `metadata.costExceeded` is added on overrun.
-
-`--fallback-models a,b` sets spare models: on `RATE_LIMITED`, `MODEL_UNAVAILABLE`, or `EMPTY_RESPONSE` the same expert is retried on the next model in the chain (max 2 substitutions per expert), usage is summed. The list is stored in `metadata.fallbackModels`.
-
-Artifacts are plain files, no database. `--artifacts` saves a run to `.consilium/runs/<id>/`: `run.json` (task, expert answers, models, usage, consensus), `report.md` (readable report), and `experts/<agent>.md` (each expert's answer). `--artifacts-dir <path>` changes the directory, `--no-artifacts` disables saving. The id and directory are visible in `metadata.artifacts: { id, dir }`. `consilium --replay <id>` reruns a saved run (restores the chair agent/model, expert models, and the artifact's consensus/smartExperts/fallbackModels/session flags); `consilium --diff-runs <a> <b>` prints a markdown comparison of two runs.
-
-`--session <id>` sets the base OpenCode session id: the chair continues it as-is, and each expert gets its own `ses_<base>-<agent>` (OpenCode requires the `ses_` prefix). Parallel agents never share one session — otherwise some prompts are lost (see `docs/session-and-plugin.md`). Unknown agents from `opencode.json` are detected and run on the default agent with a separate `ses_<base>-default-<agent>` session instead of polluting someone else's session. The flag does not hide sessions from lists: archived sessions still show up in `opencode session list`.
-
-## Reports, watch, and git hooks
+## Artifacts, reports, watch, and git hooks
 
 ```bash
 # HTML report to a file / PR markdown to stdout
 consilium --report html --report-file report.html "Review the current changes"
 consilium --report pr "Review the current changes"
 
-# --report-file infers the format itself: .html → html, .md → pr
-# Without --report-file the report goes to stdout, except with -f json (then --report-file is required)
+# --report-file infers the format: .html → html, .md → pr
 consilium --report-file notes.md "Design the subscriptions DB schema"
 
 # Rerun on file changes (ignores .git/node_modules/dist/.consilium/coverage/*.tmp/*.log,
-# 400 ms debounce, the current git diff is appended to the task)
+# 400 ms debounce, the current git diff is appended)
 consilium watch "Review the current changes"
 consilium watch --debounce 800
 
-# Pre-commit hook: reviews staged changes before every git commit and blocks the commit on failure
+# Pre-commit hook: reviews staged changes and blocks the commit on failure
 consilium hooks install
-consilium hooks uninstall   # removes only the managed block, leaves the rest of the hook alone
+consilium hooks uninstall   # removes only the managed block
 ```
 
-The PR report is GitHub-comment markdown with an `<!-- consilium:report -->` marker and collapsible `<details>` blocks of expert opinions; the HTML report is a self-contained file with escaped text. The hook writes only its own block (`# >>> consilium >>>` … `# <<< consilium <<<`) into the git hooks directory (`git rev-parse --git-path hooks`: `.git/hooks`, `core.hooksPath`, worktrees) and preserves the rest.
+- **Artifacts** are plain files, no database: `run.json`, `report.md`, `experts/<agent>.md` under `.consilium/runs/<id>/`.
+- **PR report** is GitHub-comment markdown with an `<!-- consilium:report -->` marker and collapsible `<details>` blocks; the HTML report is self-contained with escaped text.
+- **The hook** writes only its own block (`# >>> consilium >>>` … `# <<< consilium <<<`) into the git hooks directory (`.git/hooks`, `core.hooksPath`, worktrees) and preserves the rest.
+
+How the analysis flags behave:
+
+- `--consensus` computes lexical agreement (Jaccard over significant terms, RU+EN stopwords): per-pair scores, an average and an `agreement` level (`high`/`medium`/`low`). It is a deterministic count, not an LLM judgement. Summary → chair prompt; full report → result and `metadata.consensus`.
+- `--smart-experts` picks 2–3 roles with a heuristic (role lexicons over task and diff); the selection lands in `metadata.smartExperts`.
+- `--max-cost` tracks expert + chair spend. Over the limit before the chair → chair skipped, partial result with `errorCode: COST_LIMIT` and `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`).
+- `--fallback-models` retries the same expert on the next model (max 2 substitutions), summing usage into `metadata.fallbackModels`.
+- `--session` gives the chair the base session and each expert `ses_<base>-<agent>`; unknown agents run on the default agent with `ses_<base>-default-<agent>`, so nobody else's session is polluted. Sessions are not hidden from `opencode session list` by design.
 
 ## OpenCode V2 plugin
 
-A native plugin that runs the council **inside the OpenCode V2 TUI** without MCP or an external CLI — via the `consilium.run` tool. It does not work in OpenCode V1 (the V1 plugin API is incompatible).
-
-Register in `opencode.json` (V2):
+A native plugin that runs the council **inside the OpenCode V2 TUI**, no MCP or external CLI — via the `consilium.run` tool. It does not work in V1 (the V1 plugin API is incompatible).
 
 ```json
 {
@@ -362,13 +399,11 @@ Register in `opencode.json` (V2):
 }
 ```
 
-The package publishes the server part as `./server` (`dist/plugin.js`); the plugin has no runtime dependencies (`@opencode/plugin` is needed only for types at build time). The tool accepts `task`, `experts`, `chair`, `timeout_ms`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `preset`.
-
-When to use what:
+The server part is published as `./server` (`dist/plugin.js`); no runtime dependencies (`@opencode/plugin` is types-only). The tool accepts `task`, `experts`, `chair`, `timeout_ms`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `preset`.
 
 | Way | When |
 | --- | --- |
-| Plugin (`consilium.run`) | Working inside the OpenCode V2 TUI, advice needed right in the conversation |
+| Plugin (`consilium.run`) | Inside the OpenCode V2 TUI, advice in the conversation |
 | MCP server | External harnesses (Claude Desktop, Codex, Cursor, VS Code, custom agents) |
 | CLI | Terminal, scripts, CI, hooks, watch |
 
@@ -384,9 +419,7 @@ When to use what:
 
 ## Configuration
 
-Config is discovered in this order (cwd): `consilium.config.json`, `consilium.json`, `.consiliumrc`, `.consiliumrc.json`. Use `-c` for an explicit path. JSONC comments are allowed in `opencode.json`/`opencode.jsonc`.
-
-Minimal example:
+Config discovery in the current directory: `consilium.config.json`, `consilium.json`, `.consiliumrc`, `.consiliumrc.json`. Use `-c` for an explicit path. JSONC comments are allowed in `opencode.json`/`opencode.jsonc`.
 
 ```json
 {
@@ -402,8 +435,6 @@ Minimal example:
 }
 ```
 
-Key options:
-
 | Key | Default | Notes |
 | --- | --- | --- |
 | `experts[].model` | — | `provider/model`; passed as `--model`, overrides the agent's model |
@@ -413,23 +444,23 @@ Key options:
 | `retry.jitter` | `false` | Randomized retry delay (50–100%) so experts don't hit the limit together |
 | `retry.maxConcurrency` | 3 | 1–8 parallel agents |
 | `output.file` | `false` | `false` disables saving; a string enables it |
-| `standalone` | `true` | `--standalone` private server; avoids port conflicts when OpenCode is already running |
+| `standalone` | `true` | Private server; avoids port conflicts when OpenCode is already running |
 | `autoApprove` | `false` | `--auto`; only enable if you trust the agents/tools |
 | `autoDiscoverAgents` | `true` | Reuse agents from `opencode.json` |
-| `artifacts` | `false` | `true` saves to `.consilium/runs/<id>/`; a string sets a custom directory |
+| `artifacts` | `false` | `true` → `.consilium/runs/<id>/`; a string sets a custom directory |
 | `consensus` | `false` | Lexical expert-agreement analysis |
-| `smartExperts` | `false` | Heuristically pick 2–3 roles for the task |
-| `maxCost` | — | Cost limit in USD (number >= 0); unset means no limit |
+| `smartExperts` | `false` | Heuristically pick 2–3 roles |
+| `maxCost` | — | Cost limit in USD (number >= 0) |
 | `fallbackModels` | — | Array of `provider/model` strings for model-error retries |
-| `session` | — | Base OpenCode session id (non-empty string) |
+| `session` | — | Base OpenCode session id |
 | `report` | — | Report format: `html`, `pr`, `markdown` |
-| `reportFile` | — | Report file path (`.html`/`.md` extension picks the format) |
-| `variant` | - | Model variant for models without `#variant` (explicit variants win) |
-| `debounceMs` | 400 | Watch-mode delay, ms (integer >= 0) |
+| `reportFile` | — | Report file path (`.html`/`.md` picks the format) |
+| `variant` | — | Model variant for models without `#variant` (explicit variants win) |
+| `debounceMs` | 400 | Watch-mode delay, ms |
 | `opencodePath` | `opencode` | Custom CLI path |
 | `cwd` | current | Working directory for OpenCode |
 
-Full schema: [`schema/config.schema.json`](schema/config.schema.json); example: [`consilium.config.example.json`](consilium.config.example.json).
+Full schema: [`schema/config.schema.json`](schema/config.schema.json) · example: [`consilium.config.example.json`](consilium.config.example.json).
 
 ## Library API
 
@@ -452,21 +483,21 @@ const { models } = await fetchFreeModels({ includeUnavailable: true });
 const top = selectCouncilModels(models, 5);
 ```
 
-`Consilium` instances are reusable: `run()` can be called again after a completed, failed, or cancelled run. `cancel()` stops all child processes of the current run.
+`Consilium` instances are reusable: `run()` can be called again after a completed, failed or cancelled run. `cancel()` stops all child processes of the current run.
 
 ## How it works
 
 For every expert and the chair, Consilium spawns:
 
-```
+```text
 opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provider/model]
 ```
 
-The prompt is written to the child's **stdin** (UTF-8), so arbitrary task text is safe and never hits shell/command-line limits. NDJSON events are decoded incrementally (`text`, `step_finish` usage/cost, `error` with `type`/`status`/`retryAfterMs`). The model is always passed as `--model` so behavior is identical on V1 and V2, where `--agent` does not apply the configured agent model. Exit codes, stderr tails, and structured errors are reported with typed `errorCode`s (`RATE_LIMITED`, `MODEL_UNAVAILABLE`, `AGENT_NOT_FOUND`, ...). If an agent name is missing in your OpenCode config, the call is retried once with the same model and the default agent; the run keeps working even without persona agents.
+The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe and never hits shell or command-line limits. NDJSON events are decoded incrementally (`text`, `step_finish` usage/cost, `error` with `type`/`status`/`retryAfterMs`). The model is always passed as `--model`, so behavior is identical on V1 and V2 where `--agent` does not apply the configured model. Exit codes, stderr tails and structured errors become typed `errorCode`s (`RATE_LIMITED`, `MODEL_UNAVAILABLE`, `AGENT_NOT_FOUND`, …). If an agent name is missing, the call is retried once with the same model on the default agent — the run keeps working without persona agents.
 
 ## Security
 
-- Task text is never interpolated into a shell command; it is passed via stdin.
+- Task text is never interpolated into a shell command — it is passed via stdin.
 - Agent names and model IDs are validated before use.
 - `--auto` (auto-approve permissions) is **off** by default.
 - `--standalone` isolates the child server; no port takeover.
@@ -481,65 +512,32 @@ The prompt is written to the child's **stdin** (UTF-8), so arbitrary task text i
 | `Model unavailable` | Model rotated out/region-blocked; run `consilium models --verify --refresh` |
 | `Agent not found` | Persona agent missing; Consilium falls back to the default agent + your model. Add agents via `consilium init --free` |
 | Timeouts | Free models can be slow; raise `--expert-timeout` or use `--preset fast` |
-| `RATE_LIMITED` / 429 | Free-model quota exhausted; the error shows the retry delay. Switch the model/provider |
-| Agent model ignored on V2 | Consilium already passes `--model`; run `consilium doctor` (the `opencode-v2-compat` check) |
-| `COST_LIMIT` (`--max-cost` exceeded) | Chair skipped by design; expert opinions and consensus are in the partial result, spend in `metadata.cost.byAgent`. Raise the limit or drop the flag |
-| Fallbacks still hit 429 | Spare models often share the same free quotas; switch providers or wait for the retry delay in the error |
-| Sessions pile up in `session list` | By design: each agent owns a session and `--session` does not hide them (`--archived` doesn't either). Clean up with `opencode session delete <id>` |
+| `RATE_LIMITED` / 429 | Free-model quota exhausted; the error shows the retry delay. Switch model/provider |
+| Agent model ignored on V2 | Consilium already passes `--model`; run `consilium doctor` (`opencode-v2-compat`) |
+| `COST_LIMIT` | Chair skipped by design; expert opinions and consensus are in the partial result, spend in `metadata.cost.byAgent` |
+| Fallbacks still hit 429 | Spare models often share free quotas; switch providers or wait for the retry delay |
+| Sessions pile up in `session list` | By design: each agent owns a session; clean up with `opencode session delete <id>` |
 | `replay` can't find the id | Ids resolve under `.consilium/runs/`; check the directory or pass that run's `--artifacts-dir` |
 | MCP server missing on V2 | Flat `mcp.<name>` is ignored; run `consilium mcp --install --force` |
 | `Managed service port ... in use` | Keep `standalone: true` (default) |
 | Empty result | `consilium doctor`, then rerun with `-V` |
 
-## What's next (feature ideas)
+## Changelog
 
-Remaining ideas (1.3.0 shipped artifacts, consensus, smart-experts, model fallback, `--max-cost`, `--session`; 1.4.0 shipped reports, model variants, `watch`, git hooks, and the native V2 plugin):
+**1.4.1** — npm package renamed to `lv24-opencode-consilium` (npm cannot rename in place; `opencode-consilium@1.0.2` stays deprecated). npm page shows this README; translations moved to `docs/`. Container image published to GHCR. No functional changes.
+
+**1.4.0** — `--report html|pr|markdown` and `--report-file`; `--variant high`; `consilium watch`; `consilium hooks install|uninstall`; native OpenCode V2 plugin (`consilium.run`); `--replay` restores chair/expert models and run flags; new config keys `report`, `reportFile`, `variant`, `debounceMs`; 224 tests.
+
+**1.3.0** — run artifacts + `--replay`/`--diff-runs`; `--consensus`; `--smart-experts`; `--max-cost`; `--fallback-models`; `--session`; MCP args for all of the above.
+
+**1.2.0** — OpenCode V2 support while keeping V1: dual config sections, `.opencode/` and parent-dir merge, `--model` always passed, `mcp.servers` install, `--native-v2`, `RATE_LIMITED` retry policy, `doctor` V2 checks.
+
+## Roadmap
 
 | Idea | Value | Size |
 | --- | --- | --- |
 | `consilium` slash command for the TUI | Invoke the council with one command inside OpenCode | S |
 | Report export to ticket systems | Ready-made artifact for Jira/Linear | S |
-
-## 1.4.1 changes
-
-- npm package renamed to **`lv24-opencode-consilium`** (npm cannot rename in place; the old `opencode-consilium@1.0.2` stays in the registry and is deprecated).
-- The npm page now shows this `README.md`; Russian and Chinese translations moved to `docs/README.ru.md` and `docs/README.zh.md` so they no longer compete for npm's single readme slot.
-- No functional changes since 1.4.0.
-- A container image (`ghcr.io/levapveeskela/lv24-opencode-consilium`, `linux/amd64` + `linux/arm64`) is published by `.github/workflows/container.yml`; see [Container image (GHCR)](#container-image-ghcr).
-
-## 1.4.0 changes
-
-- Reports: `--report html|pr|markdown`, `--report-file <path>` (`.html` → html, `.md` → pr; without a file prints to stdout, except with `-f json`); `renderHtmlReport` (self-contained escaped HTML), `renderPrMarkdown` (GitHub comment with an `<!-- consilium:report -->` marker and `<details>` blocks), `renderReport`.
-- `--variant high`: appends `#high` to expert and chair models; an invalid variant exits 2. Config key `variant`.
-- `consilium watch [--debounce <ms>] [task]`: watches the project (ignores `.git`/`node_modules`/`dist`/`.consilium`/`coverage`/`*.tmp`/`*.log`), debounces 400 ms, appends `git diff`, reruns until Ctrl+C.
-- `consilium hooks install`: writes a managed pre-commit block (`# >>> consilium >>>` … `# <<< consilium <<<`) that runs `npx -y lv24-opencode-consilium --staged -s "Ревью staged-изменений" || exit 1` on every `git commit`; preserves existing hook content; `uninstall` removes only its block.
-- Native OpenCode V2 plugin: server part `./server` → `dist/plugin.js`, registration `{"plugins": [{"package": "lv24-opencode-consilium"}]}`, a `consilium.run` tool (task, experts, chair, timeout_ms, consensus, smart_experts, max_cost, fallback_models, session, artifacts, preset). No runtime dependencies; `@opencode/plugin` is only needed for types. V2 only, does not work in V1.
-- `--replay <id>` now restores the chair agent/model, expert models, and the artifact's consensus/smartExperts/fallbackModels/session flags (previously models only).
-- New config keys: `report`, `reportFile`, `variant`, `debounceMs` (schema updated).
-- 224 tests; OpenCode V1/V2 compatibility unchanged.
-
-## 1.3.0 changes
-
-- Run artifacts: `--artifacts` / `--artifacts-dir <path>` / `--no-artifacts` save runs to `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `consilium --replay <id>` reruns a saved run, `consilium --diff-runs <a> <b>` prints a markdown comparison.
-- `--consensus` / `--no-consensus`: lexical agreement analysis (Jaccard, RU+EN stopwords); summary into the chair prompt, full report into the result and `metadata.consensus`.
-- `--smart-experts`: heuristic role selection for the task/diff (2 by default, max 3, dropped roles logged); stored in `metadata.smartExperts`.
-- `--max-cost <usd>`: cost tracker; when exceeded before the chair, the chair is skipped (`errorCode: COST_LIMIT`, partial result with consensus); details in `metadata.cost`.
-- `--fallback-models a,b`: retry the same expert on a fallback model on `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` (chain capped at 2, usage summed).
-- `--session <id>`: the chair continues the base session, each expert gets its own `ses_<base>-<agent>`; unknown agents run on the default agent with `ses_<base>-default-<agent>`.
-- MCP `consilium_run`: new `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts` args; response includes `cost`, a consensus summary, and an `**Artifacts:**` line.
-- New config keys: `artifacts`, `consensus`, `smartExperts`, `maxCost`, `fallbackModels`, `session` (schema updated).
-- 149 tests; OpenCode V1/V2 compatibility unchanged.
-
-## 1.2.0 changes
-
-- OpenCode V2 compatibility while keeping V1 support: reads `agent` and `agents`, `.opencode/opencode.json(c)`, parent directories, and merges config layers in OpenCode's order.
-- The agent model is passed via `--model`, so V2 no longer loses it with `--agent`.
-- `consilium mcp --install [--global]` writes `mcp.servers` for V2 and `mcp.<name>` for V1, preserving an existing entry's `environment`/`cwd`/`timeout`.
-- `init --free --native-v2` writes native V2 agents; duplicate `agent`/`agents` entries are updated together. Agents with V1-only restrictions (`tools`, `permission`, `temperature`) are not migrated automatically, to avoid losing them.
-- `opencodeConfigPath` is no longer set by default: discovery works out of the box, and a missing configured path warns and falls back.
-- `RATE_LIMITED` + `retryAfterMs` from V2 events: short limits are retried, long ones fail fast with the retry time.
-- Retry jitter (`retry.jitter`), resilient decoder (`properties`, delta text), `opencode-v2-compat` doctor check.
-- 81 test, including the new `test/compat.test.mjs` (149 as of 1.3.0).
 
 ## Development
 
@@ -549,6 +547,8 @@ npm run build       # tsc
 npm test            # build + node:test (224 tests)
 npm run typecheck   # tsc --noEmit
 ```
+
+Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / config key): [`docs/architecture.md`](docs/architecture.md).
 
 ## License
 

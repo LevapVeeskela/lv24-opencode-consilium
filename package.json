@@ -43,6 +43,7 @@
     "bin",
     "schema",
     "docs",
+    "llms.txt",
     "consilium.config.example.json",
     "README.md",
     "LICENSE"
