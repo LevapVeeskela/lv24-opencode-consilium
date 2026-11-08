@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAgentSession,
+  buildChairSession,
   buildRunArgs,
   parseJsonOutput,
   sanitizeTimeout,
@@ -40,6 +42,52 @@ test('buildRunArgs не пропускает значения, похожие н
 test('в аргументах никогда нет промпта', () => {
   const args = buildRunArgs({ agent: 'sec' });
   assert.ok(!args.some(arg => arg.includes('секретный промпт')));
+});
+
+test('buildRunArgs добавляет сессию и отбрасывает невалидную', () => {
+  assert.deepEqual(buildRunArgs({ session: 'council-1' }), [
+    'run',
+    '--standalone',
+    '--format',
+    'json',
+    '--session=council-1'
+  ]);
+  assert.deepEqual(buildRunArgs({ session: '--bad' }), [
+    'run',
+    '--standalone',
+    '--format',
+    'json'
+  ]);
+});
+
+test('buildAgentSession даёт каждому агенту отдельную сессию', () => {
+  assert.equal(buildAgentSession('council', 'arch'), 'ses_council-arch');
+  assert.equal(buildAgentSession('ses_council', 'sec'), 'ses_council-sec');
+  assert.equal(buildAgentSession('council/1', 'sec'), 'ses_council-1-sec');
+  assert.equal(buildAgentSession(undefined, 'arch'), undefined);
+  assert.equal(buildAgentSession('   ', 'arch'), undefined);
+  assert.equal(buildAgentSession('council', ''), 'ses_council-default');
+});
+
+test('buildAgentSession сохраняет реальный id и суффикс при длинной базе', () => {
+  assert.equal(
+    buildAgentSession('ses_e46f6d52:AqTXO', 'arch'),
+    'ses_e46f6d52:AqTXO-arch'
+  );
+
+  const longBase = `ses_${'x'.repeat(200)}`;
+  const first = buildAgentSession(longBase, 'arch');
+  const second = buildAgentSession(longBase, 'sec');
+  assert.ok(first !== undefined && second !== undefined);
+  assert.ok(first.endsWith('-arch'));
+  assert.ok(second.endsWith('-sec'));
+  assert.ok(first.length <= 128);
+});
+
+test('buildChairSession продолжает сессию как есть', () => {
+  assert.equal(buildChairSession('ses_e46f6d52:AqTXO'), 'ses_e46f6d52:AqTXO');
+  assert.equal(buildChairSession('council'), 'ses_council');
+  assert.equal(buildChairSession('  '), undefined);
 });
 
 test('sanitizeTimeout отбрасывает NaN, отрицательные и ноль', () => {

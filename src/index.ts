@@ -26,6 +26,15 @@ import {
 } from './agents.js';
 import { DEFAULT_CONFIG, DEFAULT_EXPERT_PROMPTS, DEFAULT_CHAIR_PROMPT_TEMPLATE } from './defaults.js';
 import { applyPreset } from './presets.js';
+import { analyzeConsensus, formatConsensusReport } from './consensus.js';
+import { selectSmartExperts } from './smart-experts.js';
+import { createCostTracker } from './fallback.js';
+import {
+  createArtifactId,
+  resolveArtifactRoot,
+  saveArtifact,
+  type ArtifactRun
+} from './artifacts.js';
 
 function sumUsage(results: AgentResult[]): AgentUsage | undefined {
   let found = false;
@@ -51,6 +60,39 @@ function sumUsage(results: AgentResult[]): AgentUsage | undefined {
   }
 
   return found ? total : undefined;
+}
+
+/** Собирает модели агентов из результатов */
+function collectModels(results: AgentResult[]): Record<string, string> {
+  const models: Record<string, string> = {};
+  for (const result of results) {
+    if (result.model) models[result.agent] = result.model;
+  }
+  return models;
+}
+
+/** Входные данные для анализа согласия */
+function consensusInputs(results: AgentResult[]): Array<{
+  agent: string;
+  text: string;
+  model?: string;
+  success: boolean;
+}> {
+  return results.map(result => ({
+    agent: result.agent,
+    text: result.text,
+    model: result.model,
+    success: result.success
+  }));
+}
+
+/** Собирает реальные session id агентов */
+function collectSessions(results: AgentResult[]): Record<string, string> {
+  const sessions: Record<string, string> = {};
+  for (const result of results) {
+    if (result.sessionId !== undefined) sessions[result.agent] = result.sessionId;
+  }
+  return sessions;
 }
 
 function buildExpertPrompt(expertName: string, prompt: unknown, task: string): string {
@@ -184,6 +226,19 @@ export class Consilium {
       runConfig.experts = runConfig.experts.map(expert => ({ ...expert, timeout: options.timeout }));
     }
 
+    // Опции запуска переопределяют конфигурацию; сами значения нужны и агентам.
+    const artifactsSetting = options.artifacts ?? runConfig.artifacts;
+    const consensusEnabled = options.consensus ?? runConfig.consensus === true;
+    const smartEnabled = options.smartExperts ?? runConfig.smartExperts === true;
+    const maxCost = options.maxCost ?? runConfig.maxCost;
+    const fallbackModels = options.fallbackModels ?? runConfig.fallbackModels ?? [];
+    const session = options.session ?? runConfig.session;
+
+    runConfig.consensus = consensusEnabled;
+    runConfig.fallbackModels = fallbackModels;
+    runConfig.session = session;
+    if (maxCost !== undefined) runConfig.maxCost = maxCost;
+
     const baseHooks = runConfig.hooks ?? {};
     runConfig.hooks = {
       ...baseHooks,
@@ -240,40 +295,129 @@ export class Consilium {
       await hooks.onStart?.(task, runConfig);
 
       const selectedExperts = this.selectExperts(runConfig, options.experts, hooks);
+      let councilExperts = selectedExperts;
+      let smartSelection: ReturnType<typeof selectSmartExperts> | undefined;
+
+      if (smartEnabled) {
+        smartSelection = selectSmartExperts(selectedExperts, task);
+        if (smartSelection.dropped.length > 0) {
+          hooks.onLog?.(
+            'info',
+            `Умный выбор экспертов: ${smartSelection.experts.map(expert => expert.name).join(', ')} ` +
+              `(пропущены: ${smartSelection.dropped.join(', ')})`
+          );
+        }
+        councilExperts = smartSelection.experts;
+      }
+
+      const costTracker = createCostTracker(maxCost);
       const parallelStarted = Date.now();
-      const expertResults = await callExpertsParallel(selectedExperts, task, runConfig, { controller });
+      const expertResults = await callExpertsParallel(councilExperts, task, runConfig, { controller });
       const parallelTime = Date.now() - parallelStarted;
+
+      for (const result of expertResults) {
+        costTracker.add(result.agent, result.usage);
+      }
+      let costExceeded = costTracker.exceeded();
+      if (costExceeded) {
+        hooks.onLog?.(
+          'warn',
+          `Лимит стоимости превышен после экспертов: $${costTracker.report().spent.toFixed(4)} ` +
+            `из $${maxCost ?? 0}; председатель не запускается`
+        );
+      }
 
       if (controller.isCancelled()) {
         const result = this.createCancelledResult(expertResults, undefined, parallelTime, runConfig);
+        result.metadata = {
+          ...(result.metadata ?? {}),
+          ...options.metadata,
+          models: collectModels(expertResults),
+          sessions: collectSessions(expertResults),
+          cost: costTracker.report(),
+          ...(session ? { session } : {})
+        };
         this.status = 'cancelled';
+        this.saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
         await hooks.onEnd?.(result);
         return result;
       }
 
       this.status = 'running_chair';
-      const chairAgent = options.chair ?? runConfig.chair.agent;
-      runConfig.chair.agent = chairAgent;
+      const configuredChair = runConfig.chair.agent;
+      const chairAgent = options.chair ?? configuredChair;
+      if (chairAgent !== configuredChair) {
+        // Модель была выбрана для другого агента: переразрешаем её для нового.
+        runConfig.chair = { ...runConfig.chair, agent: chairAgent, model: undefined };
+      } else {
+        runConfig.chair.agent = chairAgent;
+      }
 
-      const chairResult = await callChair(expertResults, task, runConfig, { controller });
+      let chairResult: AgentResult;
+      if (costTracker.exceeded()) {
+        costExceeded = true;
+        const spent = costTracker.report().spent;
+        chairResult = {
+          agent: chairAgent,
+          text: '',
+          success: false,
+          attempt: 0,
+          exitCode: null,
+          errorCode: 'COST_LIMIT',
+          errorMessage:
+            `Лимит стоимости $${maxCost ?? 0} превышен ($${spent.toFixed(4)}); ` +
+            'председатель не запускался'
+        };
+      } else {
+        try {
+          chairResult = await callChair(expertResults, task, runConfig, { controller });
+          costTracker.add(chairResult.agent, chairResult.usage);
+          costExceeded = costTracker.exceeded();
+        } catch (error) {
+          // Ни один эксперт не ответил (или другая ошибка синтеза): сохраняем
+          // частичный результат, чтобы артефакт и -o работали для post-mortem.
+          chairResult = {
+            agent: chairAgent,
+            text: '',
+            success: false,
+            attempt: 0,
+            exitCode: null,
+            errorCode: 'EXIT_ERROR',
+            errorMessage: (error as Error).message
+          };
+        }
+      }
 
       if (controller.isCancelled()) {
         const result = this.createCancelledResult(expertResults, chairResult, parallelTime, runConfig);
+        result.metadata = {
+          ...(result.metadata ?? {}),
+          ...options.metadata,
+          models: collectModels([...expertResults, chairResult]),
+          sessions: collectSessions([...expertResults, chairResult]),
+          cost: costTracker.report(),
+          ...(session ? { session } : {})
+        };
         this.status = 'cancelled';
+        this.saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
         await hooks.onEnd?.(result);
         return result;
       }
 
       this.status = 'completed';
 
-      const models: Record<string, string> = {};
-      for (const expert of expertResults) {
-        if (expert.model) models[expert.agent] = expert.model;
-      }
-      if (chairResult.model) models[chairResult.agent] = chairResult.model;
+      const models = collectModels([...expertResults, chairResult]);
+      const sessions = collectSessions([...expertResults, chairResult]);
+
+      const consensusReport = consensusEnabled
+        ? analyzeConsensus(consensusInputs(expertResults))
+        : undefined;
+      const consensusText = consensusReport
+        ? `\n\n---\n\n${formatConsensusReport(consensusReport)}`
+        : '';
 
       const result: ConsiliumResult = {
-        text: chairResult.text,
+        text: `${chairResult.text}${consensusText}`.trim(),
         experts: expertResults,
         chair: chairResult,
         totalTime: Date.now() - this.startTime,
@@ -282,9 +426,37 @@ export class Consilium {
         usage: sumUsage([...expertResults, chairResult]),
         metadata: {
           ...options.metadata,
-          models
+          models,
+          cost: costTracker.report(),
+          ...(costExceeded ? { costExceeded: true } : {}),
+          ...(consensusReport ? { consensus: consensusReport } : {}),
+          ...(smartSelection
+            ? {
+                smartExperts: {
+                  dropped: smartSelection.dropped,
+                  scores: smartSelection.scores,
+                  reasons: smartSelection.reasons
+                }
+              }
+            : {}),
+          ...(session ? { session } : {}),
+          ...(Object.keys(sessions).length > 0 ? { sessions } : {}),
+          ...(fallbackModels.length > 0 ? { fallbackModels } : {})
         }
       };
+
+      if (maxCost !== undefined) {
+        const hasCostTelemetry = [...expertResults, chairResult].some(
+          item => typeof item.usage?.cost === 'number'
+        );
+        if (!hasCostTelemetry) {
+          hooks.onLog?.(
+            'warn',
+            'Провайдер не сообщил стоимость запуска: лимит maxCost невозможно проверить.'
+          );
+          result.metadata = { ...result.metadata, costTelemetry: 'missing' };
+        }
+      }
 
       const explicitOutput = options.outputFile;
       const configuredFile = runConfig.output.file;
@@ -302,6 +474,8 @@ export class Consilium {
           hooks.onLog?.('warn', `Не удалось сохранить результат: ${(error as Error).message}`);
         }
       }
+
+      this.saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
 
       await hooks.onEnd?.(result);
       return result;
@@ -453,6 +627,65 @@ export class Consilium {
     return fullPath;
   }
 
+  /**
+   * Сохраняет артефакт запуска, если он включён.
+   * Ошибка сохранения не должна ломать сам запуск.
+   */
+  private saveArtifactRun(
+    result: ConsiliumResult,
+    task: string,
+    setting: boolean | string | undefined,
+    runConfig: ConsiliumConfig,
+    hooks: ConsiliumConfig['hooks'] | undefined
+  ): void {
+    if (setting === undefined || setting === false) return;
+
+    try {
+      const metadata = result.metadata ?? {};
+      const metaModels = metadata.models;
+      const models =
+        metaModels !== null && typeof metaModels === 'object' && !Array.isArray(metaModels)
+          ? (metaModels as Record<string, string>)
+          : collectModels([...result.experts, result.chair]);
+      const run: ArtifactRun = {
+        version: 1,
+        id: createArtifactId(),
+        createdAt: new Date().toISOString(),
+        task,
+        success: result.success,
+        text: result.text,
+        experts: result.experts.map(expert => ({
+          agent: expert.agent,
+          model: expert.model,
+          success: expert.success,
+          errorCode: expert.errorCode,
+          errorMessage: expert.errorMessage,
+          duration: expert.duration,
+          text: expert.text,
+          usage: expert.usage
+        })),
+        models,
+        chairAgent: result.chair.agent,
+        usage: result.usage,
+        consensus: metadata.consensus,
+        metadata
+      };
+
+      const root = resolveArtifactRoot({ artifacts: setting, cwd: runConfig.cwd });
+      const ref = saveArtifact(run, { root });
+      result.metadata = {
+        ...metadata,
+        artifacts: { id: ref.id, dir: ref.dir }
+      };
+    } catch (error) {
+      result.metadata = {
+        ...(result.metadata ?? {}),
+        artifactsError: (error as Error).message
+      };
+      hooks?.onLog?.('warn', `Не удалось сохранить артефакт: ${(error as Error).message}`);
+    }
+  }
+
   private formatAsMarkdown(result: ConsiliumResult): string {
     let md = `# Результат консилиума\n\n`;
     md += `**Время выполнения:** ${(result.totalTime / 1000).toFixed(1)}с\n\n`;
@@ -534,5 +767,14 @@ export * from './config.js';
 export * from './agents.js';
 export * from './models.js';
 export * from './presets.js';
+export * from './compat.js';
+export * from './artifacts.js';
+export * from './consensus.js';
+export * from './smart-experts.js';
+export * from './fallback.js';
+export * from './report.js';
+export * from './watch.js';
+export * from './variants.js';
+export * from './replay.js';
 export * from './verify.js';
 export { DEFAULT_CONFIG } from './defaults.js';

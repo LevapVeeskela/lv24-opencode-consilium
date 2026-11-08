@@ -12,7 +12,9 @@ export type AgentErrorCode =
   | 'EXIT_ERROR'
   | 'CANCELLED'
   | 'AGENT_NOT_FOUND'
-  | 'MODEL_UNAVAILABLE';
+  | 'MODEL_UNAVAILABLE'
+  | 'RATE_LIMITED'
+  | 'COST_LIMIT';
 
 /** Расход токенов и стоимость одного вызова */
 export interface AgentUsage {
@@ -46,6 +48,10 @@ export interface AgentResult {
   attempt?: number;
   /** Код выхода процесса OpenCode */
   exitCode?: number | null;
+  /** Задержка до повтора, которую сообщил провайдер (мс) */
+  retryAfterMs?: number;
+  /** Идентификатор сессии OpenCode, в которой выполнялся агент */
+  sessionId?: string;
   /** Токены и стоимость */
   usage?: AgentUsage;
 }
@@ -146,6 +152,8 @@ export interface RetryConfig {
   exponentialBackoff: boolean;
   /** Максимальное число одновременно работающих агентов */
   maxConcurrency: number;
+  /** Добавлять джиттер к задержке повторов */
+  jitter?: boolean;
 }
 
 /**
@@ -190,6 +198,26 @@ export interface ConsiliumConfig {
   autoApprove?: boolean;
   /** Плагины (инициализируются перед запуском) */
   plugins?: ConsiliumPlugin[];
+  /** Сохранять артефакты запусков (true → .consilium/runs, строка → путь) */
+  artifacts?: boolean | string;
+  /** Добавлять анализ согласия экспертов в промпт председателя и метаданные */
+  consensus?: boolean;
+  /** Автоматически выбирать экспертов по задаче/диффу */
+  smartExperts?: boolean;
+  /** Лимит стоимости запуска в USD; при превышении председатель не запускается */
+  maxCost?: number;
+  /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE (в порядке приоритета) */
+  fallbackModels?: string[];
+  /** Переиспользовать сессию OpenCode (`run --session`) между запусками */
+  session?: string;
+  /** Формат отчёта после запуска */
+  report?: 'html' | 'pr' | 'markdown';
+  /** Файл отчёта (по умолчанию stdout) */
+  reportFile?: string;
+  /** Вариант модели (`provider/model#variant`) для всех агентов */
+  variant?: string;
+  /** Задержка watch-режима, мс */
+  debounceMs?: number;
 }
 
 /**
@@ -222,6 +250,18 @@ export interface RunOptions {
   metadata?: Record<string, unknown>;
   /** Пресет (fast, deep, security, review) */
   preset?: string;
+  /** Сохранять артефакт запуска */
+  artifacts?: boolean | string;
+  /** Переопределить анализ согласия */
+  consensus?: boolean;
+  /** Переопределить умный выбор экспертов */
+  smartExperts?: boolean;
+  /** Лимит стоимости запуска в USD */
+  maxCost?: number;
+  /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE */
+  fallbackModels?: string[];
+  /** Сессия OpenCode для продолжения контекста */
+  session?: string;
 }
 
 /**
@@ -254,7 +294,7 @@ export type ProgressCallback = (event: ProgressEvent) => void;
  */
 export interface CLIOptions {
   task: string;
-  command?: 'run' | 'init' | 'models' | 'doctor' | 'mcp' | 'help' | 'version';
+  command?: 'run' | 'init' | 'models' | 'doctor' | 'mcp' | 'watch' | 'hooks' | 'help' | 'version';
   config?: string;
   experts?: string;
   chair?: string;
@@ -301,4 +341,44 @@ export interface CLIOptions {
   verify?: boolean;
   /** Пропустить проверку моделей */
   noVerify?: boolean;
+  /** Путь/каталог артефактов (true → .consilium/runs) */
+  artifacts?: string | boolean;
+  /** Не сохранять артефакты */
+  noArtifacts?: boolean;
+  /** Умный выбор экспертов по задаче/диффу */
+  smartExperts?: boolean;
+  /** Отключить анализ согласия */
+  noConsensus?: boolean;
+  /** Отключить джиттер retry */
+  noJitter?: boolean;
+  /** Повторить сохранённый запуск (файл артефакта) */
+  replay?: string;
+  /** Сравнить два артефакта */
+  diffRuns?: [string, string];
+  /** Каталог артефактов (переопределяет .consilium/runs) */
+  artifactsDir?: string;
+  /** Включить анализ согласия */
+  consensus?: boolean;
+  /** Лимит стоимости запуска в USD */
+  maxCost?: number;
+  /** Запасные модели при RATE_LIMITED/MODEL_UNAVAILABLE */
+  fallbackModels?: string[];
+  /** Сессия OpenCode для продолжения контекста */
+  session?: string;
+  /** Формат отчёта после запуска */
+  report?: 'html' | 'pr' | 'markdown';
+  /** Файл отчёта (по умолчанию stdout) */
+  reportFile?: string;
+  /** Вариант модели (`provider/model#variant`) для всех агентов */
+  variant?: string;
+  /** Задержка watch-режима, мс */
+  debounceMs?: number;
+  /** Действие команды hooks */
+  hookAction?: 'install' | 'uninstall';
+  /** Писать нативный V2-формат конфигурации OpenCode */
+  nativeV2?: boolean;
+  /** Зарегистрировать MCP-сервер в конфигурации OpenCode */
+  mcpInstall?: boolean;
+  /** Использовать глобальную конфигурацию OpenCode */
+  globalConfig?: boolean;
 }

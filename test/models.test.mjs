@@ -2,11 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BUILTIN_FREE_MODELS,
+  isExcludedFreeProvider,
   rankFreeModels,
   selectCouncilModels,
   buildCouncilAgents,
   buildConsiliumConfigFromModels
 } from '../dist/models.js';
+
+test('opencode-go и contributor-модели не исключаются из бесплатного подбора', () => {
+  assert.equal(isExcludedFreeProvider('opencode-go'), false);
+  assert.equal(isExcludedFreeProvider('opencode'), false);
+  assert.equal(isExcludedFreeProvider('acme-coding-plan'), true);
+  assert.equal(isExcludedFreeProvider('acme-subscription'), true);
+});
 
 function model(overrides = {}) {
   return {

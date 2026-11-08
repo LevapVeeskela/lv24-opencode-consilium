@@ -1,6 +1,6 @@
 {
   "name": "opencode-consilium",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "description": "Консилиум ИИ-экспертов для OpenCode CLI: мульти-модельный совет, MCP-сервер и подбор сильнейших бесплатных моделей",
   "type": "module",
   "main": "dist/index.js",
@@ -12,8 +12,8 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./config": "./dist/config.js",
     "./agents": "./dist/agents.js",
@@ -21,12 +21,28 @@
     "./presets": "./dist/presets.js",
     "./doctor": "./dist/doctor.js",
     "./verify": "./dist/verify.js",
-    "./mcp": "./dist/mcp.js"
+    "./mcp": "./dist/mcp.js",
+    "./compat": "./dist/compat.js",
+    "./stream": "./dist/stream.js",
+    "./defaults": "./dist/defaults.js",
+    "./artifacts": "./dist/artifacts.js",
+    "./consensus": "./dist/consensus.js",
+    "./smart-experts": "./dist/smart-experts.js",
+    "./fallback": "./dist/fallback.js",
+    "./report": "./dist/report.js",
+    "./watch": "./dist/watch.js",
+    "./variants": "./dist/variants.js",
+    "./replay": "./dist/replay.js",
+    "./tool-run": "./dist/tool-run.js",
+    "./plugin": "./dist/plugin.js",
+    "./server": "./dist/plugin.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "bin",
     "schema",
+    "docs",
     "consilium.config.example.json",
     "README.md",
     "README.ru.md",
@@ -66,8 +82,8 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@opencode/plugin": "^2.2.6",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   }

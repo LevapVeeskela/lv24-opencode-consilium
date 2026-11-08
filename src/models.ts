@@ -73,7 +73,11 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/models';
 const DEFAULT_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DEFAULT_MIN_CONTEXT = 32_768;
-const EXCLUDED_PROVIDER = /coding-plan|code-plan|opencode-go$|subscription/i;
+const EXCLUDED_PROVIDER = /coding-plan|code-plan|subscription/i;
+/** Провайдеры платных подписок не участвуют в подборе бесплатных моделей */
+export function isExcludedFreeProvider(providerID: string): boolean {
+  return EXCLUDED_PROVIDER.test(providerID);
+}
 const ALPHA_PATTERN = /alpha|preview|stealth|experimental/i;
 const AUDIO_PATTERN = /audio|whisper|tts|transcrib|speech/i;
 const CHAIR_PROMPT = 'Ты председатель консилиума. Синтезируй мнения экспертов и дай итоговый план.';
@@ -562,7 +566,7 @@ function parseModelsDev(data: unknown, minContext: number): LoadResult {
 
   const providers: ProviderBlock[] = [];
   for (const [id, value] of Object.entries(data)) {
-    if (EXCLUDED_PROVIDER.test(id) || !isRecord(value)) continue;
+    if (isExcludedFreeProvider(id) || !isRecord(value)) continue;
     const models = value.models;
     if (!isRecord(models)) continue;
     providers.push({ id, env: strArray(value.env), models });

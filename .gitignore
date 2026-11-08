@@ -21,6 +21,9 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Consilium run artifacts
+.consilium/
+
 # Local environment
 env.local
 

@@ -13,7 +13,10 @@ import type {
   ExpertConfig
 } from './types.js';
 import { DEFAULT_EXPERT_PROMPTS } from './defaults.js';
-import { createEventDecoder } from './stream.js';
+import { createEventDecoder, type ParsedStream, type StreamError } from './stream.js';
+import { resolveOpenCodeAgent } from './config.js';
+import { analyzeConsensus, buildConsensusPromptSection } from './consensus.js';
+import { buildFallbackChain, shouldFallback } from './fallback.js';
 
 export { parseJsonOutput } from './stream.js';
 
@@ -28,6 +31,7 @@ const AVAILABILITY_TIMEOUT = 10000;
 
 const AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@\/-]*$/;
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@\/#+-]*$/;
+const SESSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@\/_-]*$/;
 const MAX_RETRIES = 10;
 const MAX_CONCURRENCY = 8;
 
@@ -204,6 +208,49 @@ export function sanitizeTimeout(value: unknown, fallback: number): number {
   return toTimeout(value) ?? toTimeout(fallback) ?? DEFAULT_TIMEOUT;
 }
 
+/**
+ * Строит идентификатор сессии OpenCode для конкретного агента.
+ * Эксперты не должны делить одну сессию: к контексту добавляется имя агента.
+ */
+export function buildAgentSession(
+  base: string | undefined,
+  agentName: string
+): string | undefined {
+  const trimmed = base?.trim();
+  if (trimmed === undefined || trimmed.length === 0) return undefined;
+
+  // OpenCode требует, чтобы session id начинался с "ses".
+  const prefixed = trimmed.startsWith('ses') ? trimmed : `ses_${trimmed}`;
+  const suffix = `-${agentName.trim().length > 0 ? agentName.trim() : 'default'}`;
+  const cleaned = `${prefixed}${suffix}`
+    .replace(/[^A-Za-z0-9._:-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '');
+
+  // Обрезаем базу, а не суффикс: иначе разные агенты получат одинаковый id.
+  const maxBase = Math.max(8, 128 - suffix.length);
+  return cleaned.length <= 128
+    ? cleaned
+    : `${cleaned.slice(0, Math.min(maxBase, cleaned.length - suffix.length))}${suffix}`;
+}
+
+/**
+ * Сессия председателя: базовый id используется как есть, чтобы продолжать
+ * существующую сессию OpenCode, а не создавать новую.
+ */
+export function buildChairSession(base: string | undefined): string | undefined {
+  const trimmed = base?.trim();
+  if (trimmed === undefined || trimmed.length === 0) return undefined;
+
+  const prefixed = trimmed.startsWith('ses') ? trimmed : `ses_${trimmed}`;
+  const cleaned = prefixed
+    .replace(/[^A-Za-z0-9._:-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-_.]+|[-_.]+$/g, '');
+
+  return cleaned.length > 0 ? cleaned.slice(0, 128) : undefined;
+}
+
 function sanitizeRetries(value: unknown, fallback: number): number {
   const retries = nonNegativeInteger(value) ?? nonNegativeInteger(fallback) ?? 0;
   return Math.min(MAX_RETRIES, retries);
@@ -212,20 +259,35 @@ function sanitizeRetries(value: unknown, fallback: number): number {
 function calculateRetryDelay(
   attempt: number,
   baseDelay: number,
-  exponentialBackoff: boolean
+  exponentialBackoff: boolean,
+  jitter: boolean
 ): number {
-  if (!exponentialBackoff) return baseDelay;
-  return baseDelay * Math.pow(2, attempt);
+  const base = exponentialBackoff ? baseDelay * Math.pow(2, attempt) : baseDelay;
+  if (!jitter) return base;
+  // Полный джиттер 50–100%: параллельные эксперты не упираются в лимит одновременно.
+  return Math.max(0, Math.round(base * (0.5 + Math.random() * 0.5)));
 }
 
+/** Максимальная задержка rate limit, которую имеет смысл ждать внутри запуска */
+const RATE_LIMIT_RETRY_WINDOW_MS = 30_000;
+
 /** Проверяет, имеет ли смысл повторять попытку */
-function isRetryable(code: AgentErrorCode | undefined): boolean {
+function isRetryable(code: AgentErrorCode | undefined, retryAfterMs?: number): boolean {
   if (code === undefined) return true;
+  if (code === 'RATE_LIMITED') {
+    // Короткий лимит (секунды) пережидаем; длинный — сразу отдаём ошибку.
+    return (
+      retryAfterMs !== undefined &&
+      retryAfterMs > 0 &&
+      retryAfterMs <= RATE_LIMIT_RETRY_WINDOW_MS
+    );
+  }
   return (
     code !== 'CANCELLED' &&
     code !== 'MODEL_UNAVAILABLE' &&
     code !== 'PARSE_ERROR' &&
-    code !== 'AGENT_NOT_FOUND'
+    code !== 'AGENT_NOT_FOUND' &&
+    code !== 'COST_LIMIT'
   );
 }
 
@@ -277,6 +339,7 @@ async function invokeErrorHook(
 export function buildRunArgs(opts: {
   agent?: string;
   model?: string;
+  session?: string;
   config?: Pick<ConsiliumConfig, 'standalone' | 'autoApprove'>;
 }): string[] {
   const args: string[] = ['run'];
@@ -299,6 +362,11 @@ export function buildRunArgs(opts: {
   const model = opts.model?.trim();
   if (model !== undefined && model.length > 0 && MODEL_PATTERN.test(model)) {
     args.push(`--model=${model}`);
+  }
+
+  const session = opts.session?.trim();
+  if (session !== undefined && session.length > 0 && SESSION_PATTERN.test(session)) {
+    args.push(`--session=${session}`);
   }
 
   return args;
@@ -327,7 +395,8 @@ function buildExpertPrompt(expert: ExpertConfig, task: string): string {
 function buildChairPrompt(
   task: string,
   expertResults: AgentResult[],
-  maxExpertTextLength: number
+  maxExpertTextLength: number,
+  consensus = false
 ): string {
   const successful = expertResults.filter(result => result.success);
 
@@ -350,6 +419,18 @@ function buildChairPrompt(
   prompt += `2. **Топ-3 приоритетных действия** с обоснованием\n`;
   prompt += `3. **Главный риск** и митигация\n`;
   prompt += `4. **Оценка трудозатрат** (если применимо)`;
+
+  if (consensus === true) {
+    const report = analyzeConsensus(
+      expertResults.map(result => ({
+        agent: result.agent,
+        text: result.text,
+        model: result.model,
+        success: result.success
+      }))
+    );
+    prompt += `\n\n${buildConsensusPromptSection(report)}`;
+  }
 
   return prompt;
 }
@@ -409,9 +490,45 @@ function formatExitCode(code: number | null, signal: NodeJS.Signals | null): str
 }
 
 function classifyError(message: string): AgentErrorCode {
-  if (/Agent not found/i.test(message)) return 'AGENT_NOT_FOUND';
-  if (/Model unavailable|no-route/i.test(message)) return 'MODEL_UNAVAILABLE';
+  if (/Agent not found|agent[-_. ]not[-_. ]found/i.test(message)) return 'AGENT_NOT_FOUND';
+  if (isModelUnavailableMessage(message)) return 'MODEL_UNAVAILABLE';
   return 'EXIT_ERROR';
+}
+
+/** Типы ошибок OpenCode, означающие исчерпание квоты или rate limit */
+const RATE_LIMIT_PATTERN = /(free[-_.]?limit|rate[-_.]?limit|quota|too[-_.]?many[-_.]?requests|resource[-_.]?exhausted)/i;
+
+/** Проверяет, что ошибка потока — rate limit или исчерпание квоты */
+function isRateLimitError(detail: StreamError): boolean {
+  if (detail.status === 429) return true;
+  return RATE_LIMIT_PATTERN.test(`${detail.type ?? ''} ${detail.code ?? ''}`);
+}
+
+/** Проверяет текст ошибки на недоступную модель */
+function isModelUnavailableMessage(message: string): boolean {
+  return /Model unavailable|no-route|model[-_. ]not[-_. ]found|not found in catalog/i.test(message);
+}
+
+/** Определяет код ошибки по структурированным событиям потока */
+function classifyStreamErrors(parsed: ParsedStream): AgentErrorCode {
+  for (const detail of parsed.errorDetails) {
+    if (isRateLimitError(detail)) return 'RATE_LIMITED';
+    if (isModelUnavailableMessage(detail.message)) return 'MODEL_UNAVAILABLE';
+  }
+  return 'EXIT_ERROR';
+}
+
+/** Форматирует длительность ожидания для сообщения пользователю */
+function formatRetryAfter(ms: number): string {
+  if (ms >= 3_600_000) return `${Math.round(ms / 3_600_000)} ч`;
+  if (ms >= 60_000) return `${Math.round(ms / 60_000)} мин`;
+  return `${Math.max(1, Math.round(ms / 1000))} с`;
+}
+
+/** Добавляет к сообщению подсказку о времени повтора */
+function withRetryHint(message: string, detail: StreamError | undefined): string {
+  if (detail?.retryAfterMs === undefined || detail.retryAfterMs <= 0) return message;
+  return `${message} (повтор возможен через ~${formatRetryAfter(detail.retryAfterMs)})`;
 }
 
 interface ProcessOutcome {
@@ -606,6 +723,7 @@ interface ProcessCallOptions {
   agentName: string;
   agentArg?: string;
   model?: string;
+  session?: string;
   prompt: string;
   timeoutMs: number;
   attempt: number;
@@ -619,6 +737,7 @@ async function runAgentProcess(options: ProcessCallOptions): Promise<AgentResult
   const args = buildRunArgs({
     agent: options.agentArg,
     model: options.model,
+    session: options.session,
     config: options.config
   }).concat(extraArgs);
 
@@ -636,6 +755,8 @@ async function runAgentProcess(options: ProcessCallOptions): Promise<AgentResult
   const parsed = decoder.end();
   const text = parsed.text;
   const stderrTail = tailText(outcome.stderr, 500);
+  const streamCode = classifyStreamErrors(parsed);
+  const rateLimit = parsed.errorDetails.find(isRateLimitError);
 
   const base: AgentResult = {
     agent: options.agentName,
@@ -647,6 +768,12 @@ async function runAgentProcess(options: ProcessCallOptions): Promise<AgentResult
   };
   if (options.model !== undefined) {
     base.model = options.model;
+  }
+  if (rateLimit?.retryAfterMs !== undefined) {
+    base.retryAfterMs = rateLimit.retryAfterMs;
+  }
+  if (parsed.sessionID !== undefined) {
+    base.sessionId = parsed.sessionID;
   }
 
   if (outcome.cancelled) {
@@ -695,16 +822,19 @@ async function runAgentProcess(options: ProcessCallOptions): Promise<AgentResult
       formatExitCode(outcome.code, outcome.signal);
     return {
       ...base,
-      errorCode: classifyError(message),
-      errorMessage: message
+      errorCode: streamCode !== 'EXIT_ERROR' ? streamCode : classifyError(message),
+      errorMessage: withRetryHint(message, rateLimit)
     };
   }
 
-  const message = parsed.errors.join('; ') || stderrTail || 'Пустой ответ агента';
+  const message =
+    parsed.errors.join('; ') ||
+    stderrTail ||
+    `Пустой ответ агента${parsed.eventCount > 0 ? ` (событий: ${parsed.eventCount})` : ''}`;
   return {
     ...base,
-    errorCode: 'EMPTY_RESPONSE',
-    errorMessage: message
+    errorCode: streamCode !== 'EXIT_ERROR' ? streamCode : 'EMPTY_RESPONSE',
+    errorMessage: withRetryHint(message, rateLimit)
   };
 }
 
@@ -712,13 +842,42 @@ interface AgentAttemptOptions {
   agentName: string;
   prompt: string;
   model?: string;
+  sessionBase?: string;
+  isChair?: boolean;
+  fallbackModels?: string[];
   timeoutMs: number;
   attempt: number;
   controller: RunController;
   config: ConsiliumConfig;
 }
 
-/** Одна попытка вызова агента с фолбэком при отсутствии агента */
+/** Суммирует usage двух вызовов (токены и стоимость) */
+function sumUsagePair(a?: AgentUsage, b?: AgentUsage): AgentUsage | undefined {
+  if (a === undefined && b === undefined) return undefined;
+
+  const usage: AgentUsage = {};
+  const fields = [
+    'inputTokens',
+    'outputTokens',
+    'reasoningTokens',
+    'cacheReadTokens',
+    'cacheWriteTokens'
+  ] as const;
+  for (const field of fields) {
+    const total = (a?.[field] ?? 0) + (b?.[field] ?? 0);
+    if (total > 0) usage[field] = total;
+  }
+  usage.cost = (a?.cost ?? 0) + (b?.cost ?? 0);
+  return usage;
+}
+
+/** Суммирует usage двух попыток (токены и стоимость) */
+function mergeAttemptUsage(previous: AgentResult, next: AgentResult): AgentResult {
+  const usage = sumUsagePair(previous.usage, next.usage);
+  return usage === undefined ? next : { ...next, usage };
+}
+
+/** Одна попытка вызова агента: fallback по моделям и при отсутствии агента */
 async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult> {
   const agentName = options.agentName.trim();
   if (agentName.length > 0 && !AGENT_NAME_PATTERN.test(agentName)) {
@@ -734,10 +893,41 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
   }
 
   const requestedModel = options.model?.trim();
-  const model =
+  let model =
     requestedModel !== undefined && requestedModel.length > 0
       ? requestedModel
       : undefined;
+
+  // OpenCode V2 не применяет модель агента из конфигурации при `run --agent`.
+  // Заодно проверяем существование агента: для неизвестного имени сразу идём
+  // default-агентом, иначе OpenCode создаст сессию с несуществующим агентом.
+  let agentExists = agentName.length === 0;
+  if (agentName.length > 0) {
+    try {
+      const resolved = resolveOpenCodeAgent(agentName, {
+        opencodeConfigPath: options.config.opencodeConfigPath,
+        cwd: options.config.cwd
+      });
+      agentExists = resolved.exists;
+      if (
+        model === undefined &&
+        resolved.model !== undefined &&
+        MODEL_PATTERN.test(resolved.model)
+      ) {
+        model = resolved.model;
+      }
+    } catch {
+      // Конфигурация OpenCode недоступна: пусть модель и агента выбирает сам OpenCode
+      agentExists = true;
+    }
+  }
+
+  const agentArg = agentExists && agentName.length > 0 ? agentName : undefined;
+  const sessionSuffix =
+    agentName.length === 0 ? 'default' : agentExists ? agentName : `default-${agentName}`;
+  const session = options.isChair === true
+    ? buildChairSession(options.sessionBase)
+    : buildAgentSession(options.sessionBase, sessionSuffix);
 
   if (model !== undefined && !MODEL_PATTERN.test(model)) {
     return {
@@ -751,10 +941,12 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     };
   }
 
-  const first = await runAgentProcess({
+  let effectiveAgentArg = agentArg;
+  let result = await runAgentProcess({
     agentName: options.agentName,
-    agentArg: agentName.length > 0 ? agentName : undefined,
+    agentArg: effectiveAgentArg,
     model,
+    session,
     prompt: options.prompt,
     timeoutMs: options.timeoutMs,
     attempt: options.attempt,
@@ -762,46 +954,61 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     config: options.config
   });
 
-  if (first.errorCode !== 'AGENT_NOT_FOUND') {
-    return first;
+  if (result.errorCode === 'AGENT_NOT_FOUND') {
+    // Агент не найден: повторяем без --agent и с default-сессией.
+    // Старую сессию не переиспользуем — OpenCode запомнил в ней несуществующего агента.
+    const fallback = await runAgentProcess({
+      agentName: options.agentName,
+      agentArg: undefined,
+      model,
+      session: buildAgentSession(
+        options.sessionBase,
+        agentName.length > 0 ? `default-${agentName}` : 'default'
+      ),
+      prompt: options.prompt,
+      timeoutMs: options.timeoutMs,
+      attempt: options.attempt,
+      controller: options.controller,
+      config: options.config
+    });
+    if (model !== undefined) fallback.model = model;
+    result = mergeAttemptUsage(result, fallback);
+    effectiveAgentArg = undefined;
   }
 
-  // Агент не найден: повторяем один раз без --agent (модель сохраняем)
-  const fallback = await runAgentProcess({
-    agentName: options.agentName,
-    agentArg: undefined,
-    model,
-    prompt: options.prompt,
-    timeoutMs: options.timeoutMs,
-    attempt: options.attempt,
-    controller: options.controller,
-    config: options.config
-  });
+  // Запасные модели: включаются только для RATE_LIMITED/MODEL_UNAVAILABLE/EMPTY_RESPONSE.
+  const chain = buildFallbackChain(model, options.fallbackModels ?? [], { max: 2 });
+  for (const candidate of chain) {
+    if (result.success || !shouldFallback(result.errorCode)) break;
+    if (options.controller.isCancelled()) break;
 
-  if (model !== undefined) {
-    fallback.model = model;
+    const attempt = await runAgentProcess({
+      agentName: options.agentName,
+      agentArg: effectiveAgentArg,
+      model: candidate,
+      session,
+      prompt: options.prompt,
+      timeoutMs: options.timeoutMs,
+      attempt: options.attempt,
+      controller: options.controller,
+      config: options.config
+    });
+    attempt.model = candidate;
+    result = mergeAttemptUsage(result, attempt);
+    if (attempt.success) break;
   }
 
-  if (first.usage) {
-    const firstCost = first.usage.cost ?? 0;
-    const fallbackCost = fallback.usage?.cost ?? 0;
-    fallback.usage = {
-      ...first.usage,
-      ...fallback.usage,
-      cost: firstCost + fallbackCost
-    };
-  }
-
-  return fallback;
+  return result;
 }
 
 function finalizeResult(
   result: AgentResult,
   startedAt: number,
   totalCost: number,
-  hasCost: boolean
+  hasCost: boolean,
+  mergedUsage?: AgentUsage
 ): AgentResult {
-  const usage: AgentUsage = { ...(result.usage ?? {}) };
+  const usage: AgentUsage = { ...(mergedUsage ?? result.usage ?? {}) };
   if (hasCost) {
     usage.cost = totalCost;
   }
@@ -855,11 +1062,15 @@ export async function callAgent(
     retries?: number;
     isChair?: boolean;
     model?: string;
+    session?: string;
+    fallbackModels?: string[];
     controller?: RunController;
   } = {}
 ): Promise<AgentResult> {
   const controller = options.controller ?? defaultController;
   const isChair = options.isChair === true;
+  const sessionBase = options.session ?? config.session;
+  const fallbackModels = options.fallbackModels ?? config.fallbackModels ?? [];
 
   const defaultTimeout = isChair
     ? sanitizeTimeout(config.timeouts?.chair, DEFAULT_CHAIR_TIMEOUT)
@@ -879,6 +1090,7 @@ export async function callAgent(
   let totalCost = 0;
   let hasCost = false;
   let lastResult: AgentResult | undefined;
+  let mergedUsage: AgentUsage | undefined;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (controller.isCancelled()) {
@@ -886,19 +1098,31 @@ export async function callAgent(
         cancelledResult(agentName, attempt, options.model),
         startedAt,
         totalCost,
-        hasCost
+        hasCost,
+        mergedUsage
       );
     }
 
     if (attempt > 0) {
-      const delay = calculateRetryDelay(attempt - 1, delayMs, exponential);
+      const rateLimitDelay =
+        lastResult?.errorCode === 'RATE_LIMITED' ? lastResult.retryAfterMs : undefined;
+      const delay =
+        rateLimitDelay !== undefined
+          ? Math.min(rateLimitDelay, RATE_LIMIT_RETRY_WINDOW_MS)
+          : calculateRetryDelay(
+              attempt - 1,
+              delayMs,
+              exponential,
+              config.retry?.jitter === true
+            );
       const ready = await delayWithCancel(delay, controller);
       if (!ready) {
         return finalizeResult(
           cancelledResult(agentName, attempt, options.model),
           startedAt,
           totalCost,
-          hasCost
+          hasCost,
+          mergedUsage
         );
       }
     }
@@ -907,6 +1131,9 @@ export async function callAgent(
       agentName,
       prompt,
       model: options.model,
+      sessionBase,
+      isChair,
+      fallbackModels,
       timeoutMs,
       attempt,
       controller,
@@ -920,15 +1147,16 @@ export async function callAgent(
     }
 
     lastResult = result;
+    mergedUsage = sumUsagePair(mergedUsage, result.usage);
 
     if (result.success) {
-      return finalizeResult(result, startedAt, totalCost, hasCost);
+      return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
     }
 
     await invokeErrorHook(config, isChair, result);
 
-    if (!isRetryable(result.errorCode)) {
-      return finalizeResult(result, startedAt, totalCost, hasCost);
+    if (!isRetryable(result.errorCode, result.retryAfterMs)) {
+      return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
     }
   }
 
@@ -942,7 +1170,8 @@ export async function callAgent(
     },
     startedAt,
     totalCost,
-    hasCost
+    hasCost,
+    mergedUsage
   );
 }
 
@@ -1052,7 +1281,12 @@ export async function callChair(
   if (template) {
     prompt = template(task, expertResults);
   } else {
-    prompt = buildChairPrompt(task, expertResults, maxExpertTextLength);
+    prompt = buildChairPrompt(
+      task,
+      expertResults,
+      maxExpertTextLength,
+      config.consensus === true
+    );
   }
 
   await invokeHook(

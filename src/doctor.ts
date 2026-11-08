@@ -3,11 +3,21 @@
  * @module opencode-consilium
  */
 
-import { accessSync, constants, existsSync, readFileSync, statSync } from 'fs';
+import { accessSync, constants, existsSync, statSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type { ConsiliumConfig } from './types.js';
 import { getOpenCodeVersion } from './agents.js';
 import { fetchFreeModels } from './models.js';
+import { findOpenCodeConfigPath, readJsonFile } from './config.js';
+import { resolveArtifactRoot } from './artifacts.js';
+import {
+  describeConfigFlavor,
+  findLegacyV1Fields,
+  parseOpenCodeVersion,
+  readAgentDefinition,
+  readAgentSection,
+  readMcpSection
+} from './compat.js';
 
 /** Результат одной проверки */
 export interface DoctorCheck {
@@ -26,9 +36,6 @@ export interface DoctorOptions {
 
 /** Паттерн допустимой модели provider/model */
 const MODEL_PATTERN = /^[A-Za-z0-9._:@\/#+-]+$/;
-
-/** Имена файлов конфигурации OpenCode */
-const OPENCODE_CONFIG_NAMES = ['opencode.json', 'opencode.jsonc'];
 
 /** Проверяет, является ли значение обычным объектом */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -118,102 +125,6 @@ function getProvider(model: string): string {
   return slashIndex > 0 ? model.slice(0, slashIndex) : '';
 }
 
-/** Убирает строчные и блочные комментарии из JSONC, не затрагивая строки */
-function stripJsonComments(input: string): string {
-  let result = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-    const next = input[index + 1];
-
-    if (inString) {
-      result += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      result += char;
-      continue;
-    }
-
-    if (char === '/' && next === '/') {
-      while (index < input.length && input[index] !== '\n' && input[index] !== '\r') {
-        index += 1;
-      }
-      result += '\n';
-      continue;
-    }
-
-    if (char === '/' && next === '*') {
-      index += 2;
-      while (index < input.length && !(input[index] === '*' && input[index + 1] === '/')) {
-        index += 1;
-      }
-      index += 1;
-      result += ' ';
-      continue;
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
-/** Убирает запятые перед закрывающими скобками, не затрагивая строки */
-function stripTrailingCommas(input: string): string {
-  let result = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-
-    if (inString) {
-      result += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      result += char;
-      continue;
-    }
-
-    if (char === ',') {
-      let lookahead = index + 1;
-      while (lookahead < input.length && /\s/.test(input[lookahead] ?? '')) {
-        lookahead += 1;
-      }
-      const next = input[lookahead];
-      if (next === '}' || next === ']') {
-        continue;
-      }
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
 /** Проверяет версию Node.js */
 function checkNodeVersion(): DoctorCheck {
   const rawVersion = process.versions.node;
@@ -236,14 +147,19 @@ function checkNodeVersion(): DoctorCheck {
 }
 
 /** Проверяет доступность OpenCode CLI */
-async function checkOpenCodeCli(config: ConsiliumConfig): Promise<DoctorCheck> {
-  const version = await getOpenCodeVersion(config);
-
+function checkOpenCodeCli(version: string | null): DoctorCheck {
   if (version !== null && version.trim().length > 0) {
+    const info = parseOpenCodeVersion(version);
+    const channel =
+      info.major === 2
+        ? 'V2: V1-формат конфигурации поддерживается'
+        : info.major === 1
+          ? 'V1: нативный V2-формат не читается'
+          : 'версия не распознана';
     return {
       id: 'opencode-cli',
       status: 'ok',
-      message: `OpenCode CLI: ${version.trim()}`
+      message: `OpenCode CLI: ${version.trim()} (${channel})`
     };
   }
 
@@ -484,52 +400,85 @@ function checkModelsFormat(config: ConsiliumConfig): DoctorCheck {
   };
 }
 
+/** Прочитанная конфигурация OpenCode */
+interface OpenCodeConfigRead {
+  path: string | null;
+  config: Record<string, unknown> | null;
+  error?: string;
+}
+
+/** Проверяет включённые дополнительные функции */
+function checkFeatures(config: ConsiliumConfig): DoctorCheck {
+  const id = 'features';
+  const parts: string[] = [];
+
+  if (config.artifacts !== undefined && config.artifacts !== false) {
+    try {
+      const dir = resolveArtifactRoot({ artifacts: config.artifacts, cwd: config.cwd });
+      parts.push(`artifacts → ${dir}`);
+    } catch {
+      parts.push('artifacts (некорректный путь)');
+    }
+  }
+  if (config.consensus === true) parts.push('consensus');
+  if (config.smartExperts === true) parts.push('smartExperts');
+  if (config.maxCost !== undefined) parts.push(`maxCost=$${config.maxCost}`);
+  if ((config.fallbackModels?.length ?? 0) > 0) {
+    parts.push(`fallbackModels=${config.fallbackModels?.length}`);
+  }
+  if (config.session !== undefined && config.session.length > 0) {
+    parts.push(`session=${config.session}`);
+  }
+
+  if (parts.length === 0) {
+    return { id, status: 'ok', message: 'Дополнительные функции выключены' };
+  }
+  return { id, status: 'ok', message: `Включено: ${parts.join(', ')}` };
+}
+
+/** Читает opencode.json(c) с учётом `.opencode/` и родительских каталогов */
+function readOpenCodeConfig(cwd: string, configuredPath?: string): OpenCodeConfigRead {
+  const path = findOpenCodeConfigPath(configuredPath, cwd);
+  if (path === null) {
+    return { path: null, config: null };
+  }
+
+  try {
+    const parsed = readJsonFile(path);
+    if (!isRecord(parsed)) {
+      return { path, config: null, error: 'ожидается JSON-объект' };
+    }
+    return { path, config: parsed };
+  } catch (error) {
+    return { path, config: null, error: errorMessage(error) };
+  }
+}
+
 /** Проверяет opencode.json/opencode.jsonc и ссылки на агентов */
 function checkOpenCodeConfig(config: ConsiliumConfig, cwd: string): DoctorCheck {
   const id = 'opencode-config';
+  const read = readOpenCodeConfig(cwd, config.opencodeConfigPath);
 
-  let filePath: string | null = null;
-  for (const fileName of OPENCODE_CONFIG_NAMES) {
-    const candidate = resolve(cwd, fileName);
-    if (existsSync(candidate)) {
-      filePath = candidate;
-      break;
-    }
-  }
-
-  if (filePath === null) {
+  if (read.path === null) {
     return {
       id,
       status: 'warn',
-      message: 'opencode.json не найден',
+      message: 'opencode.json не найден (проект, родители и глобальный конфиг)',
       hint: 'Создайте opencode.json или задайте model экспертам и председателю'
     };
   }
 
-  let parsed: unknown;
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    parsed = JSON.parse(stripTrailingCommas(stripJsonComments(content)));
-  } catch (error) {
+  if (read.config === null) {
     return {
       id,
       status: 'fail',
-      message: `Не удалось разобрать ${filePath}: ${errorMessage(error)}`,
+      message: `Не удалось разобрать ${read.path}: ${read.error ?? 'неизвестная ошибка'}`,
       hint: 'Проверьте синтаксис JSON/JSONC'
     };
   }
 
-  if (!isRecord(parsed)) {
-    return {
-      id,
-      status: 'fail',
-      message: `${filePath}: ожидается JSON-объект`,
-      hint: 'Корнем opencode.json должен быть объект'
-    };
-  }
-
-  const agentSection = parsed.agent;
-  const agents: Record<string, unknown> = isRecord(agentSection) ? agentSection : {};
+  const section = readAgentSection(read.config);
+  const agents = section.entries;
 
   const expertNames = collectExpertNames(config);
   const referenced = new Set<string>(expertNames);
@@ -547,9 +496,12 @@ function checkOpenCodeConfig(config: ConsiliumConfig, cwd: string): DoctorCheck 
 
   for (const name of referenced) {
     const entry = agents[name];
-    if (!isRecord(entry)) {
+    if (entry === undefined || section.invalid.includes(name)) {
       missing.push(name);
-    } else if (expertNames.includes(name) && entry.mode === 'subagent') {
+      continue;
+    }
+    const definition = readAgentDefinition(entry);
+    if (expertNames.includes(name) && definition.mode === 'subagent') {
       subagents.push(name);
     }
   }
@@ -574,7 +526,7 @@ function checkOpenCodeConfig(config: ConsiliumConfig, cwd: string): DoctorCheck 
     return {
       id,
       status: 'warn',
-      message: parts.join('; '),
+      message: `${parts.join('; ')} (формат ${describeConfigFlavor(section.flavor)})`,
       hint: hints.join('; ')
     };
   }
@@ -582,7 +534,79 @@ function checkOpenCodeConfig(config: ConsiliumConfig, cwd: string): DoctorCheck 
   return {
     id,
     status: 'ok',
-    message: `${filePath}: агентов ${Object.keys(agents).length}, все ссылки корректны`
+    message: `${read.path}: формат ${describeConfigFlavor(section.flavor)}, агентов ${Object.keys(agents).length}, все ссылки корректны`
+  };
+}
+
+/**
+ * Проверяет, не потеряется ли конфигурация при переходе между V1 и V2.
+ * Учитывает установленную основную версию OpenCode.
+ */
+function checkOpenCodeV2Compat(
+  cwd: string,
+  major: 1 | 2 | null,
+  configuredPath?: string
+): DoctorCheck {
+  const id = 'opencode-v2-compat';
+  const read = readOpenCodeConfig(cwd, configuredPath);
+
+  if (read.path === null) {
+    return {
+      id,
+      status: 'ok',
+      message: 'opencode.json не найден — проверка V1/V2 пропущена'
+    };
+  }
+
+  if (read.config === null) {
+    return {
+      id,
+      status: 'warn',
+      message: `Не удалось прочитать ${read.path}: ${read.error ?? 'неизвестная ошибка'}`,
+      hint: 'Проверка совместимости V1/V2 пропущена до исправления синтаксиса'
+    };
+  }
+
+  const section = readAgentSection(read.config);
+  const mcp = readMcpSection(read.config);
+  const legacy = findLegacyV1Fields(read.config);
+  const problems: string[] = [];
+  const hints: string[] = [];
+
+  if (major === 2) {
+    if (Object.keys(mcp.flat).length > 0) {
+      problems.push(`плоские MCP-серверы: ${formatNames(Object.keys(mcp.flat))}`);
+      hints.push('OpenCode V2 читает только mcp.servers.<name>; выполните consilium mcp --install');
+    }
+    if (legacy.length > 0) {
+      problems.push(`поля V1 без прямого эффекта в V2: ${formatNames(legacy)}`);
+      hints.push('theme переносится в cli.json, autoupdate → update, small_model → agents.title.model, snapshot → snapshots, attachment → media');
+    }
+  }
+
+  if (major === 1 && section.flavor === 'v2') {
+    problems.push('конфигурация в нативном V2-формате');
+    hints.push('OpenCode V1 не читает agents/mcp.servers; используйте V1-формат (agent/prompt)');
+  }
+
+  if (section.duplicated.length > 0) {
+    problems.push(`агенты заданы дважды: ${formatNames(section.duplicated)}`);
+    hints.push('V2 использует agents, V1 — agent; оставьте одно определение агента');
+  }
+
+  if (problems.length === 0) {
+    return {
+      id,
+      status: 'ok',
+      message: `формат ${describeConfigFlavor(section.flavor)} совместим с установленной версией OpenCode`
+    };
+  }
+
+  return {
+    id,
+    status: 'warn',
+    message: `${problems.join('; ')} (формат ${describeConfigFlavor(section.flavor)})`,
+    hint: hints.join('; ')
   };
 }
 
@@ -851,14 +875,27 @@ export async function runDoctor(
   const cwd = options.cwd ?? config.cwd ?? process.cwd();
   const checks: DoctorCheck[] = [];
 
+  let versionText: string | null = null;
+  try {
+    versionText = await getOpenCodeVersion(config);
+  } catch {
+    versionText = null;
+  }
+  const cliMajor = parseOpenCodeVersion(versionText).major;
+
   checks.push(await safeCheck('node-version', () => checkNodeVersion()));
-  checks.push(await safeCheck('opencode-cli', () => checkOpenCodeCli(config)));
+  checks.push(await safeCheck('opencode-cli', () => checkOpenCodeCli(versionText)));
   checks.push(await safeCheck('config-file', () => checkConfigFile(options.configPath)));
   checks.push(await safeCheck('experts-config', () => checkExperts(config)));
   checks.push(await safeCheck('chair-config', () => checkChair(config)));
   checks.push(await safeCheck('timeouts', () => checkTimeouts(config)));
   checks.push(await safeCheck('models-format', () => checkModelsFormat(config)));
   checks.push(await safeCheck('opencode-config', () => checkOpenCodeConfig(config, cwd)));
+  checks.push(
+    await safeCheck('opencode-v2-compat', () =>
+      checkOpenCodeV2Compat(cwd, cliMajor, config.opencodeConfigPath)
+    )
+  );
   checks.push(await safeCheck('output-file', () => checkOutputFile(config, cwd)));
 
   if (options.checkModels !== false) {
@@ -866,6 +903,7 @@ export async function runDoctor(
   }
 
   checks.push(await safeCheck('concurrency', () => checkConcurrency(config)));
+  checks.push(await safeCheck('features', () => checkFeatures(config)));
   checks.push(await safeCheck('standalone', () => checkStandalone(config)));
   checks.push(await safeCheck('auto-approve', () => checkAutoApprove(config)));
 

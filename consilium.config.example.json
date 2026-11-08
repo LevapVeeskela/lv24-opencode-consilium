@@ -1,6 +1,6 @@
 {
   "$schema": "./schema/config.schema.json",
-  "version": "1.1.0",
+  "version": "1.4.0",
 
   "experts": [
     {
@@ -77,5 +77,8 @@
   "standalone": true,
   "autoApprove": false,
   "autoDiscoverAgents": true,
-  "opencodeConfigPath": "opencode.json"
+
+  "artifacts": false,
+  "consensus": false,
+  "smartExperts": false
 }

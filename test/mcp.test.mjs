@@ -60,4 +60,30 @@ test('tools/list отдаёт схемы с required', async () => {
   const response = await handleMcpRequest({ jsonrpc: '2.0', id: 4, method: 'tools/list' });
   const run = response.result.tools.find(tool => tool.name === 'consilium_run');
   assert.deepEqual(run.inputSchema.required, ['task']);
+  assert.ok(run.inputSchema.properties.max_cost);
+  assert.ok(run.inputSchema.properties.artifacts);
+});
+
+test('consilium_run отклоняет невалидный max_cost до запуска', async () => {
+  const response = await handleMcpRequest({
+    jsonrpc: '2.0',
+    id: 5,
+    method: 'tools/call',
+    params: { name: 'consilium_run', arguments: { task: 'test', max_cost: '0.001' } }
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.match(response.result.content[0].text, /max_cost/);
+});
+
+test('consilium_run не пишет артефакты вне workspace', async () => {
+  const response = await handleMcpRequest({
+    jsonrpc: '2.0',
+    id: 6,
+    method: 'tools/call',
+    params: { name: 'consilium_run', arguments: { task: 'test', artifacts: '../outside' } }
+  });
+
+  assert.equal(response.result.isError, true);
+  assert.match(response.result.content[0].text, /inside the workspace/);
 });

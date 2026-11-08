@@ -8,7 +8,12 @@ import {
 import { basename, dirname, resolve, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { Consilium, loadConfig } from './index.js';
-import { readJsonFile } from './config.js';
+import { findOpenCodeConfigPath, readJsonFile } from './config.js';
+import {
+  readAgentDefinition,
+  readAgentSection,
+  upsertAgents
+} from './compat.js';
 import type {
   ConsiliumConfig,
   ConsiliumResult,
@@ -27,7 +32,7 @@ import { verifyModels } from './verify.js';
 import { applyPreset, listPresets } from './presets.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 
-const DEFAULT_VERSION = '1.1.0';
+const DEFAULT_VERSION = '1.4.0';
 const SERVER_NAME = 'opencode-consilium';
 const MAX_LINE_BYTES = 4 * 1024 * 1024;
 const FALLBACK_PROTOCOL_VERSION = '2025-06-18';
@@ -142,6 +147,32 @@ const MCP_TOOLS: McpToolDef[] = [
           type: 'string',
           enum: [...PRESET_NAMES],
           description: 'Configuration preset applied before the run.'
+        },
+        consensus: {
+          type: 'boolean',
+          description: 'Include expert agreement analysis in the chair prompt and the report.'
+        },
+        smart_experts: {
+          type: 'boolean',
+          description: 'Pick 2-3 relevant experts for the task instead of running all enabled experts.'
+        },
+        max_cost: {
+          type: 'number',
+          minimum: 0,
+          description: 'Maximum run cost in USD. When exceeded, the chair is not started.'
+        },
+        fallback_models: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Models tried in order when an expert hits RATE_LIMITED or MODEL_UNAVAILABLE.'
+        },
+        session: {
+          type: 'string',
+          description: 'OpenCode session base id; each agent continues its own session.'
+        },
+        artifacts: {
+          type: ['boolean', 'string'],
+          description: 'Save the run to .consilium/runs (true) or to the given directory.'
         }
       },
       required: ['task']
@@ -421,6 +452,20 @@ function formatConsiliumResult(result: ConsiliumResult): string {
     totalTime: result.totalTime,
     parallelTime: result.parallelTime,
     usage: result.usage,
+    cost: result.metadata?.cost,
+    consensus:
+      result.metadata?.consensus !== null && typeof result.metadata?.consensus === 'object'
+        ? (() => {
+            const report = result.metadata.consensus as {
+              agreement?: unknown;
+              averageSimilarity?: unknown;
+            };
+            return {
+              agreement: report.agreement,
+              averageSimilarity: report.averageSimilarity
+            };
+          })()
+        : undefined,
     experts: result.experts.map((expert) => ({
       agent: expert.agent,
       model: expert.model,
@@ -440,6 +485,14 @@ function formatConsiliumResult(result: ConsiliumResult): string {
     sections.push(`**Saved to:** \`${savedFile}\``);
   } else if (typeof saveError === 'string') {
     sections.push(`**Save failed:** ${saveError}`);
+  }
+
+  const artifacts = result.metadata?.artifacts;
+  if (artifacts !== null && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
+    const dir = (artifacts as { dir?: unknown }).dir;
+    if (typeof dir === 'string') {
+      sections.push(`**Artifacts:** \`${dir}\``);
+    }
   }
 
   return sections.join('\n\n');
@@ -476,6 +529,33 @@ async function toolConsiliumRun(
   const outputFile = optionalString(args, 'output_file');
   const format: OutputFormat | undefined = optionalEnum(args, 'format', OUTPUT_FORMATS);
   const preset: PresetName | undefined = optionalEnum(args, 'preset', PRESET_NAMES);
+  const consensus = optionalBoolean(args, 'consensus');
+  const smartExperts = optionalBoolean(args, 'smart_experts');
+  const maxCostRaw = args['max_cost'];
+  if (
+    maxCostRaw !== undefined &&
+    (typeof maxCostRaw !== 'number' || !Number.isFinite(maxCostRaw) || maxCostRaw < 0)
+  ) {
+    throw new ToolInputError('"max_cost" must be a number >= 0');
+  }
+  const maxCost = maxCostRaw as number | undefined;
+  const fallbackModels = optionalStringArray(args, 'fallback_models');
+  const session = optionalString(args, 'session');
+  const artifactsArg = args['artifacts'];
+  let artifacts: boolean | string | undefined;
+  if (typeof artifactsArg === 'boolean') {
+    artifacts = artifactsArg;
+  } else if (typeof artifactsArg === 'string') {
+    const cwd = process.cwd();
+    const resolved = resolve(cwd, artifactsArg);
+    const prefix = cwd.endsWith(sep) ? cwd : `${cwd}${sep}`;
+    if (resolved !== cwd && !resolved.startsWith(prefix)) {
+      throw new ToolInputError('"artifacts" must stay inside the workspace');
+    }
+    artifacts = resolved;
+  } else if (artifactsArg !== undefined) {
+    throw new ToolInputError('"artifacts" must be a boolean or a string path');
+  }
 
   const outputPath = resolveOutputFile(outputFile);
   if (outputPath.error !== undefined) {
@@ -490,6 +570,12 @@ async function toolConsiliumRun(
   if (format !== undefined) {
     config.output.format = format;
   }
+  if (consensus !== undefined) config.consensus = consensus;
+  if (smartExperts !== undefined) config.smartExperts = smartExperts;
+  if (maxCost !== undefined) config.maxCost = maxCost;
+  if (fallbackModels !== undefined) config.fallbackModels = fallbackModels;
+  if (session !== undefined) config.session = session;
+  if (artifacts !== undefined) config.artifacts = artifacts;
   if (outputPath.value !== undefined) {
     config.output.file = outputPath.value;
   }
@@ -821,14 +907,10 @@ function applyFreeSetup(
   force: boolean,
   extraWarnings: string[] = []
 ): McpToolResult {
-  const workingDirectory = process.cwd();
-  const opencodeJson = resolve(workingDirectory, 'opencode.json');
-  const opencodeJsonc = resolve(workingDirectory, 'opencode.jsonc');
-  const opencodePath = existsSync(opencodeJson)
-    ? opencodeJson
-    : existsSync(opencodeJsonc)
-      ? opencodeJsonc
-      : opencodeJson;
+  const workingDirectory = consiliumConfig.cwd ?? process.cwd();
+  const opencodePath =
+    findOpenCodeConfigPath(consiliumConfig.opencodeConfigPath, workingDirectory) ??
+    resolve(workingDirectory, 'opencode.json');
   const consiliumPath = resolve(workingDirectory, 'consilium.config.json');
 
   let baseConfig: Record<string, unknown> = {};
@@ -851,33 +933,37 @@ function applyFreeSetup(
     baseConfig = parsed;
   }
 
-  const existingAgents = isRecord(baseConfig['agent']) ? baseConfig['agent'] : {};
-  const mergedAgents: Record<string, unknown> = { ...existingAgents };
+  const section = readAgentSection(baseConfig);
+  const definitions: Record<string, { model?: string; prompt?: string; mode?: string }> = {};
 
   for (const [agentName, proposed] of Object.entries(agents)) {
-    const current = isRecord(mergedAgents[agentName]) ? mergedAgents[agentName] : {};
-    const currentModel = typeof current['model'] === 'string' ? current['model'] : '';
+    const current = section.entries[agentName];
+    const currentView = current === undefined ? undefined : readAgentDefinition(current);
+    const currentModel = currentView?.model;
+    const kept = currentModel !== undefined && currentModel.length > 0 && !force;
 
-    if (currentModel.length > 0 && !force) {
-      mergedAgents[agentName] = current;
-      continue;
-    }
-
-    mergedAgents[agentName] = {
-      ...current,
-      model: proposed.model,
-      mode: proposed.mode,
-      prompt: proposed.prompt
+    definitions[agentName] = {
+      model: kept && currentModel !== undefined ? currentModel : proposed.model,
+      prompt: currentView?.prompt ?? proposed.prompt,
+      mode: kept ? currentView?.mode ?? proposed.mode : proposed.mode
     };
   }
 
-  writeFileAtomic(
-    opencodePath,
-    `${JSON.stringify({ ...baseConfig, agent: mergedAgents }, null, 2)}\n`
-  );
+  const upserted = upsertAgents(baseConfig, definitions, {});
+  const nextConfig =
+    typeof upserted.config['$schema'] === 'string'
+      ? upserted.config
+      : { $schema: 'https://opencode.ai/config.json', ...upserted.config };
+
+  writeFileAtomic(opencodePath, `${JSON.stringify(nextConfig, null, 2)}\n`);
 
   let consiliumWritten = false;
-  const warnings: string[] = [...extraWarnings];
+  const warnings: string[] = [...extraWarnings, ...upserted.warnings];
+  if (opencodePath.endsWith('.jsonc')) {
+    warnings.push(
+      `Файл ${opencodePath} перезаписан без комментариев: JSONC-комментарии не сохраняются.`
+    );
+  }
   if (!existsSync(consiliumPath) || force) {
     writeFileAtomic(consiliumPath, `${JSON.stringify(consiliumConfig, null, 2)}\n`);
     consiliumWritten = true;
@@ -901,8 +987,7 @@ function applyFreeSetup(
   lines.push('| Agent | Model |');
   lines.push('| --- | --- |');
   for (const agentName of Object.keys(agents).sort()) {
-    const record = isRecord(mergedAgents[agentName]) ? mergedAgents[agentName] : {};
-    const model = typeof record['model'] === 'string' ? record['model'] : '(unchanged)';
+    const model = definitions[agentName]?.model ?? '(unchanged)';
     lines.push(`| ${cell(agentName)} | ${cell(model)} |`);
   }
   if (warnings.length > 0) {

@@ -79,7 +79,7 @@ export const EXCLUDED_AGENTS = [
  * Конфигурация по умолчанию
  */
 export const DEFAULT_CONFIG: ConsiliumConfig = {
-  version: '1.1.0',
+  version: '1.4.0',
   experts: DEFAULT_EXPERTS,
   chair: DEFAULT_CHAIR,
   excludedAgents: EXCLUDED_AGENTS,
@@ -103,8 +103,7 @@ export const DEFAULT_CONFIG: ConsiliumConfig = {
   },
   standalone: true,
   autoApprove: false,
-  autoDiscoverAgents: true,
-  opencodeConfigPath: 'opencode.json'
+  autoDiscoverAgents: true
 };
 
 /**

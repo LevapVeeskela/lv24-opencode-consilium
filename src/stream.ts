@@ -6,16 +6,34 @@
 import { StringDecoder } from 'string_decoder';
 import type { AgentUsage } from './types.js';
 
+/** Структурированная ошибка из потока событий OpenCode */
+export interface StreamError {
+  /** Тип ошибки OpenCode, например `provider.free-limit` */
+  type?: string;
+  /** Текст ошибки */
+  message: string;
+  /** HTTP-статус, если провайдер его вернул */
+  status?: number;
+  /** Задержка до повторной попытки, если OpenCode её сообщил */
+  retryAfterMs?: number;
+  /** Машинный код ошибки, если он есть */
+  code?: string;
+}
+
 /** Результат разбора потока событий */
 export interface ParsedStream {
   /** Собранный текст ответа */
   text: string;
   /** Сообщения об ошибках из потока */
   errors: string[];
+  /** Структурированные ошибки из потока */
+  errorDetails: StreamError[];
   /** Суммарный расход токенов и стоимость */
   usage: AgentUsage;
   /** Количество разобранных JSON-событий */
   eventCount: number;
+  /** Идентификатор сессии OpenCode из событий */
+  sessionID?: string;
 }
 
 /** Буферизованный декодер событий */
@@ -64,16 +82,23 @@ export function createEventDecoder(): EventDecoder {
   let buffer = '';
   let sawText = false;
   let eventCount = 0;
+  let sessionID: string | undefined;
 
   const segments: TextSegment[] = [];
   const segmentIndex = new Map<string, number>();
   const errors: string[] = [];
+  const errorDetails: StreamError[] = [];
   const usage: AgentUsage = {};
   const stringDecoder = new StringDecoder('utf8');
 
   function addError(message: string): void {
     if (errors.length >= MAX_ERRORS) return;
     errors.push(message.slice(0, MAX_ERROR_LENGTH));
+  }
+
+  function addErrorDetail(detail: StreamError): void {
+    if (errorDetails.length >= MAX_ERRORS) return;
+    errorDetails.push({ ...detail, message: detail.message.slice(0, MAX_ERROR_LENGTH) });
   }
 
   function addUsage(field: Exclude<keyof AgentUsage, 'cost'>, value: number | undefined): void {
@@ -121,12 +146,29 @@ export function createEventDecoder(): EventDecoder {
     if (!isRecord(event)) return;
     eventCount += 1;
 
-    const type = asString(event.type);
-    const part = isRecord(event.part) ? event.part : undefined;
+    // OpenCode V2 может присылать полезную нагрузку в event.properties.
+    const envelope = isRecord(event.properties) ? event.properties : undefined;
+    const payload = envelope ?? event;
+
+    const type = asString(event.type) ?? asString(payload.type);
+    const eventSessionID = asString(event.sessionID) ?? asString(payload.sessionID);
+    if (eventSessionID !== undefined && sessionID === undefined) {
+      sessionID = eventSessionID;
+    }
+    const part = isRecord(payload.part)
+      ? payload.part
+      : isRecord(event.part)
+        ? event.part
+        : undefined;
 
     if (type === 'text') {
       const text = part ? asString(part.text) : undefined;
-      if (text !== undefined) appendText(text);
+      if (text !== undefined) {
+        appendText(text);
+        return;
+      }
+      const delta = part ? asString(part.delta) : undefined;
+      if (delta !== undefined) appendText(delta);
       return;
     }
 
@@ -136,25 +178,40 @@ export function createEventDecoder(): EventDecoder {
     }
 
     if (type === 'error') {
-      const errorPart = isRecord(event.error) ? event.error : undefined;
+      const errorPart = isRecord(payload.error)
+        ? payload.error
+        : isRecord(event.error)
+          ? event.error
+          : undefined;
       const message =
         asString(errorPart?.message) ??
         asString(part?.message) ??
         safeStringify(event).slice(0, MAX_ERROR_LENGTH);
       addError(message);
+      addErrorDetail({
+        type: asString(errorPart?.type),
+        message,
+        status: asNumber(errorPart?.status),
+        retryAfterMs: asNumber(errorPart?.retryAfterMs),
+        code: asString(errorPart?.code)
+      });
       return;
     }
 
     if (type === 'message.part.updated') {
       if (!part || asString(part.type) !== 'text') return;
       const text = asString(part.text);
-      if (text === undefined) return;
+      const delta = asString(part.delta);
       const id = asString(part.id);
-      if (id !== undefined) {
-        storeTextById(id, text);
-      } else {
-        appendText(text);
+      if (text !== undefined) {
+        if (id !== undefined) {
+          storeTextById(id, text);
+        } else {
+          appendText(text);
+        }
+        return;
       }
+      if (delta !== undefined) appendText(delta);
     }
   }
 
@@ -176,12 +233,15 @@ export function createEventDecoder(): EventDecoder {
   }
 
   function buildSnapshot(): ParsedStream {
-    return {
+    const snapshot: ParsedStream = {
       text: segments.map(segment => segment.text).join(''),
       errors: [...errors],
+      errorDetails: errorDetails.map(detail => ({ ...detail })),
       usage: { ...usage },
       eventCount
     };
+    if (sessionID !== undefined) snapshot.sessionID = sessionID;
+    return snapshot;
   }
 
   return {

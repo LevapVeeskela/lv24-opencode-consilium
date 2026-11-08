@@ -33,6 +33,7 @@
         "chairRetries": { "type": "integer", "minimum": 0 },
         "delay": { "type": "integer", "minimum": 0 },
         "exponentialBackoff": { "type": "boolean" },
+        "jitter": { "type": "boolean" },
         "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 8 }
       },
       "additionalProperties": false
@@ -53,7 +54,17 @@
     "opencodeArgs": { "type": "array", "items": { "type": "string" } },
     "cwd": { "type": "string" },
     "standalone": { "type": "boolean" },
-    "autoApprove": { "type": "boolean" }
+    "autoApprove": { "type": "boolean" },
+    "artifacts": { "type": ["string", "boolean"] },
+    "consensus": { "type": "boolean" },
+    "smartExperts": { "type": "boolean" },
+    "maxCost": { "type": "number", "minimum": 0 },
+    "fallbackModels": { "type": "array", "items": { "type": "string" } },
+    "session": { "type": "string", "minLength": 1 },
+    "report": { "enum": ["html", "pr", "markdown"] },
+    "reportFile": { "type": "string", "minLength": 1 },
+    "variant": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "debounceMs": { "type": "integer", "minimum": 0 }
   },
   "definitions": {
     "model": {

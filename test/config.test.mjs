@@ -87,9 +87,28 @@ test('JSONC-строки с ,} и ,] не повреждаются', () => {
 
 test('generateExampleConfig — валидный JSON с ключевыми полями', () => {
   const config = JSON.parse(generateExampleConfig());
-  assert.equal(config.version, '1.1.0');
+  assert.equal(config.version, '1.4.0');
   assert.equal(config.output.file, false);
   assert.equal(config.retry.maxConcurrency, 3);
   assert.equal(config.standalone, true);
   assert.equal(config.experts.length, 4);
+});
+
+test('validateConfig проверяет report, variant и debounceMs', () => {
+  const invalid = mergeWithDefaults({
+    report: 'pdf',
+    variant: 'bad variant',
+    debounceMs: -1
+  });
+  const warnings = validateConfig(invalid);
+  assert.ok(warnings.some(w => w.includes('формат отчёта')));
+  assert.ok(warnings.some(w => w.includes('вариант модели')));
+  assert.ok(warnings.some(w => w.includes('debounceMs')));
+
+  const valid = mergeWithDefaults({
+    report: 'html',
+    variant: 'high',
+    debounceMs: 250
+  });
+  assert.deepEqual(validateConfig(valid), []);
 });

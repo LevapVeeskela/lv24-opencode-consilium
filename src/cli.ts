@@ -6,7 +6,8 @@
  */
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { homedir } from 'os';
+import { dirname, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { CLIOptions, ConsiliumConfig, ConsiliumResult, RunOptions } from './types.js';
 import { Consilium, loadConfig, generateExampleConfig, mergeWithDefaults } from './index.js';
@@ -16,9 +17,32 @@ import { getGitDiff, formatDiffForPrompt } from './git.js';
 import { formatDoctorReport, runDoctor } from './doctor.js';
 import { verifyModels } from './verify.js';
 import { startMcpServer } from './mcp.js';
-import { readJsonFile } from './config.js';
+import { getOpenCodeVersion } from './agents.js';
+import { findOpenCodeConfigPath, readJsonFile } from './config.js';
+import {
+  diffArtifacts,
+  loadArtifact,
+  resolveArtifactRoot,
+  type ArtifactRun
+} from './artifacts.js';
+import { renderReport, type ReportFormat } from './report.js';
+import { planReplay } from './replay.js';
+import { isValidVariant, variantOf, withVariant } from './variants.js';
+import {
+  createProjectWatcher,
+  installPreCommitHook,
+  uninstallPreCommitHook
+} from './watch.js';
+import {
+  parseOpenCodeVersion,
+  readAgentDefinition,
+  readAgentSection,
+  readMcpSection,
+  upsertAgents,
+  upsertMcpServer
+} from './compat.js';
 
-const COMMANDS = new Set(['run', 'init', 'models', 'doctor', 'mcp', 'help', 'version']);
+const COMMANDS = new Set(['run', 'init', 'models', 'doctor', 'mcp', 'watch', 'hooks', 'help', 'version']);
 
 class UsageError extends Error {}
 
@@ -52,6 +76,21 @@ function parseNonNegativeInt(value: string, flag: string): number {
     throw new UsageError(`Флаг ${flag} ожидает целое число >= 0, получено: ${value}`);
   }
   return parsed;
+}
+
+function parseNonNegativeFloat(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new UsageError(`Флаг ${flag} ожидает число >= 0, получено: ${value}`);
+  }
+  return parsed;
+}
+
+function parseCsv(value: string): string[] {
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
 }
 
 /**
@@ -188,6 +227,69 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--no-verify':
         options.noVerify = true;
         break;
+      case '--max-cost':
+        options.maxCost = parseNonNegativeFloat(requireNumericValue(argv, ++i, arg), arg);
+        break;
+      case '--fallback-models':
+        options.fallbackModels = parseCsv(requireValue(argv, ++i, arg));
+        break;
+      case '--session':
+        options.session = requireValue(argv, ++i, arg);
+        break;
+      case '--report': {
+        const format = requireValue(argv, ++i, arg);
+        if (format !== 'html' && format !== 'pr' && format !== 'markdown') {
+          throw new UsageError(`Неизвестный формат отчёта: ${format} (html, pr, markdown)`);
+        }
+        options.report = format;
+        break;
+      }
+      case '--report-file':
+        options.reportFile = requireValue(argv, ++i, arg);
+        break;
+      case '--variant':
+        options.variant = requireValue(argv, ++i, arg);
+        break;
+      case '--debounce':
+        options.debounceMs = parseNonNegativeInt(requireNumericValue(argv, ++i, arg), arg);
+        break;
+      case '--artifacts':
+        options.artifacts = true;
+        break;
+      case '--artifacts-dir':
+        options.artifactsDir = requireValue(argv, ++i, arg);
+        options.artifacts = options.artifactsDir;
+        break;
+      case '--no-artifacts':
+        options.noArtifacts = true;
+        break;
+      case '--consensus':
+        options.consensus = true;
+        break;
+      case '--no-consensus':
+        options.noConsensus = true;
+        break;
+      case '--smart-experts':
+        options.smartExperts = true;
+        break;
+      case '--replay':
+        options.replay = requireValue(argv, ++i, arg);
+        break;
+      case '--diff-runs': {
+        const left = requireValue(argv, ++i, arg);
+        const right = requireValue(argv, ++i, arg);
+        options.diffRuns = [left, right];
+        break;
+      }
+      case '--native-v2':
+        options.nativeV2 = true;
+        break;
+      case '--install':
+        options.mcpInstall = true;
+        break;
+      case '--global':
+        options.globalConfig = true;
+        break;
       default:
         if (arg === '-') {
           options.taskFile = '-';
@@ -205,6 +307,13 @@ export function parseArgs(argv: string[]): CLIOptions {
   }
 
   options.task = taskParts.join(' ').trim();
+  if (options.command === 'hooks') {
+    const action = options.task.trim();
+    if (action === 'install' || action === 'uninstall') {
+      options.hookAction = action;
+      options.task = '';
+    }
+  }
   if (options.help) options.command = 'help';
   if (options.version) options.command = 'version';
   if (options.init && options.command === undefined) options.command = 'init';
@@ -249,13 +358,40 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --base <ref>            Сравнить с веткой/коммитом
   --task-file <файл>      Прочитать задачу из файла
 
+АНАЛИЗ И АРТЕФАКТЫ:
+  --consensus             Анализ согласия экспертов (в промпт председателя и отчёт)
+  --no-consensus          Отключить анализ согласия
+  --smart-experts         Выбрать 2–3 релевантных эксперта по задаче/диффу
+  --max-cost <usd>        Лимит стоимости; при превышении председатель не запускается
+  --fallback-models a,b   Запасные модели при RATE_LIMITED/MODEL_UNAVAILABLE/EMPTY_RESPONSE
+  --session <id>          Продолжить сессию председателя; эксперты получают свои сессии
+  --artifacts             Сохранить запуск в .consilium/runs
+  --artifacts-dir <путь>  Сохранить артефакты в указанный каталог
+  --no-artifacts          Не сохранять артефакты
+  --replay <id>           Повторить сохранённый запуск
+  --diff-runs <a> <b>     Сравнить два артефакта
+  --report <формат>       Отчёт после запуска: html, pr, markdown
+  --report-file <файл>    Записать отчёт в файл (по умолчанию stdout)
+  --variant <имя>         Вариант для моделей без #variant (существующий сохраняется)
+
+РЕЖИМ НАБЛЮДЕНИЯ:
+  watch [--debounce <мс>] [задача]
+                          Перезапускать консилиум при изменениях в проекте
+  hooks install|uninstall Установить/удалить git pre-commit hook
+
 КОМАНДЫ:
-  init [--free] [--force] [--dry-run]
+  init [--free] [--force] [--dry-run] [--native-v2]
                           Создать конфиг; --free — подобрать и проверить сильнейшие бесплатные модели
   models [--available] [--verify] [--limit N] [--refresh] [--json]
                           Рейтинг бесплатных моделей (models.dev + OpenRouter)
   doctor                  Проверить окружение, конфиг, агентов и модели
-  mcp                     Запустить MCP-сервер (stdio) для любого харнеса
+  mcp [--install] [--global]
+                          Запустить MCP-сервер (stdio) или зарегистрировать его в opencode.json
+
+СОВМЕСТИМОСТЬ:
+  Работает с OpenCode V1 и V2. Формат opencode.json определяется автоматически:
+  V1-формат (agent/prompt) читают обе версии, нативный V2 (agents/system)
+  пишется только по флагу --native-v2.
 
 БЕСПЛАТНЫЕ МОДЕЛИ:
   consilium init --free
@@ -263,7 +399,11 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
     и прописывает их в opencode.json и consilium.config.json.
     --refresh — обновить кэш, --dry-run — только показать план.
 
-MCP (Claude Desktop / Codex / любой MCP-харнесс):
+MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
+  consilium mcp --install             # ./opencode.json → mcp.servers.consilium (V2) или mcp.consilium (V1)
+  consilium mcp --install --global    # глобальный конфиг OpenCode
+
+  Claude Desktop / Codex:
   {
     "mcpServers": {
       "consilium": {
@@ -362,6 +502,41 @@ function printSummary(result: ConsiliumResult, options: CLIOptions): void {
   if (typeof result.metadata?.saveError === 'string') {
     console.error(`⚠️ Не сохранено: ${result.metadata.saveError}`);
   }
+
+  const artifacts = result.metadata?.artifacts;
+  if (artifacts !== null && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
+    const dir = (artifacts as { dir?: unknown }).dir;
+    if (typeof dir === 'string') {
+      console.error(`📦 Артефакт: ${dir}`);
+    }
+  }
+
+  const consensus = result.metadata?.consensus;
+  if (consensus !== null && typeof consensus === 'object' && !Array.isArray(consensus)) {
+    const agreement = (consensus as { agreement?: unknown }).agreement;
+    const average = (consensus as { averageSimilarity?: unknown }).averageSimilarity;
+    if (typeof agreement === 'string') {
+      const value = typeof average === 'number' ? `, ${average.toFixed(2)}` : '';
+      console.error(`🤝 Согласие экспертов: ${agreement}${value}`);
+    }
+  }
+
+  const cost = result.metadata?.cost;
+  if (cost !== null && typeof cost === 'object' && !Array.isArray(cost)) {
+    const limit = (cost as { limit?: unknown }).limit;
+    const spent = (cost as { spent?: unknown }).spent;
+    const exceeded = (cost as { exceeded?: unknown }).exceeded;
+    if (typeof limit === 'number' && typeof spent === 'number') {
+      console.error(
+        `🎯 Лимит: $${limit.toFixed(4)} · потрачено $${spent.toFixed(4)}` +
+          (exceeded === true ? ' — превышен' : '')
+      );
+    }
+  }
+
+  if (result.metadata?.costTelemetry === 'missing') {
+    console.error('⚠️ Провайдер не сообщил стоимость: лимит maxCost не проверен');
+  }
 }
 
 async function readTaskFromFile(path: string): Promise<string> {
@@ -430,6 +605,46 @@ function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions): Consil
     result.output.file = options.output;
   }
 
+  if (options.artifacts !== undefined) result.artifacts = options.artifacts;
+  if (options.noArtifacts) result.artifacts = false;
+  if (options.consensus === true) result.consensus = true;
+  if (options.noConsensus) result.consensus = false;
+  if (options.smartExperts) result.smartExperts = true;
+  if (options.maxCost !== undefined) result.maxCost = options.maxCost;
+  if (options.fallbackModels !== undefined) result.fallbackModels = options.fallbackModels;
+  if (options.session !== undefined) result.session = options.session;
+
+  if (options.variant !== undefined) {
+    if (!isValidVariant(options.variant)) {
+      throw new UsageError(
+        `Некорректный вариант модели: ${options.variant} (допустимы буквы, цифры, . _ -)`
+      );
+    }
+    const configVariant = result.variant;
+    result.experts = result.experts.map(expert => {
+      if (expert.model === undefined || !expert.model.includes('/')) return expert;
+      const existing = variantOf(expert.model);
+      if (existing === undefined || existing === configVariant) {
+        return { ...expert, model: withVariant(expert.model, options.variant) };
+      }
+      return expert;
+    });
+    if (result.chair.model !== undefined && result.chair.model.includes('/')) {
+      const existing = variantOf(result.chair.model);
+      if (existing === undefined || existing === configVariant) {
+        result.chair = {
+          ...result.chair,
+          model: withVariant(result.chair.model, options.variant)
+        };
+      }
+    }
+    result.variant = options.variant;
+  }
+
+  if (options.report !== undefined) result.report = options.report;
+  if (options.reportFile !== undefined) result.reportFile = options.reportFile;
+  if (options.debounceMs !== undefined) result.debounceMs = options.debounceMs;
+
   return result;
 }
 
@@ -487,6 +702,55 @@ async function buildTask(options: CLIOptions): Promise<string> {
   return task.trim();
 }
 
+/** Определяет формат отчёта по расширению файла */
+function inferReportFormat(file: string): ReportFormat {
+  const lower = file.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'pr';
+  return 'html';
+}
+
+/** Рендерит и сохраняет отчёт. Возвращает true, если отчёт напечатан в stdout. */
+function writeRunReport(
+  result: ConsiliumResult,
+  config: ConsiliumConfig,
+  options: CLIOptions
+): boolean {
+  const formatSetting = options.report ?? config.report;
+  const fileSetting = options.reportFile ?? config.reportFile;
+  if (formatSetting === undefined && fileSetting === undefined) return false;
+
+  const format = formatSetting ?? inferReportFormat(fileSetting ?? '');
+  let text: string;
+  try {
+    text = renderReport(result, format);
+  } catch (error) {
+    console.error(`⚠️ Не удалось построить отчёт: ${(error as Error).message}`);
+    return false;
+  }
+
+  if (fileSetting === undefined) {
+    if ((options.format ?? config.output.format) === 'json') {
+      console.error('⚠️ Отчёт не выведен: при --format json укажите --report-file');
+      return false;
+    }
+    console.log(text);
+    return true;
+  }
+
+  const target = resolve(config.cwd ?? process.cwd(), fileSetting);
+  try {
+    const directory = dirname(target);
+    if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
+    writeFileSync(target, text, 'utf-8');
+  } catch (error) {
+    console.error(`⚠️ Не удалось сохранить отчёт: ${(error as Error).message}`);
+    return false;
+  }
+  if (!options.silent) console.error(`📄 Отчёт: ${target}`);
+  return false;
+}
+
 async function commandRun(options: CLIOptions): Promise<number> {
   const loaded = loadConfig(options.config);
   if (options.config && (!loaded.configPath || (loaded.errors?.length ?? 0) > 0)) {
@@ -510,9 +774,100 @@ async function commandRun(options: CLIOptions): Promise<number> {
     return 0;
   }
 
-  const task = await buildTask(options);
-  if (!task) {
-    throw new UsageError('Укажите задачу: consilium "Оценить архитектуру" (или передайте её через stdin: consilium -)');
+  const artifactsSetting = options.noArtifacts
+    ? false
+    : options.artifacts ?? config.artifacts;
+  const artifactsRoot = resolveArtifactRoot({
+    artifacts:
+      artifactsSetting !== undefined && artifactsSetting !== false ? artifactsSetting : true,
+    cwd: config.cwd
+  });
+
+  if (options.diffRuns !== undefined) {
+    const [leftId, rightId] = options.diffRuns;
+    try {
+      const left = loadArtifact(leftId, artifactsRoot);
+      const right = loadArtifact(rightId, artifactsRoot);
+      console.log(diffArtifacts(left, right));
+      return 0;
+    } catch (error) {
+      throw new UsageError((error as Error).message);
+    }
+  }
+
+  let replayArtifact: ArtifactRun | undefined;
+  let task: string;
+  if (options.replay !== undefined) {
+    try {
+      replayArtifact = loadArtifact(options.replay, artifactsRoot);
+    } catch (error) {
+      throw new UsageError((error as Error).message);
+    }
+
+    const plan = planReplay(replayArtifact, {
+      chairAgent: config.chair.agent,
+      artifacts: artifactsSetting
+    });
+    task = plan.task;
+
+    const byName = new Map(config.experts.map(expert => [expert.name, expert]));
+    config.experts = plan.experts.map((expert, index) => {
+      const base = byName.get(expert.name) ?? {
+        name: expert.name,
+        enabled: true,
+        priority: index + 1
+      };
+      return expert.model !== undefined ? { ...base, model: expert.model } : base;
+    });
+
+    if (options.experts !== undefined) {
+      const requested = options.experts
+        .split(',')
+        .map(name => name.trim())
+        .filter(name => name.length > 0);
+      const wanted = new Set(requested);
+      const filtered = config.experts.filter(expert => wanted.has(expert.name));
+
+      if (filtered.length === 0) {
+        throw new UsageError(
+          `В артефакте ${replayArtifact.id} нет экспертов: ${requested.join(', ')}. ` +
+            `Доступны: ${plan.experts.map(expert => expert.name).join(', ')}`
+        );
+      }
+      const missing = requested.filter(
+        name => !plan.experts.some(expert => expert.name === name)
+      );
+      if (missing.length > 0 && !options.silent) {
+        console.error(`⚠️ Нет в артефакте: ${missing.join(', ')}`);
+      }
+      config.experts = filtered;
+    }
+    config.chair = { ...config.chair, agent: plan.chair.agent };
+    if (plan.chair.model !== undefined) {
+      config.chair = { ...config.chair, model: plan.chair.model };
+    }
+    if (plan.options.consensus !== undefined) config.consensus = plan.options.consensus;
+    if (plan.options.smartExperts !== undefined) config.smartExperts = plan.options.smartExperts;
+    if (plan.options.fallbackModels !== undefined) {
+      config.fallbackModels = plan.options.fallbackModels;
+    }
+    if (plan.options.session !== undefined) config.session = plan.options.session;
+    if (plan.options.artifacts !== undefined) config.artifacts = plan.options.artifacts;
+
+    if (!options.silent) {
+      console.error(`↩️ Повтор артефакта ${replayArtifact.id} (${replayArtifact.createdAt})`);
+      for (const warning of plan.warnings) {
+        console.error(`⚠️ ${warning}`);
+      }
+    }
+  } else {
+    const built = await buildTask(options);
+    if (!built) {
+      throw new UsageError(
+        'Укажите задачу: consilium "Оценить архитектуру" (или передайте её через stdin: consilium -)'
+      );
+    }
+    task = built;
   }
 
   if (options.dryRun) {
@@ -542,10 +897,14 @@ async function commandRun(options: CLIOptions): Promise<number> {
   const runOptions: RunOptions = {};
   if (options.chair) runOptions.chair = options.chair;
   if (options.output && !options.noSave) runOptions.outputFile = options.output;
+  if (replayArtifact !== undefined) {
+    runOptions.metadata = { replayOf: replayArtifact.id };
+  }
 
   try {
     const result = await consilium.run(task, runOptions);
-    printResult(result, options);
+    const reportPrinted = writeRunReport(result, config, options);
+    if (!reportPrinted) printResult(result, options);
     printSummary(result, options);
     return result.success ? 0 : 1;
   } catch (error) {
@@ -562,10 +921,106 @@ function writeJsonAtomic(path: string, value: unknown): void {
   renameSync(temporary, path);
 }
 
+/** Путь к глобальному opencode.json(c) */
+function resolveGlobalOpenCodePath(): string {
+  const configHome = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
+  const directory = resolve(configHome, 'opencode');
+  const json = resolve(directory, 'opencode.json');
+  const jsonc = resolve(directory, 'opencode.jsonc');
+  return existsSync(json) ? json : existsSync(jsonc) ? jsonc : json;
+}
+
+/**
+ * Регистрирует MCP-сервер в конфигурации OpenCode в формате установленной версии.
+ * V2 пишет `mcp.servers.<name>` и `disabled`, V1 — `mcp.<name>` и `enabled`.
+ */
+async function commandMcpInstall(options: CLIOptions): Promise<number> {
+  const global = options.globalConfig === true;
+  const loaded = loadConfig(options.config);
+  const cwd = loaded.config.cwd ?? process.cwd();
+
+  const path = global
+    ? resolveGlobalOpenCodePath()
+    : findOpenCodeConfigPath(loaded.config.opencodeConfigPath, cwd) ??
+      resolve(cwd, 'opencode.json');
+
+  let existing: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      const parsed = readJsonFile(path);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    } catch (error) {
+      console.error(`❌ Не удалось прочитать ${path}: ${(error as Error).message}`);
+      return 1;
+    }
+  }
+
+  // Формат MCP-секции определяет установленный CLI, а не формат agent-секции:
+  // V2 игнорирует плоские записи mcp.<name>.
+  let flavor: 'v1' | 'v2' | undefined;
+  try {
+    const cliMajor = parseOpenCodeVersion(await getOpenCodeVersion(loaded.config)).major;
+    flavor = cliMajor === 2 ? 'v2' : cliMajor === 1 ? 'v1' : undefined;
+  } catch {
+    flavor = undefined;
+  }
+
+  const section = readMcpSection(existing);
+  const targetFlavor = flavor ?? section.flavor;
+  const installedEntry =
+    targetFlavor === 'v2' ? section.servers.consilium : section.flat.consilium;
+
+  if (installedEntry !== undefined && !options.force && !options.dryRun) {
+    console.log(`ℹ️ MCP-сервер consilium уже есть в ${path} (используйте --force для обновления).`);
+    return 0;
+  }
+
+  const upserted = upsertMcpServer(
+    existing,
+    'consilium',
+    { command: ['npx', '-y', 'opencode-consilium', 'mcp'] },
+    { flavor: targetFlavor }
+  );
+
+  for (const warning of upserted.warnings) {
+    log(options, `⚠️ ${warning}`);
+  }
+
+  const proposed = {
+    $schema:
+      typeof existing.$schema === 'string'
+        ? existing.$schema
+        : 'https://opencode.ai/config.json',
+    ...upserted.config
+  };
+
+  if (options.dryRun) {
+    console.log(JSON.stringify(proposed, null, 2));
+    return 0;
+  }
+
+  if (path.endsWith('.jsonc')) {
+    log(options, '⚠️ Файл .jsonc будет перезаписан без комментариев (они не сохраняются).');
+  }
+
+  writeJsonAtomic(path, proposed);
+  const key = upserted.key === 'mcp.servers' ? 'mcp.servers.consilium' : 'mcp.consilium';
+  const flavorLabel = upserted.flavor === 'v2' ? 'V2' : 'V1';
+  console.log(`✅ MCP-сервер зарегистрирован: ${path}`);
+  console.log(`   Ключ: ${key} (${flavorLabel}-формат)`);
+  console.log('   Проверка: opencode mcp list');
+  return 0;
+}
+
 async function commandInit(options: CLIOptions): Promise<number> {
   const configPath = resolve(process.cwd(), 'consilium.config.json');
 
   if (!options.free) {
+    if (options.nativeV2 === true) {
+      log(options, 'ℹ️ --native-v2 применяется только с --free: он влияет на запись агентов в opencode.json.');
+    }
     if (options.dryRun) {
       console.log(generateExampleConfig());
       return 0;
@@ -618,13 +1073,11 @@ async function commandInit(options: CLIOptions): Promise<number> {
 
   const agents = buildCouncilAgents(pool);
   const councilConfig = buildConsiliumConfigFromModels(pool);
-  const opencodeJson = resolve(process.cwd(), 'opencode.json');
-  const opencodeJsonc = resolve(process.cwd(), 'opencode.jsonc');
-  const opencodePath = existsSync(opencodeJson)
-    ? opencodeJson
-    : existsSync(opencodeJsonc)
-      ? opencodeJsonc
-      : opencodeJson;
+  const loadedForPath = loadConfig(options.config);
+  const targetCwd = loadedForPath.config.cwd ?? process.cwd();
+  const opencodePath =
+    findOpenCodeConfigPath(loadedForPath.config.opencodeConfigPath, targetCwd) ??
+    resolve(targetCwd, 'opencode.json');
 
   let existing: Record<string, unknown> = {};
   if (existsSync(opencodePath)) {
@@ -639,37 +1092,40 @@ async function commandInit(options: CLIOptions): Promise<number> {
     }
   }
 
-  const existingAgents =
-    existing.agent && typeof existing.agent === 'object' && !Array.isArray(existing.agent)
-      ? (existing.agent as Record<string, unknown>)
-      : {};
-
-  const mergedAgents: Record<string, unknown> = { ...existingAgents };
+  const section = readAgentSection(existing);
   const assignments: Array<{ agent: string; model: string; kept: boolean }> = [];
+  const definitions: Record<string, { model?: string; prompt?: string; mode?: string }> = {};
 
   for (const [name, agent] of Object.entries(agents)) {
-    const current = existingAgents[name];
-    const currentModel =
-      current && typeof current === 'object' && typeof (current as { model?: unknown }).model === 'string'
-        ? (current as { model: string }).model
-        : undefined;
+    const current = section.entries[name];
+    const currentView = current === undefined ? undefined : readAgentDefinition(current);
+    const currentModel = currentView?.model;
     const kept = currentModel !== undefined && !options.force;
-    mergedAgents[name] = {
-      ...(current && typeof current === 'object' ? current : {}),
-      mode: 'primary',
-      model: kept ? currentModel : agent.model,
-      prompt:
-        current && typeof current === 'object' && typeof (current as { prompt?: unknown }).prompt === 'string'
-          ? (current as { prompt: string }).prompt
-          : agent.prompt
+    const model = kept && currentModel !== undefined ? currentModel : agent.model;
+
+    definitions[name] = {
+      model,
+      prompt: currentView?.prompt ?? agent.prompt,
+      mode: 'primary'
     };
-    assignments.push({ agent: name, model: kept ? currentModel : agent.model, kept });
+    assignments.push({ agent: name, model, kept });
+  }
+
+  const upserted = upsertAgents(existing, definitions, {
+    flavor: options.nativeV2 === true ? 'v2' : undefined,
+    migrate: options.nativeV2 === true
+  });
+
+  for (const warning of upserted.warnings) {
+    log(options, `⚠️ ${warning}`);
   }
 
   const proposedOpenCode = {
-    $schema: typeof existing.$schema === 'string' ? existing.$schema : 'https://opencode.ai/config.json',
-    ...existing,
-    agent: mergedAgents
+    $schema:
+      typeof existing.$schema === 'string'
+        ? existing.$schema
+        : 'https://opencode.ai/config.json',
+    ...upserted.config
   };
 
   const defaultConfig = mergeWithDefaults({
@@ -694,6 +1150,10 @@ async function commandInit(options: CLIOptions): Promise<number> {
   if (options.dryRun) {
     console.log(JSON.stringify({ opencode: proposedOpenCode, consilium: proposedConsilium }, null, 2));
     return 0;
+  }
+
+  if (opencodePath.endsWith('.jsonc')) {
+    log(options, '⚠️ Файл .jsonc будет перезаписан без комментариев (они не сохраняются).');
   }
 
   writeJsonAtomic(opencodePath, proposedOpenCode);
@@ -796,8 +1256,173 @@ async function commandDoctor(options: CLIOptions): Promise<number> {
 }
 
 /**
- * Точка входа CLI. Возвращает код выхода.
+ * Watch-режим: перезапускает консилиум при изменениях в проекте.
  */
+async function commandWatch(options: CLIOptions): Promise<number> {
+  if (options.replay !== undefined) {
+    throw new UsageError('watch не поддерживает --replay');
+  }
+  if (options.diffRuns !== undefined) {
+    throw new UsageError('watch не поддерживает --diff-runs');
+  }
+  if (options.taskFile === '-') {
+    throw new UsageError('watch не читает задачу из stdin (-)');
+  }
+
+  const loaded = loadConfig(options.config);
+  if (!options.silent) {
+    for (const warning of loaded.warnings) {
+      console.error(`⚠️ ${warning}`);
+    }
+  }
+  const config = applyCliOverrides(loaded.config, options);
+  const cwd = config.cwd ?? process.cwd();
+  const task =
+    options.task.trim().length > 0 ? options.task.trim() : 'Сделай ревью текущих изменений';
+  const debounceMs = config.debounceMs ?? 400;
+
+  const ignore: string[] = [];
+  const addIgnore = (value: string | undefined): void => {
+    if (value === undefined || value.trim().length === 0) return;
+    const target = resolve(cwd, value);
+    const rel = relative(cwd, target);
+    if (rel.length > 0 && !rel.startsWith('..')) {
+      ignore.push(rel.replace(/\\/g, '/'));
+    }
+  };
+  addIgnore(options.output ?? (typeof config.output.file === 'string' ? config.output.file : undefined));
+  addIgnore(options.reportFile ?? config.reportFile);
+  if (config.artifacts !== undefined && config.artifacts !== false) {
+    try {
+      addIgnore(resolveArtifactRoot({ artifacts: config.artifacts, cwd }));
+    } catch {
+      // Некорректный каталог артефактов отловит сам запуск
+    }
+  }
+
+  if (!options.silent) {
+    console.error(`👀 watch: ${cwd} (debounce ${debounceMs} мс), Ctrl+C — выход`);
+    if (ignore.length > 0) console.error(`   игнорирую выводы: ${ignore.join(', ')}`);
+  }
+
+  let running = false;
+  let pending = false;
+  let closed = false;
+  let active: Consilium | undefined;
+
+  const runOnce = async (): Promise<void> => {
+    if (running || closed) {
+      pending = true;
+      return;
+    }
+    running = true;
+    try {
+      let baseTask = task;
+      if (options.taskFile !== undefined) {
+        const fromFile = await readTaskFromFile(options.taskFile);
+        if (fromFile.trim().length > 0) baseTask = fromFile.trim();
+      }
+
+      let fullTask = baseTask;
+      try {
+        const diff = await getGitDiff({
+          cwd,
+          staged: options.diffStaged,
+          base: options.diffBase
+        });
+        if (diff.filesChanged > 0) {
+          fullTask = `${baseTask}\n\n${formatDiffForPrompt(diff)}`;
+        }
+      } catch {
+        // Вне git-репозитория работаем с задачей как есть
+      }
+
+      if (options.dryRun) {
+        printDryRun(fullTask, config);
+        return;
+      }
+
+      if (!options.silent) console.error('\n🔄 Запуск консилиума...');
+      active = new Consilium(config);
+      const result = await active.run(fullTask);
+      const reportPrinted = writeRunReport(result, config, options);
+      if (!reportPrinted) printResult(result, options);
+      printSummary(result, options);
+    } catch (error) {
+      console.error(`❌ ${(error as Error).message}`);
+    } finally {
+      active = undefined;
+      running = false;
+      if (pending && !closed) {
+        pending = false;
+        void runOnce();
+      }
+    }
+  };
+
+  let watcher: { close(): void };
+  try {
+    watcher = createProjectWatcher({
+      cwd,
+      debounceMs,
+      ignore,
+      onTrigger: () => {
+        void runOnce();
+      }
+    });
+  } catch (error) {
+    console.error(`❌ Не удалось запустить watch: ${(error as Error).message}`);
+    return 1;
+  }
+
+  await runOnce();
+
+  await new Promise<void>(resolve => {
+    const shutdown = (): void => {
+      closed = true;
+      active?.cancel();
+      watcher.close();
+      resolve();
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  });
+
+  return 0;
+}
+
+/** Устанавливает или удаляет git pre-commit hook */
+async function commandHooks(options: CLIOptions): Promise<number> {
+  const cwd = process.cwd();
+
+  if (options.hookAction === undefined) {
+    console.error('❌ Укажите действие: consilium hooks install|uninstall');
+    return 2;
+  }
+
+  if (options.hookAction === 'uninstall') {
+    const removed = uninstallPreCommitHook(cwd);
+    console.log(
+      removed
+        ? '✅ consilium-блок удалён из pre-commit'
+        : 'ℹ️ consilium-блок в pre-commit не найден'
+    );
+    return 0;
+  }
+
+  const hookCommand =
+    'npx -y opencode-consilium --staged -s "Ревью staged-изменений" || exit 1';
+  try {
+    const hook = installPreCommitHook(cwd, hookCommand);
+    console.log(`✅ pre-commit hook ${hook.created ? 'создан' : 'обновлён'}: ${hook.path}`);
+    console.log(`   ${hookCommand}`);
+    return 0;
+  } catch (error) {
+    console.error(`❌ ${(error as Error).message}`);
+    return 1;
+  }
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   let options: CLIOptions;
   try {
@@ -827,10 +1452,17 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
       case 'doctor':
         return await commandDoctor(options);
       case 'mcp': {
+        if (options.mcpInstall === true) {
+          return await commandMcpInstall(options);
+        }
         if (!options.silent) console.error('opencode-consilium MCP server (stdio). Логи — в stderr.');
         await startMcpServer({ version: readVersion() });
         return 0;
       }
+      case 'watch':
+        return await commandWatch(options);
+      case 'hooks':
+        return await commandHooks(options);
       case 'run':
         return await commandRun(options);
       default:
