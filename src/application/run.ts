@@ -14,12 +14,12 @@ import type {
 import { analyzeConsensus, formatConsensusReport } from '../domain/council/consensus.js';
 import type { SmartExpertSelection } from '../domain/council/smart-experts.js';
 import type { CostReport } from '../domain/council/fallback.js';
+import type { ArtifactRun } from '../domain/artifacts/artifacts.js';
 import {
   createArtifactId,
   resolveArtifactRoot,
-  saveArtifact,
-  type ArtifactRun
-} from '../domain/artifacts/artifacts.js';
+  saveArtifact
+} from '../infrastructure/artifacts/store.js';
 import { collectModels, collectSessions, consensusInputs, sumUsage } from './helpers.js';
 
 /** Выбирает экспертов с учётом явного запроса и включённости */

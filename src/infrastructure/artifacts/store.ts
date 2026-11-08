@@ -5,10 +5,10 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import * as path from 'node:path';
-import { writeFileAtomic } from '../../../shared/fs.js';
-import { isRecord } from '../../../shared/record.js';
-import { formatArtifact } from './format.js';
-import { ID_PATTERN, type ArtifactRef, type ArtifactRun } from './types.js';
+import { writeFileAtomic } from '../../shared/fs.js';
+import { isRecord } from '../../shared/record.js';
+import { formatArtifact } from '../../domain/artifacts/artifacts/format.js';
+import { ID_PATTERN, type ArtifactRef, type ArtifactRun } from '../../domain/artifacts/artifacts/types.js';
 
 /** Дополняет число ведущим нулём */
 function pad2(value: number): string {

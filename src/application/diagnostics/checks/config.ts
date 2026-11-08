@@ -6,7 +6,7 @@
 import { accessSync, constants, existsSync, statSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type { ConsiliumConfig } from '../../../domain/types.js';
-import { resolveArtifactRoot } from '../../../domain/artifacts/artifacts.js';
+import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import type { DoctorCheck } from '../types.js';
 import {
   MODEL_PATTERN,

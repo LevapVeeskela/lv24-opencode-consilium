@@ -8,7 +8,7 @@ import type { CLIOptions } from '../../../domain/types.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
 import { getGitDiff, formatDiffForPrompt } from '../../../infrastructure/git.js';
 import { createProjectWatcher } from '../../../infrastructure/watch.js';
-import { resolveArtifactRoot } from '../../../domain/artifacts/artifacts.js';
+import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { readTaskFromFile } from '../task.js';

@@ -7,7 +7,8 @@ import { existsSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import type { CLIOptions } from '../../../domain/types.js';
 import { loadConfig, generateExampleConfig, mergeWithDefaults } from '../../../application/consilium.js';
-import { buildCouncilAgents, buildConsiliumConfigFromModels, fetchFreeModels, selectCouncilModels } from '../../../domain/models/models.js';
+import { buildCouncilAgents, buildConsiliumConfigFromModels, selectCouncilModels } from '../../../domain/models/models.js';
+import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import { verifyModels } from '../../../application/models/verify.js';
 import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
 import {

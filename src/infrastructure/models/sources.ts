@@ -8,12 +8,12 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { errorMessage } from '../../shared/errors.js';
 import { isRecord, type JsonRecord } from '../../shared/record.js';
-import { BUILTIN_FREE_MODELS, isExcludedFreeProvider } from './catalog.js';
+import { BUILTIN_FREE_MODELS, isExcludedFreeProvider } from '../../domain/models/catalog.js';
 import type {
   FetchFreeModelsOptions,
   FreeModel,
   FreeModelFetchResult
-} from './catalog.js';
+} from '../../domain/models/catalog.js';
 import {
   bumpMax,
   rankFreeModels,
@@ -22,7 +22,7 @@ import {
   selectCouncilModels,
   sortRanked,
   stripFreeSuffix
-} from './ranking.js';
+} from '../../domain/models/ranking.js';
 
 const MODELS_DEV_URL = 'https://models.dev/api.json';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/models';

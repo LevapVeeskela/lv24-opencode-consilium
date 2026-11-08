@@ -1,5 +1,5 @@
 // consilium_free_models tool handler.
-import { fetchFreeModels } from '../../../domain/models/models.js';
+import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import type { FreeModel } from '../../../domain/models/models.js';
 import { cell, formatTimestamp } from '../format.js';
 import { safeJson } from '../protocol.js';

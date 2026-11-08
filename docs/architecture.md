@@ -10,15 +10,15 @@ and import from `dist/`.
 | Layer | Location | Responsibility |
 | --- | --- | --- |
 | shared | `src/shared/` | Dependency-free primitives used by every layer: JSON record checks (`record.ts`), error text extraction (`errors.ts`), and atomic file writing (`fs.ts`). No business logic. |
-| domain | `src/domain/` | Entities, config types, defaults, and pure policies: council (`presets`, `variants`, `consensus`, `fallback`, `smart-experts`, `prompts`, `sessions`), models (`catalog`, `ranking`, `sources`, `model-ref`), artifacts (`artifacts/*`, `replay`, `report`). |
+| domain | `src/domain/` | Entities, config types, defaults, and pure policies: council (`presets`, `variants`, `consensus`, `fallback`, `smart-experts`, `prompts`, `sessions`), models (`catalog`, `ranking`, `model-ref`), artifacts (`artifacts/*`, `replay`, `report`). |
 | application | `src/application/` | Use cases and orchestration: `Consilium` (`consilium.ts`), the run pipeline (`run.ts`), prompt/usage helpers (`helpers.ts`), model verification (`models/verify.ts`) and diagnostics (`diagnostics/`: `checks`, `doctor`, `report`). It coordinates domain policies and infrastructure adapters. |
-| infrastructure | `src/infrastructure/` | Adapters to the outside world: config loading/merging/validation (`config/`), OpenCode CLI process control (`opencode/`), git (`git.ts`), and filesystem watching (`watch.ts`). |
+| infrastructure | `src/infrastructure/` | Adapters to the outside world: config loading/merging/validation (`config/`), OpenCode CLI process control (`opencode/`), artifact storage (`artifacts/store.ts`), free-model catalog fetching and cache (`models/sources.ts`), git (`git.ts`), and filesystem watching (`watch.ts`). |
 | interfaces | `src/interfaces/` | Delivery mechanisms: CLI (`cli/`), MCP stdio server (`mcp/`), and the OpenCode plugin (`plugin/`). They parse input, call application services, and format output. |
 
-Domain currently contains a few direct `node:fs`/`node:path`/`fetch` calls
-(`domain/artifacts/artifacts/store.ts`, `domain/models/sources.ts`). Treat these as
-known debt: new file, process, or network I/O belongs in `infrastructure/`. No
-domain module imports from `infrastructure/`, `application/` or `interfaces/`.
+The domain layer is I/O-free: it has no `node:fs`/`node:net`/`fetch` calls and no
+imports from `infrastructure/`, `application/` or `interfaces/`. File, process and
+network access lives in `infrastructure/` and is called from `application/` or
+`interfaces/`.
 
 ## Dependency direction
 

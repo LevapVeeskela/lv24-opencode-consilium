@@ -4,9 +4,9 @@ import { resolve } from 'node:path';
 import {
   buildConsiliumConfigFromModels,
   buildCouncilAgents,
-  fetchFreeModels,
   selectCouncilModels
 } from '../../../domain/models/models.js';
+import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import { verifyModels } from '../../../application/models/verify.js';
 import { DEFAULT_CONFIG } from '../../../domain/defaults.js';
 import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';

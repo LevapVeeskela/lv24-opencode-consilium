@@ -4,7 +4,7 @@
  */
 
 import type { CLIOptions } from '../../../domain/types.js';
-import { fetchFreeModels } from '../../../domain/models/models.js';
+import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import { verifyModels } from '../../../application/models/verify.js';
 import { log } from '../output.js';
 

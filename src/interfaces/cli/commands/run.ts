@@ -5,12 +5,8 @@
 
 import type { CLIOptions, RunOptions } from '../../../domain/types.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
-import {
-  diffArtifacts,
-  loadArtifact,
-  resolveArtifactRoot,
-  type ArtifactRun
-} from '../../../domain/artifacts/artifacts.js';
+import { diffArtifacts, type ArtifactRun } from '../../../domain/artifacts/artifacts.js';
+import { loadArtifact, resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import { planReplay } from '../../../domain/artifacts/replay.js';
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';

@@ -16,4 +16,3 @@ export {
   rankFreeModels,
   selectCouncilModels
 } from './ranking.js';
-export { fetchFreeModels, getCouncilModels } from './sources.js';
