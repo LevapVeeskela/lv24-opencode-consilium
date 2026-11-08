@@ -118,7 +118,8 @@ Notes:
   and credentials to `/home/node/.local/share/opencode`.
 - Without mounted credentials the council cannot call any model — `consilium doctor`
   will report the missing OpenCode config.
-- On Windows use `%CD%` and `%USERPROFILE%` in the `-v` arguments.
+- `-u "$(id -u):$(id -g)"` keeps generated files owned by you (Linux/macOS). On
+  Windows omit it and use `%CD%` and `%USERPROFILE%` in the `-v` arguments.
 
 ## Quick start
 

@@ -113,7 +113,8 @@ docker run --rm -i --entrypoint consilium-mcp \
   `/home/node/.config/opencode`, доступы — в `/home/node/.local/share/opencode`.
 - Без смонтированных доступов консилиум не сможет вызвать модели — `consilium doctor`
   покажет отсутствующий конфиг OpenCode.
-- В Windows в аргументах `-v` используйте `%CD%` и `%USERPROFILE%`.
+- `-u "$(id -u):$(id -g)"` сохраняет владельца созданных файлов (Linux/macOS).
+  В Windows уберите его, а в аргументах `-v` используйте `%CD%` и `%USERPROFILE%`.
 
 ## Быстрый старт
 
