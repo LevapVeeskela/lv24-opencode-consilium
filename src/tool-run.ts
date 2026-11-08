@@ -2,7 +2,7 @@
  * @fileoverview Shared use-case for running the Consilium council as a tool.
  * Used by the native OpenCode V2 plugin (and, later, other hosts).
  * No MCP or `@opencode/plugin` imports here — pure library orchestration.
- * @module opencode-consilium/tool-run
+ * @module lv24-opencode-consilium/tool-run
  */
 
 import { existsSync } from 'node:fs';

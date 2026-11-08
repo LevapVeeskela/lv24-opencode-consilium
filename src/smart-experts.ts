@@ -1,6 +1,6 @@
 /**
  * @fileoverview Умный выбор экспертов консилиума по тексту задачи и диффу.
- * @module opencode-consilium/smart-experts
+ * @module lv24-opencode-consilium/smart-experts
  */
 
 import type { ExpertConfig } from './types.js';

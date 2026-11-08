@@ -1,6 +1,6 @@
 /**
  * @fileoverview Диагностика окружения и конфигурации Consilium
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { accessSync, constants, existsSync, statSync } from 'fs';

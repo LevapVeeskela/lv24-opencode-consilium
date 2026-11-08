@@ -1,6 +1,6 @@
 /**
  * @fileoverview Основной API Consilium
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';

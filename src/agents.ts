@@ -1,6 +1,6 @@
-﻿/**
+/**
  * @fileoverview Управление агентами OpenCode
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { spawn, type ChildProcess } from 'child_process';

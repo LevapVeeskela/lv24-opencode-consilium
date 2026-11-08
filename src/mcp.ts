@@ -33,7 +33,7 @@ import { applyPreset, listPresets } from './presets.js';
 import { DEFAULT_CONFIG } from './defaults.js';
 
 const DEFAULT_VERSION = '1.4.0';
-const SERVER_NAME = 'opencode-consilium';
+const SERVER_NAME = 'lv24-opencode-consilium';
 const MAX_LINE_BYTES = 4 * 1024 * 1024;
 const FALLBACK_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -218,7 +218,7 @@ const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: 'consilium_doctor',
-    description: 'Run environment and configuration diagnostics for opencode-consilium.',
+    description: 'Run environment and configuration diagnostics for lv24-opencode-consilium.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -1112,7 +1112,7 @@ function buildInitializeResult(
     },
     serverInfo: { name: SERVER_NAME, version },
     instructions:
-      'opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration.'
+      'lv24-opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration.'
   };
 }
 

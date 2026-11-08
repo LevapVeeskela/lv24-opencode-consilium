@@ -1,6 +1,6 @@
 /**
  * @fileoverview Учёт расходов и цепочка fallback-моделей
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import type { AgentErrorCode, AgentUsage } from './types.js';

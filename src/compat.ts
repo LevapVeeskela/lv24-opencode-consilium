@@ -1,6 +1,6 @@
 /**
  * @fileoverview Совместимость с OpenCode V1 и V2
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  *
  * Модуль не работает с файловой системой: все функции чистые, чтобы их можно
  * было покрыть тестами и переиспользовать в CLI, MCP и doctor.
@@ -569,7 +569,7 @@ export function findLegacyV1Fields(config: unknown): string[] {
 /** Ссылка на команду установки MCP-сервера для текущего формата */
 export function describeMcpShellCommand(name: string, flavor: ConfigFlavor): string {
   if (flavor === 'v2') {
-    return `opencode mcp add ${name} -- npx -y opencode-consilium mcp`;
+    return `opencode mcp add ${name} -- npx -y lv24-opencode-consilium mcp`;
   }
-  return 'mcp.consilium: { "type": "local", "command": ["npx", "-y", "opencode-consilium", "mcp"] }';
+  return 'mcp.consilium: { "type": "local", "command": ["npx", "-y", "lv24-opencode-consilium", "mcp"] }';
 }

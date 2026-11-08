@@ -1,6 +1,6 @@
 /**
  * @fileoverview Каталог бесплатных моделей и подбор состава консилиума
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
@@ -735,7 +735,7 @@ async function fetchJson(url: string, timeoutMs: number): Promise<unknown> {
       signal: controller.signal,
       headers: {
         accept: 'application/json',
-        'user-agent': 'opencode-consilium/1.0'
+        'user-agent': 'lv24-opencode-consilium/1.0'
       }
     });
     if (!response.ok) {
@@ -801,7 +801,7 @@ function isSourceStatus(value: unknown): value is SourceStatus {
 function resolveCachePath(): string {
   const fromEnv = process.env.CONSILIUM_MODELS_CACHE;
   if (fromEnv && fromEnv.trim().length > 0) return fromEnv;
-  return join(tmpdir(), 'opencode-consilium', 'models-cache.json');
+  return join(tmpdir(), 'lv24-opencode-consilium', 'models-cache.json');
 }
 
 function readCache(cachePath: string): CacheFile | null {

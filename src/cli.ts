@@ -2,7 +2,7 @@
 
 /**
  * @fileoverview CLI интерфейс для Consilium
- * @module opencode-consilium/cli
+ * @module lv24-opencode-consilium/cli
  */
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync } from 'fs';
@@ -408,7 +408,7 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
     "mcpServers": {
       "consilium": {
         "command": "npx",
-        "args": ["-y", "opencode-consilium", "mcp"]
+        "args": ["-y", "lv24-opencode-consilium", "mcp"]
       }
     }
   }
@@ -421,7 +421,7 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium doctor
 
 ДОКУМЕНТАЦИЯ:
-  https://github.com/LevapVeeskela/opencode-consilium
+  https://github.com/LevapVeeskela/lv24-opencode-consilium
 `);
 }
 
@@ -980,7 +980,7 @@ async function commandMcpInstall(options: CLIOptions): Promise<number> {
   const upserted = upsertMcpServer(
     existing,
     'consilium',
-    { command: ['npx', '-y', 'opencode-consilium', 'mcp'] },
+    { command: ['npx', '-y', 'lv24-opencode-consilium', 'mcp'] },
     { flavor: targetFlavor }
   );
 
@@ -1411,7 +1411,7 @@ async function commandHooks(options: CLIOptions): Promise<number> {
   }
 
   const hookCommand =
-    'npx -y opencode-consilium --staged -s "Ревью staged-изменений" || exit 1';
+    'npx -y lv24-opencode-consilium --staged -s "Ревью staged-изменений" || exit 1';
   try {
     const hook = installPreCommitHook(cwd, hookCommand);
     console.log(`✅ pre-commit hook ${hook.created ? 'создан' : 'обновлён'}: ${hook.path}`);
@@ -1455,7 +1455,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         if (options.mcpInstall === true) {
           return await commandMcpInstall(options);
         }
-        if (!options.silent) console.error('opencode-consilium MCP server (stdio). Логи — в stderr.');
+        if (!options.silent) console.error('lv24-opencode-consilium MCP server (stdio). Логи — в stderr.');
         await startMcpServer({ version: readVersion() });
         return 0;
       }

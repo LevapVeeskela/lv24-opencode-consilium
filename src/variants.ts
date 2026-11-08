@@ -1,6 +1,6 @@
 /**
  * @fileoverview Варианты моделей OpenCode (`provider/model#variant`).
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  *
  * Ссылка на модель: `provider/model` с необязательным `#variant`.
  * Провайдер заканчивается на первом `/`; в имени модели `/` допустим;

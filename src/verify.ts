@@ -1,6 +1,6 @@
 /**
  * @fileoverview Проверка доступности бесплатных моделей реальным вызовом
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { callAgent } from './agents.js';

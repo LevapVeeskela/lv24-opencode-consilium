@@ -1,6 +1,6 @@
 /**
  * @fileoverview Watch mode (debounced fs.watch) and git pre-commit hook helpers.
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import {

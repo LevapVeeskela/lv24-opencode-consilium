@@ -1,6 +1,6 @@
 /**
  * @fileoverview Получение git diff и форматирование для промпта
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { execFile } from 'child_process';

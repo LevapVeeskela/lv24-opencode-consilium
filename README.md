@@ -1,4 +1,4 @@
-# opencode-consilium
+# lv24-opencode-consilium
 
 A council of AI experts for [OpenCode](https://opencode.ai): several agent personas answer your task **in parallel on different models**, then a chair model synthesizes a final plan. Ships with a zero-config free-model bootstrap, a CLI, a library API, and an **MCP server** that works in any harness (Claude Desktop, Codex, Cursor, VS Code, custom agents).
 
@@ -67,9 +67,9 @@ opencode mcp list                  # verify
 ## Install
 
 ```bash
-npm install -g opencode-consilium
+npm install -g lv24-opencode-consilium
 # or run without installing:
-npx -y opencode-consilium --help
+npx -y lv24-opencode-consilium --help
 ```
 
 ## Quick start
@@ -123,7 +123,7 @@ Sources and fallbacks:
 | `https://openrouter.ai/api/v1/models` | `:free` variants, context, `tools` support, expiry |
 | Built-in curated list | Known-good OpenCode free models if a catalog rotates them out |
 
-Cache: `%TEMP%/opencode-consilium/models-cache.json` (or `CONSILIUM_MODELS_CACHE`), TTL 12 h.
+Cache: `%TEMP%/lv24-opencode-consilium/models-cache.json` (or `CONSILIUM_MODELS_CACHE`), TTL 12 h.
 
 The `opencode-go` provider is no longer excluded wholesale: its free models (`*-free`, `iceman-contributor-free`, and similar) take part in ranking. Paid models of that provider, such as `opencode-go/muse-spark-1.3-contributor`, are not selected by `--free`; set them manually in `experts[].model` or `chair.model`.
 
@@ -153,7 +153,7 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "consilium": {
       "command": "npx",
-      "args": ["-y", "opencode-consilium", "mcp"]
+      "args": ["-y", "lv24-opencode-consilium", "mcp"]
     }
   }
 }
@@ -164,7 +164,7 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.consilium]
 command = "npx"
-args = ["-y", "opencode-consilium", "mcp"]
+args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```
 
 Any MCP client that supports stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carries only the protocol.
@@ -297,7 +297,7 @@ Register in `opencode.json` (V2):
 
 ```json
 {
-  "plugins": [{ "package": "opencode-consilium" }]
+  "plugins": [{ "package": "lv24-opencode-consilium" }]
 }
 ```
 
@@ -373,7 +373,7 @@ Full schema: [`schema/config.schema.json`](schema/config.schema.json); example: 
 ## Library API
 
 ```ts
-import { Consilium, runConsilium, fetchFreeModels, selectCouncilModels } from 'opencode-consilium';
+import { Consilium, runConsilium, fetchFreeModels, selectCouncilModels } from 'lv24-opencode-consilium';
 
 const council = new Consilium();
 council.onProgress(event => console.error(event.type, event.agent ?? ''));
@@ -444,8 +444,8 @@ Remaining ideas (1.3.0 shipped artifacts, consensus, smart-experts, model fallba
 - Reports: `--report html|pr|markdown`, `--report-file <path>` (`.html` → html, `.md` → pr; without a file prints to stdout, except with `-f json`); `renderHtmlReport` (self-contained escaped HTML), `renderPrMarkdown` (GitHub comment with an `<!-- consilium:report -->` marker and `<details>` blocks), `renderReport`.
 - `--variant high`: appends `#high` to expert and chair models; an invalid variant exits 2. Config key `variant`.
 - `consilium watch [--debounce <ms>] [task]`: watches the project (ignores `.git`/`node_modules`/`dist`/`.consilium`/`coverage`/`*.tmp`/`*.log`), debounces 400 ms, appends `git diff`, reruns until Ctrl+C.
-- `consilium hooks install`: writes a managed pre-commit block (`# >>> consilium >>>` … `# <<< consilium <<<`) that runs `npx -y opencode-consilium --staged -s "Ревью staged-изменений" || exit 1` on every `git commit`; preserves existing hook content; `uninstall` removes only its block.
-- Native OpenCode V2 plugin: server part `./server` → `dist/plugin.js`, registration `{"plugins": [{"package": "opencode-consilium"}]}`, a `consilium.run` tool (task, experts, chair, timeout_ms, consensus, smart_experts, max_cost, fallback_models, session, artifacts, preset). No runtime dependencies; `@opencode/plugin` is only needed for types. V2 only, does not work in V1.
+- `consilium hooks install`: writes a managed pre-commit block (`# >>> consilium >>>` … `# <<< consilium <<<`) that runs `npx -y lv24-opencode-consilium --staged -s "Ревью staged-изменений" || exit 1` on every `git commit`; preserves existing hook content; `uninstall` removes only its block.
+- Native OpenCode V2 plugin: server part `./server` → `dist/plugin.js`, registration `{"plugins": [{"package": "lv24-opencode-consilium"}]}`, a `consilium.run` tool (task, experts, chair, timeout_ms, consensus, smart_experts, max_cost, fallback_models, session, artifacts, preset). No runtime dependencies; `@opencode/plugin` is only needed for types. V2 only, does not work in V1.
 - `--replay <id>` now restores the chair agent/model, expert models, and the artifact's consensus/smartExperts/fallbackModels/session flags (previously models only).
 - New config keys: `report`, `reportFile`, `variant`, `debounceMs` (schema updated).
 - 224 tests; OpenCode V1/V2 compatibility unchanged.

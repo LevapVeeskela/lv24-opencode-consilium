@@ -1,4 +1,4 @@
-# opencode-consilium
+# lv24-opencode-consilium
 
 面向 [OpenCode](https://opencode.ai) 的 AI 专家委员会：多个角色在**不同模型上并行**回答同一个任务，最后由主席模型综合成最终方案。内置免费模型自动挑选、CLI、库 API，以及可在任意宿主中使用的 **MCP 服务器**（Claude Desktop、Codex、Cursor、VS Code、自有 Agent）。
 
@@ -7,7 +7,7 @@
 ## 快速开始
 
 ```bash
-npm install -g opencode-consilium
+npm install -g lv24-opencode-consilium
 
 consilium doctor          # 检查 OpenCode、配置、Agent、模型
 consilium init --free     # 自动挑选并验证最强的免费模型，写入配置
@@ -60,7 +60,7 @@ consilium models --refresh       # 忽略 12 小时缓存
 consilium models --json
 ```
 
-来源：`models.dev` + OpenRouter + 内置精选回退。缓存路径 `%TEMP%/opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
+来源：`models.dev` + OpenRouter + 内置精选回退。缓存路径 `%TEMP%/lv24-opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
 
 ## MCP 服务器（任意宿主）
 
@@ -83,7 +83,7 @@ Claude Desktop / 任意 MCP 客户端：
   "mcpServers": {
     "consilium": {
       "command": "npx",
-      "args": ["-y", "opencode-consilium", "mcp"]
+      "args": ["-y", "lv24-opencode-consilium", "mcp"]
     }
   }
 }
@@ -94,7 +94,7 @@ Codex（`~/.codex/config.toml`）：
 ```toml
 [mcp_servers.consilium]
 command = "npx"
-args = ["-y", "opencode-consilium", "mcp"]
+args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```
 
 工具：`consilium_run`、`consilium_list_agents`、`consilium_free_models`、`consilium_doctor`、`consilium_init_free`。日志只写 stderr，stdout 仅承载协议。
@@ -138,7 +138,7 @@ consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
 
 ```json
 {
-  "plugins": [{ "package": "opencode-consilium" }]
+  "plugins": [{ "package": "lv24-opencode-consilium" }]
 }
 ```
 

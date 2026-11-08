@@ -1,6 +1,6 @@
 /**
  * @fileoverview Анализ консенсуса экспертов: токенизация, сходство Жаккара, общий отчёт.
- * @module opencode-consilium/consensus
+ * @module lv24-opencode-consilium/consensus
  */
 
 /** Входной результат одного эксперта для анализа консенсуса. */

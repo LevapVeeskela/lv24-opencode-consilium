@@ -1,6 +1,6 @@
 /**
  * @fileoverview Пресеты консилиума
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import type { ConsiliumConfig, ExpertConfig } from './types.js';

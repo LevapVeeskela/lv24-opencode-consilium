@@ -15,7 +15,7 @@ function readVersion() {
 import('../dist/mcp.js')
   .then(({ startMcpServer }) => {
     const running = startMcpServer({ version: readVersion() });
-    console.error('opencode-consilium MCP server running on stdio');
+    console.error('lv24-opencode-consilium MCP server running on stdio');
     return running;
   })
   .catch((error) => {

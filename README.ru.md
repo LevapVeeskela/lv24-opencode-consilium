@@ -1,4 +1,4 @@
-# opencode-consilium
+# lv24-opencode-consilium
 
 Консилиум ИИ-экспертов для [OpenCode](https://opencode.ai): несколько ролей-агентов **параллельно отвечают на разных моделях**, затем председатель синтезирует итоговый план. В комплекте — подбор сильнейших бесплатных моделей, CLI, библиотека и **MCP-сервер** для любого харнесса (Claude Desktop, Codex, Cursor, VS Code, свои агенты).
 
@@ -67,9 +67,9 @@ opencode mcp list                  # проверка
 ## Установка
 
 ```bash
-npm install -g opencode-consilium
+npm install -g lv24-opencode-consilium
 # или без установки:
-npx -y opencode-consilium --help
+npx -y lv24-opencode-consilium --help
 ```
 
 ## Быстрый старт
@@ -123,7 +123,7 @@ consilium models --json          # машинный формат
 | `https://openrouter.ai/api/v1/models` | `:free`-варианты, контекст, поддержка `tools`, срок действия |
 | Встроенный набор | Проверенные free-модели OpenCode, если каталог их ротировал |
 
-Кэш: `%TEMP%/opencode-consilium/models-cache.json` (или `CONSILIUM_MODELS_CACHE`), TTL 12 ч.
+Кэш: `%TEMP%/lv24-opencode-consilium/models-cache.json` (или `CONSILIUM_MODELS_CACHE`), TTL 12 ч.
 
 Провайдер `opencode-go` больше не исключается целиком: его бесплатные модели (`*-free`, `iceman-contributor-free` и т. п.) участвуют в рейтинге. Платные модели этого провайдера, например `opencode-go/muse-spark-1.3-contributor`, в `--free` не попадают — их можно задать вручную в `experts[].model` или `chair.model`.
 
@@ -153,7 +153,7 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "consilium": {
       "command": "npx",
-      "args": ["-y", "opencode-consilium", "mcp"]
+      "args": ["-y", "lv24-opencode-consilium", "mcp"]
     }
   }
 }
@@ -164,7 +164,7 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.consilium]
 command = "npx"
-args = ["-y", "opencode-consilium", "mcp"]
+args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```
 
 Подойдёт любой MCP-клиент с stdio JSON-RPC 2.0. Логи идут в **stderr**; stdout — только протокол.
@@ -298,7 +298,7 @@ PR-отчёт — это markdown для комментария GitHub с мар
 
 ```json
 {
-  "plugins": [{ "package": "opencode-consilium" }]
+  "plugins": [{ "package": "lv24-opencode-consilium" }]
 }
 ```
 
@@ -374,7 +374,7 @@ PR-отчёт — это markdown для комментария GitHub с мар
 ## Библиотека
 
 ```ts
-import { Consilium, runConsilium, fetchFreeModels, selectCouncilModels } from 'opencode-consilium';
+import { Consilium, runConsilium, fetchFreeModels, selectCouncilModels } from 'lv24-opencode-consilium';
 
 const council = new Consilium();
 council.onProgress(event => console.error(event.type, event.agent ?? ''));
@@ -465,8 +465,8 @@ npm run typecheck   # tsc --noEmit
 - Отчёты: `--report html|pr|markdown`, `--report-file <путь>` (`.html` → html, `.md` → pr; без файла — в stdout, кроме `-f json`); `renderHtmlReport` (самодостаточный HTML с экранированием), `renderPrMarkdown` (комментарий GitHub с маркером `<!-- consilium:report -->` и `<details>`-блоками), `renderReport`.
 - `--variant high`: добавляет `#high` к моделям экспертов и председателя; некорректный вариант — выход 2. Ключ конфига `variant`.
 - `consilium watch [--debounce <мс>] [задача]`: следит за проектом (игнорирует `.git`/`node_modules`/`dist`/`.consilium`/`coverage`/`*.tmp`/`*.log`), ждёт паузу 400 мс, прикладывает `git diff`, перезапускает до Ctrl+C.
-- `consilium hooks install`: пишет управляемый pre-commit блок (`# >>> consilium >>>` … `# <<< consilium <<<`), запускающий `npx -y opencode-consilium --staged -s "Ревью staged-изменений" || exit 1` при каждом `git commit`; чужое содержимое hook'а сохраняется; `uninstall` убирает только свой блок.
-- Нативный плагин OpenCode V2: server part `./server` → `dist/plugin.js`, регистрация `{"plugins": [{"package": "opencode-consilium"}]}`, инструмент `consilium.run` (task, experts, chair, timeout_ms, consensus, smart_experts, max_cost, fallback_models, session, artifacts, preset). Рантайм-зависимостей нет: `@opencode/plugin` нужен только для типов. Только V2, в V1 не работает.
+- `consilium hooks install`: пишет управляемый pre-commit блок (`# >>> consilium >>>` … `# <<< consilium <<<`), запускающий `npx -y lv24-opencode-consilium --staged -s "Ревью staged-изменений" || exit 1` при каждом `git commit`; чужое содержимое hook'а сохраняется; `uninstall` убирает только свой блок.
+- Нативный плагин OpenCode V2: server part `./server` → `dist/plugin.js`, регистрация `{"plugins": [{"package": "lv24-opencode-consilium"}]}`, инструмент `consilium.run` (task, experts, chair, timeout_ms, consensus, smart_experts, max_cost, fallback_models, session, artifacts, preset). Рантайм-зависимостей нет: `@opencode/plugin` нужен только для типов. Только V2, в V1 не работает.
 - `--replay <id>` восстанавливает агента/модель председателя, модели экспертов и флаги consensus/smartExperts/fallbackModels/session артефакта (раньше — только модели).
 - Новые ключи конфига: `report`, `reportFile`, `variant`, `debounceMs` (схема обновлена).
 - 224 теста; совместимость с OpenCode V1/V2 без изменений.

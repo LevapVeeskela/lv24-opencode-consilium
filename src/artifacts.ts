@@ -1,6 +1,6 @@
 /**
  * @fileoverview Хранение и сравнение артефактов запусков консилиума
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import {

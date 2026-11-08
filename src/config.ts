@@ -1,6 +1,6 @@
 /**
  * @fileoverview Загрузчик конфигурации
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { readFileSync, existsSync } from 'fs';

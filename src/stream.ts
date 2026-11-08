@@ -1,6 +1,6 @@
 /**
  * @fileoverview Декодер NDJSON-потока OpenCode CLI
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import { StringDecoder } from 'string_decoder';

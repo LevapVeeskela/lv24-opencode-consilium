@@ -1,7 +1,7 @@
 /**
  * @fileoverview Native OpenCode V2 plugin entrypoint: registers the
  * `consilium run` tool via `ctx.tool.transform`.
- * @module opencode-consilium/plugin
+ * @module lv24-opencode-consilium/plugin
  */
 
 import type { Plugin as PluginNamespace } from '@opencode/plugin';

@@ -62,7 +62,7 @@ test('HTML: все секции присутствуют', () => {
   for (const h of ['Сводка', 'Модели', 'Консенсус', 'Мнения экспертов', 'Итог председателя', 'Артефакты']) {
     assert.ok(html.includes(h), `missing: ${h}`);
   }
-  assert.ok(html.includes('opencode-consilium'));
+  assert.ok(html.includes('lv24-opencode-consilium'));
   assert.ok(html.includes('ошибка'));
   assert.ok(html.includes('TIMEOUT'));
 });

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Планирование повтора запуска из сохранённого артефакта
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import type { ArtifactRun } from './artifacts.js';

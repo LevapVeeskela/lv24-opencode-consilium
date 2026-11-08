@@ -21,7 +21,7 @@ test('initialize возвращает совместимый протокол и
     params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } }
   });
   assert.equal(response.id, 1);
-  assert.equal(response.result.serverInfo.name, 'opencode-consilium');
+  assert.equal(response.result.serverInfo.name, 'lv24-opencode-consilium');
   assert.equal(response.result.protocolVersion, '2025-06-18');
   assert.ok(Array.isArray(Object.keys(response.result.capabilities)));
 });

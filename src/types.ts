@@ -1,6 +1,6 @@
 /**
  * @fileoverview Типы публичного API Consilium
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 /** Код ошибки агента */

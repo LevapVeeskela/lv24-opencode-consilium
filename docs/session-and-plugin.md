@@ -533,7 +533,7 @@ export default Plugin.define({
   "$schema": "https://opencode.ai/config.json",
   "plugins": [
     {
-      "package": "opencode-consilium",
+      "package": "lv24-opencode-consilium",
       "options": {
         "configPath": "consilium.config.json",
         "defaultPreset": "review",

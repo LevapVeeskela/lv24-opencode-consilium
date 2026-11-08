@@ -1,6 +1,6 @@
 /**
  * @fileoverview Конфигурация по умолчанию
- * @module opencode-consilium
+ * @module lv24-opencode-consilium
  */
 
 import type { ConsiliumConfig, ExpertConfig, ChairConfig } from './types.js';

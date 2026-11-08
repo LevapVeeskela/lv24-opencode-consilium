@@ -1,6 +1,6 @@
 /**
  * @fileoverview Отчёты консилиума: HTML и PR-markdown рендеры.
- * @module opencode-consilium/report
+ * @module lv24-opencode-consilium/report
  */
 
 import type { AgentResult, ConsiliumResult } from './types.js';
@@ -15,7 +15,7 @@ export interface ReportOptions {
 }
 
 const TEXT_LIMIT = 6000;
-const PACKAGE_NAME = 'opencode-consilium';
+const PACKAGE_NAME = 'lv24-opencode-consilium';
 const PR_MARKER = '<!-- consilium:report -->';
 
 interface ConsensusLike {
