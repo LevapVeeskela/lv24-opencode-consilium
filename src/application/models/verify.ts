@@ -5,8 +5,8 @@
 
 import { callAgent } from '../../infrastructure/opencode/agents.js';
 import { mergeWithDefaults } from '../../infrastructure/config/config.js';
-import type { ConsiliumConfig } from '../types.js';
-import type { FreeModel } from './models.js';
+import type { ConsiliumConfig } from '../../domain/types.js';
+import type { FreeModel } from '../../domain/models/models.js';
 
 /** Результат проверки одной модели */
 export interface ModelVerification {

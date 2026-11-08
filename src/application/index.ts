@@ -4,3 +4,4 @@
  */
 
 export * from './consilium.js';
+export * from './diagnostics/index.js';

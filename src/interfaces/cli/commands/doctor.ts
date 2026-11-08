@@ -5,7 +5,7 @@
 
 import type { CLIOptions } from '../../../domain/types.js';
 import { loadConfig } from '../../../application/consilium.js';
-import { formatDoctorReport, runDoctor } from '../../../domain/diagnostics/doctor.js';
+import { formatDoctorReport, runDoctor } from '../../../application/diagnostics/doctor.js';
 
 export async function commandDoctor(options: CLIOptions): Promise<number> {
   const loaded = loadConfig(options.config);

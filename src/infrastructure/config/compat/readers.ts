@@ -12,6 +12,10 @@ import { isRecord, recordOf } from '../../../shared/record.js';
 // старых модулей совместимости.
 export { isRecord, recordOf };
 
+// Разбор ссылок на модели — доменная политика; реэкспорт сохраняет прежнюю
+// поверхность `compat.ts` для CLI, MCP и внешних потребителей.
+export { splitModelRef, toModelRef } from '../../../domain/models/model-ref.js';
+
 /** Основная версия OpenCode, под которую адаптируется пакет */
 export type OpenCodeMajor = 1 | 2;
 
@@ -92,48 +96,6 @@ export function detectConfigFlavor(config: unknown): ConfigFlavor {
 /** Возвращает человекочитаемое название формата */
 export function describeConfigFlavor(flavor: ConfigFlavor): string {
   return flavor === 'v2' ? 'V2 (native)' : 'V1 (совместим с V1 и V2)';
-}
-
-/**
- * Нормализует ссылку на модель.
- * Поддерживает строку и расширенный объект V2 (`providerID`/`model`/`variant`).
- */
-export function toModelRef(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  if (!isRecord(value)) return undefined;
-
-  const provider =
-    typeof value.providerID === 'string'
-      ? value.providerID
-      : typeof value.provider === 'string'
-        ? value.provider
-        : undefined;
-  const model =
-    typeof value.model === 'string'
-      ? value.model
-      : typeof value.modelID === 'string'
-        ? value.modelID
-        : undefined;
-
-  if (provider === undefined || model === undefined) return undefined;
-  if (provider.trim().length === 0 || model.trim().length === 0) return undefined;
-
-  const variant = typeof value.variant === 'string' ? value.variant.trim() : '';
-  return variant.length > 0 ? `${provider}/${model}#${variant}` : `${provider}/${model}`;
-}
-
-/** Делит ссылку `provider/model#variant` на модель и вариант */
-export function splitModelRef(ref: string): { model: string; variant?: string } {
-  const hash = ref.indexOf('#');
-  if (hash === -1) return { model: ref };
-  const variant = ref.slice(hash + 1).trim();
-  return variant.length > 0
-    ? { model: ref.slice(0, hash), variant }
-    : { model: ref.slice(0, hash) };
 }
 
 /**

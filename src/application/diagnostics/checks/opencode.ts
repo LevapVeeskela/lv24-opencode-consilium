@@ -3,7 +3,7 @@
  * @module lv24-opencode-consilium
  */
 
-import type { ConsiliumConfig } from '../../types.js';
+import type { ConsiliumConfig } from '../../../domain/types.js';
 import {
   describeConfigFlavor,
   findLegacyV1Fields,

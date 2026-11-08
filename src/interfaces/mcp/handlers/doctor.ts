@@ -1,6 +1,6 @@
 // consilium_doctor tool handler.
 import { loadConfig } from '../../../application/consilium.js';
-import { formatDoctorReport, runDoctor } from '../../../domain/diagnostics/doctor.js';
+import { formatDoctorReport, runDoctor } from '../../../application/diagnostics/doctor.js';
 import { toolText } from './shared.js';
 import type { McpToolResult } from './shared.js';
 

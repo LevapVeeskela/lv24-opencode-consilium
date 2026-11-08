@@ -7,7 +7,7 @@
  * вариант следует за первым `#`; в `provider/model` символа `#` нет.
  */
 
-import { splitModelRef } from '../../infrastructure/config/compat.js';
+import { splitModelRef } from '../models/model-ref.js';
 
 /** Допустимый вариант модели: латиница/цифры, далее латиница/цифры/`._-` */
 export const VARIANT_PATTERN: RegExp = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

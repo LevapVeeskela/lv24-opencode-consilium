@@ -4,4 +4,3 @@ export * from './defaults.js';
 export * from './council/index.js';
 export * from './models/index.js';
 export * from './artifacts/index.js';
-export * from './diagnostics/index.js';

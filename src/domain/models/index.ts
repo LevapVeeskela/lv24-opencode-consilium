@@ -1,3 +1,2 @@
-// Free-model catalog, ranking and verification.
+// Free-model catalog and ranking.
 export * from './models.js';
-export * from './verify.js';

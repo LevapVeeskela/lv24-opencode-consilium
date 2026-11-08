@@ -1,2 +1,2 @@
-// Compatibility entry point. Implementation: src/domain/diagnostics/doctor.ts
-export * from './domain/diagnostics/doctor.js';
+// Compatibility entry point. Implementation: src/application/diagnostics/doctor.ts
+export * from './application/diagnostics/doctor.js';

@@ -500,5 +500,5 @@ export * from '../domain/artifacts/report.js';
 export * from '../infrastructure/watch.js';
 export * from '../domain/council/variants.js';
 export * from '../domain/artifacts/replay.js';
-export * from '../domain/models/verify.js';
+export * from './models/verify.js';
 export { DEFAULT_CONFIG } from '../domain/defaults.js';

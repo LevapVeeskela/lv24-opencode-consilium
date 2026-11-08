@@ -5,9 +5,9 @@
 
 import { accessSync, constants, existsSync, statSync } from 'fs';
 import { dirname, resolve } from 'path';
-import type { ConsiliumConfig } from '../../types.js';
+import type { ConsiliumConfig } from '../../../domain/types.js';
 import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
-import { resolveArtifactRoot } from '../../artifacts/artifacts.js';
+import { resolveArtifactRoot } from '../../../domain/artifacts/artifacts.js';
 import type { DoctorCheck, ModelRef, OpenCodeConfigRead } from '../types.js';
 import { errorMessage, findDuplicates, formatNames, getProvider, isRecord } from '../types.js';
 import { MODEL_PATTERN, collectExpertNames, collectModelRefs } from './opencode.js';

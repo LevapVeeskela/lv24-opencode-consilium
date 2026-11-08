@@ -7,7 +7,7 @@ import {
   fetchFreeModels,
   selectCouncilModels
 } from '../../../domain/models/models.js';
-import { verifyModels } from '../../../domain/models/verify.js';
+import { verifyModels } from '../../../application/models/verify.js';
 import { DEFAULT_CONFIG } from '../../../domain/defaults.js';
 import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
 import {

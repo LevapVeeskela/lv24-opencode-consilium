@@ -1,2 +1,2 @@
-// Compatibility entry point. Implementation: src/domain/models/verify.ts
-export * from './domain/models/verify.js';
+// Compatibility entry point. Implementation: src/application/models/verify.ts
+export * from './application/models/verify.js';

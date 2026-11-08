@@ -3,9 +3,9 @@
  * @module lv24-opencode-consilium
  */
 
-import type { ConsiliumConfig } from '../../types.js';
+import type { ConsiliumConfig } from '../../../domain/types.js';
 import { parseOpenCodeVersion } from '../../../infrastructure/config/compat.js';
-import { fetchFreeModels } from '../../models/models.js';
+import { fetchFreeModels } from '../../../domain/models/models.js';
 import type { DoctorCheck } from '../types.js';
 import { errorMessage, isRecord } from '../types.js';
 
