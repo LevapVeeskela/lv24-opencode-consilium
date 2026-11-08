@@ -45,19 +45,28 @@ every layer ──> shared
 
 ## Barrels and compatibility shims
 
-- Each layer and slice has an `index.ts` barrel: `shared/index.ts`,
-  `domain/index.ts`, `application/index.ts`, `infrastructure/index.ts`,
+- Slice barrels are the public API of their slice:
   `interfaces/cli/index.ts`, `interfaces/mcp/index.ts`,
-  `interfaces/plugin/index.ts`.
+  `interfaces/plugin/index.ts`, `infrastructure/config/index.ts`,
+  `infrastructure/opencode/index.ts`, `domain/council/index.ts`,
+  `domain/models/index.ts`, `domain/artifacts/index.ts`, and
+  `application/diagnostics/index.ts`. Internal code may deep-import modules
+  inside its own layer.
+- There are no layer-level `index.ts` files: `src/domain/index.ts`,
+  `src/infrastructure/index.ts`, `src/application/index.ts` and
+  `src/shared/index.ts` do not exist.
 - `interfaces/cli/cli.ts` is the CLI slice's public entry and exports exactly
   `parseArgs` and `main`. `interfaces/mcp/mcp.ts` is the MCP slice entry.
-- The files directly under `src/` are compatibility shims kept for the package
-  `exports` map: each one re-exports its implementation, e.g. `src/mcp.ts` →
-  `./interfaces/mcp/mcp.js`, `src/config.ts` → `./infrastructure/config/config.js`,
-  `src/agents.ts` → `./infrastructure/opencode/agents.js`, `src/doctor.ts` →
+- The files directly under `src/` are compatibility shims. They preserve the
+  historical `dist/` module paths used by the package `exports` map and by the
+  `.mjs` tests that import from `dist/`: each one re-exports its implementation,
+  e.g. `src/mcp.ts` → `./interfaces/mcp/mcp.js`, `src/config.ts` →
+  `./infrastructure/config/config.js`, `src/agents.ts` →
+  `./infrastructure/opencode/agents.js`, `src/doctor.ts` →
   `./application/diagnostics/doctor.js`, `src/verify.ts` →
-  `./application/models/verify.js`. Add new public
-  subpaths the same way rather than moving implementations back to `src/`.
+  `./application/models/verify.js`. `src/git.ts` and `src/types.ts` are kept for
+  tests/internal compatibility even though they are not package exports. Add new
+  public subpaths the same way rather than moving implementations back to `src/`.
 - `src/index.ts` is the public library API and exports `application/consilium.js`.
 - `src/cli.ts` is both a shim and the executable compatibility entry: it
   re-exports `interfaces/cli/cli.js` and auto-runs `main()` only when

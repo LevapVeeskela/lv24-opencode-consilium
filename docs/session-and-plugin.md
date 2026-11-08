@@ -1,13 +1,13 @@
 # Сессии `opencode run` и нативный V2-плагин Consilium
 
-> **Статус на 1.4.0:** рекомендации этого документа реализованы в `src/plugin.ts`,
+> **Статус на 1.4.0:** рекомендации этого документа реализованы в `src/interfaces/plugin/plugin.ts`,
 > но с двумя отличиями: `Plugin.define` в `@opencode/plugin@2.2.6` — identity-функция
 > на рантайме, поэтому плагин экспортирует типизированный объект `{ id, setup }`
 > и импортирует `@opencode/plugin` только как тип; рабочая директория берётся из
 > `ctx.location.directory`, а не из `process.cwd()`. Рантайм-зависимостей у пакета
 > нет, `@opencode/plugin` остаётся devDependency (не `dependencies`/`peerDependencies`).
 > Разделы 5–6 ниже — исходное исследование и чек-лист; актуальная реализация в
-> `src/plugin.ts`, `src/tool-run.ts`, `package.json` (`exports["./server"]`).
+> `src/interfaces/plugin/plugin.ts`, `src/interfaces/plugin/tool-run.ts`, `package.json` (`exports["./server"]`).
 
 Рабочий пакет WP5. Только исследование и документация: исходники проекта не менялись.
 
@@ -199,12 +199,12 @@ opencode run ... --session ses_1111111111111111111111111 'Reply with exactly: C2
 
 | Место | Факт |
 |---|---|
-| `src/types.ts:208` | `ConsiliumConfig.session?: string` — «Переиспользовать сессию OpenCode» |
-| `src/types.ts:253` | `RunOptions.session?: string` |
-| `src/cli.ts:222` | CLI принимает `--session` |
-| `src/agents.ts:295-329` | `buildRunArgs` умеет `--session=<id>` с проверкой `SESSION_PATTERN` |
-| `src/agents.ts:692-696` | `runAgentProcess` **не передаёт** `session` в `buildRunArgs` |
-| `src/stream.ts` | `sessionID` из событий не извлекается |
+| `src/domain/types.ts` | `ConsiliumConfig.session?: string` — «Переиспользовать сессию OpenCode» |
+| `src/domain/types.ts` | `RunOptions.session?: string` |
+| `src/interfaces/cli/args.ts` | CLI принимает `--session` |
+| `src/infrastructure/opencode/args.ts` | `buildRunArgs` умеет `--session=<id>` с проверкой `SESSION_PATTERN` (`src/domain/council/sessions.ts`) |
+| `src/infrastructure/opencode/spawn.ts` | `runAgentProcess` **не передаёт** `session` в `buildRunArgs` |
+| `src/infrastructure/opencode/stream.ts` | `sessionID` из событий не извлекается |
 
 То есть опция объявлена, но **не подключена**: сейчас `--session` до `opencode run` не доходит.
 
@@ -216,7 +216,7 @@ opencode run ... --session ses_1111111111111111111111111 'Reply with exactly: C2
 | `session: 'auto'` (новая политика) | без флага, затем взять `sessionID` из первого события | Значение по умолчанию: новая сессия на запуск |
 | `forkSession: true` | `--fork` (вместе с `--session`) | Ветвление уже накопленного контекста |
 | `archiveSession: true` | `--archived` | Только как пометка в данных; **не** скрывает из `session list` |
-| `standalone: true` (уже дефолт) | `--standalone` (`agents.ts:303-305`) | Обязательно сохранить: плагин работает внутри сервера OpenCode, а дочерние прогоны не должны в него переиспользовать |
+| `standalone: true` (уже дефолт) | `--standalone` (`src/infrastructure/opencode/args.ts`, `buildRunArgs`) | Обязательно сохранить: плагин работает внутри сервера OpenCode, а дочерние прогоны не должны в него переиспользовать |
 | `title: <строка>` | `--title "consilium: <preset>: <короткая задача>"` | Навигация в списке сессий |
 
 Формат id: `ses_` + `[a-z0-9]` (проверено на цифровом id). Не использовать `:` `/` `#` в самостоятельно
@@ -404,20 +404,20 @@ await ctx.shell.hook("create.before", (event) => { event.env.COMPANY_ENV = "deve
 
 ---
 
-## 5. Дизайн нативного V2-плагина: `src/plugin.ts`
+## 5. Дизайн нативного V2-плагина: `src/interfaces/plugin/plugin.ts`
 
 ### 5.1. Идея
 
-Один инструмент `consilium_run`, который вызывает **существующую библиотеку** (`Consilium` из `src/index.ts`),
+Один инструмент `consilium_run`, который вызывает **существующую библиотеку** (`Consilium` из `src/application/consilium.ts`),
 без вызова собственного CLI (`bin/cli.js`) и без дублирования логики MCP. Плагин — тонкий адаптер:
 валидация входа → вызов use-case → форматирование `Tool.Result`. (Сама библиотека по-прежнему запускает
 `opencode run` для экспертов — это её штатная работа.)
 
-Чтобы не дублировать `src/mcp.ts` (`toolConsiliumRun`, строки 472-566), общую часть вынести в
-`src/tool-run.ts` (application-слой) и использовать из обоих адаптеров:
+Чтобы не дублировать `src/interfaces/mcp/handlers/run.ts` (`toolConsiliumRun`), общую часть вынести в
+`src/interfaces/plugin/tool-run.ts` (слой интерфейсов) и использовать из обоих адаптеров:
 
 ```ts
-// src/tool-run.ts — общий use-case (новый файл, позже)
+// src/interfaces/plugin/tool-run.ts — общий use-case (новый файл, позже)
 export interface ToolRunHooks {
   progress?: (update: { status: string; progress?: number; total?: number }) => Promise<void> | void
   signal?: AbortSignal
@@ -428,13 +428,13 @@ export async function runConsiliumTool(
 ): Promise<{ text: string; metadata: Record<string, unknown>; isError: boolean }>
 ```
 
-Тогда `src/mcp.ts` и `src/plugin.ts` — только транспорты (JSON-RPC / V2 tool), а правила (`task` обязателен,
+Тогда `src/interfaces/mcp/handlers/run.ts` и `src/interfaces/plugin/plugin.ts` — только транспорты (JSON-RPC / V2 tool), а правила (`task` обязателен,
 `output_file` внутри workspace, пресеты, таймауты) живут в одном месте.
 
 ### 5.2. Точка входа
 
 ```ts
-// src/plugin.ts (новый файл)
+// src/interfaces/plugin/plugin.ts (новый файл)
 import { Plugin } from "@opencode/plugin"
 import { runConsiliumTool } from "./tool-run.js"
 
@@ -492,9 +492,9 @@ export default Plugin.define({
 
 * `setup` остаётся дешёвым: колбэк `ctx.tool.transform` синхронный, поэтому `Consilium` создаётся внутри
   `execute`, а не в `setup`.
-* `input` приходит как `unknown` — валидировать теми же хелперами, что в `mcp.ts`
-  (`requireNonEmptyString`, `optionalStringArray`, `optionalEnum`, `resolveOutputFile`).
-* `context.signal` → `Consilium.cancel()` (`src/index.ts`), чтобы остановка хода останавливала и совет.
+* `input` приходит как `unknown` — валидировать теми же хелперами, что в `src/interfaces/mcp/validation.ts`
+  (`requireNonEmptyString`, `optionalStringArray`, `optionalEnum`) и `src/interfaces/mcp/handlers/run.ts` (`resolveOutputFile`).
+* `context.signal` → `Consilium.cancel()` (`src/application/consilium.ts`), чтобы остановка хода останавливала и совет.
 * `ctx.location.directory` — рабочая директория проекта: передавать как `cwd` конфига, а не полагаться на
   `process.cwd()` сервера.
 * `ctx.options.standalone` пробрасывать в `ConsiliumConfig.standalone` (по умолчанию `true`): дочерние прогоны
@@ -590,14 +590,14 @@ V1 вызовет `server()`, V2 прочитает `id`/`setup` и проигн
 | Файл | Изменение | Зачем |
 |---|---|---|
 | `package.json` | `exports["./server"]` → `dist/plugin.js`; `dependencies["@opencode/plugin"] = "^2.2.6"` | Публикация server part и `Plugin.define` |
-| `src/plugin.ts` | **новый**: `Plugin.define({ id: "consilium" })`, инструмент `consilium_run` | Нативный вход для OpenCode v2 |
-| `src/tool-run.ts` | **новый**: общий use-case `runConsiliumTool(args, hooks)` | Убрать дублирование между `mcp.ts` и `plugin.ts` |
-| `src/mcp.ts` | `toolConsiliumRun` → вызов `runConsiliumTool` | Один источник валидации и форматирования |
-| `src/agents.ts` | `runAgentProcess` (строки 692-696): прокинуть `session`/`fork` в `buildRunArgs` | Опция `session` сейчас мертва |
-| `src/stream.ts` | добавить `sessionID` в `ParsedStream` (есть в каждом событии) | Возвращать id созданной сессии |
-| `src/index.ts` | `RunOptions.session` → эксперты/председатель; писать `metadata.sessionID` | Управляемое переиспользование и трассировка |
-| `src/types.ts` | `ConsiliumPluginOptions` (configPath, defaultPreset, standalone), `forkSession?: boolean` | Типы для `ctx.options` и новых опций |
-| `schema/config.schema.json` | добавить `session` (сейчас поля нет), `forkSession` | Схема отстаёт от `types.ts` |
+| `src/interfaces/plugin/plugin.ts` | **новый**: `Plugin.define({ id: "consilium" })`, инструмент `consilium_run` | Нативный вход для OpenCode v2 |
+| `src/interfaces/plugin/tool-run.ts` | **новый**: общий use-case `runConsiliumTool(args, hooks)` | Убрать дублирование между `src/interfaces/mcp/handlers/run.ts` и `src/interfaces/plugin/plugin.ts` |
+| `src/interfaces/mcp/handlers/run.ts` | `toolConsiliumRun` → вызов `runConsiliumTool` | Один источник валидации и форматирования |
+| `src/infrastructure/opencode/spawn.ts` | `runAgentProcess`: прокинуть `session`/`fork` в `buildRunArgs` (`src/infrastructure/opencode/args.ts`) | Опция `session` сейчас мертва |
+| `src/infrastructure/opencode/stream.ts` | добавить `sessionID` в `ParsedStream` (есть в каждом событии) | Возвращать id созданной сессии |
+| `src/application/consilium.ts` | `RunOptions.session` → эксперты/председатель; писать `metadata.sessionID` | Управляемое переиспользование и трассировка |
+| `src/domain/types.ts` | `ConsiliumPluginOptions` (configPath, defaultPreset, standalone), `forkSession?: boolean` | Типы для `ctx.options` и новых опций |
+| `schema/config.schema.json` | добавить `session` (сейчас поля нет), `forkSession` | Схема отстаёт от `src/domain/types.ts` |
 | `opencode.json` | блок `plugins` (dogfood) — только после публикации или через `./plugin` | Проверка «в бою» |
 | `test/plugin.test.mjs` | **новый**: валидация входа инструмента, маппинг аргументов, отмена по `signal` | Регрессии |
 | `README.md`, `docs/README.ru.md`, `docs/README.zh.md`, `docs/*` | раздел «Плагин OpenCode v2» с примером `plugins` | Пользовательская документация |
@@ -605,8 +605,8 @@ V1 вызовет `server()`, V2 прочитает `id`/`setup` и проигн
 
 Порядок безопасного включения:
 
-1. `src/tool-run.ts` + рефакторинг `mcp.ts` (поведение MCP не меняется, тесты `test/mcp.test.mjs` зелёные).
-2. `src/plugin.ts` + `exports["./server"]` + зависимость.
+1. `src/interfaces/plugin/tool-run.ts` + рефакторинг MCP-адаптера (`src/interfaces/mcp/handlers/run.ts`) (поведение MCP не меняется, тесты `test/mcp.test.mjs` зелёные).
+2. `src/interfaces/plugin/plugin.ts` + `exports["./server"]` + зависимость.
 3. Локальная проверка: `plugin/index.ts` → `.opencode/plugins/consilium/index.ts`, запуск `opencode` в репозитории,
    проверка, что инструмент виден и `consilium_run` отвечает.
 4. Только потом — `plugins` в `opencode.json` и публикация.
