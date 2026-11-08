@@ -78,6 +78,48 @@ npm install -g lv24-opencode-consilium
 npx -y lv24-opencode-consilium --help
 ```
 
+## Container image (GHCR)
+
+A self-contained image (Node.js, the OpenCode CLI, `git`) is published to GitHub
+Container Registry for `linux/amd64` and `linux/arm64`:
+
+```bash
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # or :latest
+docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
+# consilium v1.4.1
+```
+
+Run the council on a project directory. Mount your OpenCode credentials and
+config so the CLI can use your providers, and keep the project writable because
+`--diff`, artifacts and reports write into it:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v "$HOME/.local/share/opencode:/home/node/.local/share/opencode" \
+  -v "$HOME/.config/opencode:/home/node/.config/opencode:ro" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/levapveeskela/lv24-opencode-consilium:latest \
+  "Design a rate limiter for a public API"
+```
+
+The image entrypoint is `consilium`, so every CLI flag works directly
+(`doctor`, `init --free`, `models`, `mcp`). To use the MCP server from another
+container or harness:
+
+```bash
+docker run --rm -i --entrypoint consilium-mcp \
+  ghcr.io/levapveeskela/lv24-opencode-consilium:latest
+```
+
+Notes:
+
+- `HOME` inside the image is `/home/node`; mount config to `/home/node/.config/opencode`
+  and credentials to `/home/node/.local/share/opencode`.
+- Without mounted credentials the council cannot call any model — `consilium doctor`
+  will report the missing OpenCode config.
+- On Windows use `%CD%` and `%USERPROFILE%` in the `-v` arguments.
+
 ## Quick start
 
 ```bash
@@ -462,6 +504,7 @@ Remaining ideas (1.3.0 shipped artifacts, consensus, smart-experts, model fallba
 - npm package renamed to **`lv24-opencode-consilium`** (npm cannot rename in place; the old `opencode-consilium@1.0.2` stays in the registry and is deprecated).
 - The npm page now shows this `README.md`; Russian and Chinese translations moved to `docs/README.ru.md` and `docs/README.zh.md` so they no longer compete for npm's single readme slot.
 - No functional changes since 1.4.0.
+- A container image (`ghcr.io/levapveeskela/lv24-opencode-consilium`, `linux/amd64` + `linux/arm64`) is published by `.github/workflows/container.yml`; see [Container image (GHCR)](#container-image-ghcr).
 
 ## 1.4.0 changes
 

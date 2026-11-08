@@ -74,6 +74,47 @@ npm install -g lv24-opencode-consilium
 npx -y lv24-opencode-consilium --help
 ```
 
+## Образ контейнера (GHCR)
+
+Готовый образ (Node.js, OpenCode CLI, `git`) публикуется в GitHub Container
+Registry для `linux/amd64` и `linux/arm64`:
+
+```bash
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # или :latest
+docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
+# consilium v1.4.1
+```
+
+Запуск консилиума по каталогу проекта: смонтируйте доступы и конфиг OpenCode,
+чтобы CLI видел ваших провайдеров, а каталог проекта — на запись, потому что
+`--diff`, артефакты и отчёты пишутся в него:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v "$HOME/.local/share/opencode:/home/node/.local/share/opencode" \
+  -v "$HOME/.config/opencode:/home/node/.config/opencode:ro" \
+  -u "$(id -u):$(id -g)" \
+  ghcr.io/levapveeskela/lv24-opencode-consilium:latest \
+  "Спроектируй rate limiter для публичного API"
+```
+
+Точка входа образа — `consilium`, поэтому все флаги CLI работают напрямую
+(`doctor`, `init --free`, `models`, `mcp`). MCP-сервер из другого контейнера:
+
+```bash
+docker run --rm -i --entrypoint consilium-mcp \
+  ghcr.io/levapveeskela/lv24-opencode-consilium:latest
+```
+
+Замечания:
+
+- `HOME` внутри образа — `/home/node`; конфиг монтируется в
+  `/home/node/.config/opencode`, доступы — в `/home/node/.local/share/opencode`.
+- Без смонтированных доступов консилиум не сможет вызвать модели — `consilium doctor`
+  покажет отсутствующий конфиг OpenCode.
+- В Windows в аргументах `-v` используйте `%CD%` и `%USERPROFILE%`.
+
 ## Быстрый старт
 
 ```bash

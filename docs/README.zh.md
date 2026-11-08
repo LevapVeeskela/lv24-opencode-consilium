@@ -28,6 +28,32 @@ consilium "为公共 API 设计限流方案"
 
 写入原生 V2 格式（`agents` + `system`）：`consilium init --free --native-v2`。
 
+## 容器镜像（GHCR）
+
+自包含镜像（Node.js、OpenCode CLI、`git`）发布在 GitHub Container Registry，
+支持 `linux/amd64` 与 `linux/arm64`：
+
+```bash
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # 或 :latest
+docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
+# consilium v1.4.1
+```
+
+在项目目录运行：
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v "$HOME/.local/share/opencode:/home/node/.local/share/opencode" \
+  -v "$HOME/.config/opencode:/home/node/.config/opencode:ro" \
+  ghcr.io/levapveeskela/lv24-opencode-consilium:latest \
+  "为公共 API 设计限流方案"
+```
+
+入口命令是 `consilium`，所有 CLI 参数可直接使用；MCP 服务器用
+`--entrypoint consilium-mcp` 启动。镜像内 `HOME=/home/node`，凭据挂载到
+`/home/node/.local/share/opencode`，配置挂载到 `/home/node/.config/opencode`。
+
 ## OpenCode V1 / V2 兼容
 
 包同时支持 OpenCode V1 与 V2，并自动识别配置格式：

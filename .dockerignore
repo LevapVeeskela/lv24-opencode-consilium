@@ -1,0 +1,13 @@
+# Keep the image build context to the files deploy/Dockerfile copies.
+.git
+.github
+node_modules
+dist
+test
+coverage
+.consilium
+docs
+README.md
+*.log
+*.tgz
+*.tmp
