@@ -4,6 +4,7 @@
  */
 
 import type { ConsiliumConfig } from '../../../domain/types.js';
+import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
 import {
   describeConfigFlavor,
   findLegacyV1Fields,
@@ -11,12 +12,28 @@ import {
   readAgentSection,
   readMcpSection
 } from '../../../infrastructure/config/compat.js';
-import type { DoctorCheck, ModelRef } from '../types.js';
-import { formatNames, isRecord } from '../types.js';
-import { readOpenCodeConfig } from './config.js';
+import type { DoctorCheck, ModelRef, OpenCodeConfigRead } from '../types.js';
+import { errorMessage, formatNames, isRecord } from '../types.js';
 
-/** Паттерн допустимой модели provider/model */
-export const MODEL_PATTERN = /^[A-Za-z0-9._:@\/#+-]+$/;
+export { MODEL_PATTERN } from '../types.js';
+
+/** Читает opencode.json(c) с учётом `.opencode/` и родительских каталогов */
+export function readOpenCodeConfig(cwd: string, configuredPath?: string): OpenCodeConfigRead {
+  const path = findOpenCodeConfigPath(configuredPath, cwd);
+  if (path === null) {
+    return { path: null, config: null };
+  }
+
+  try {
+    const parsed = readJsonFile(path);
+    if (!isRecord(parsed)) {
+      return { path, config: null, error: 'ожидается JSON-объект' };
+    }
+    return { path, config: parsed };
+  } catch (error) {
+    return { path, config: null, error: errorMessage(error) };
+  }
+}
 
 /** Собирает валидные имена экспертов */
 export function collectExpertNames(config: ConsiliumConfig): string[] {

@@ -6,29 +6,19 @@
 import { accessSync, constants, existsSync, statSync } from 'fs';
 import { dirname, resolve } from 'path';
 import type { ConsiliumConfig } from '../../../domain/types.js';
-import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
 import { resolveArtifactRoot } from '../../../domain/artifacts/artifacts.js';
-import type { DoctorCheck, ModelRef, OpenCodeConfigRead } from '../types.js';
-import { errorMessage, findDuplicates, formatNames, getProvider, isRecord } from '../types.js';
-import { MODEL_PATTERN, collectExpertNames, collectModelRefs } from './opencode.js';
+import type { DoctorCheck } from '../types.js';
+import {
+  MODEL_PATTERN,
+  errorMessage,
+  findDuplicates,
+  formatNames,
+  getProvider,
+  isRecord
+} from '../types.js';
+import { collectExpertNames, collectModelRefs } from './opencode.js';
 
-/** Читает opencode.json(c) с учётом `.opencode/` и родительских каталогов */
-export function readOpenCodeConfig(cwd: string, configuredPath?: string): OpenCodeConfigRead {
-  const path = findOpenCodeConfigPath(configuredPath, cwd);
-  if (path === null) {
-    return { path: null, config: null };
-  }
-
-  try {
-    const parsed = readJsonFile(path);
-    if (!isRecord(parsed)) {
-      return { path, config: null, error: 'ожидается JSON-объект' };
-    }
-    return { path, config: parsed };
-  } catch (error) {
-    return { path, config: null, error: errorMessage(error) };
-  }
-}
+export { readOpenCodeConfig } from './opencode.js';
 
 /** Находит ближайший существующий предок пути */
 export function findExistingAncestor(start: string): string | null {

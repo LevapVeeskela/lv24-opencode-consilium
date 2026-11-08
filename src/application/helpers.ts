@@ -1,11 +1,10 @@
 /**
  * @fileoverview Чистые помощники уровня приложения: агрегация результатов
- * агентов, входные данные согласия и построение промптов.
+ * агентов и входные данные согласия.
  * @module lv24-opencode-consilium
  */
 
 import type { AgentResult, AgentUsage } from '../domain/types.js';
-import { DEFAULT_EXPERT_PROMPTS } from '../domain/defaults.js';
 
 /** Суммирует расход токенов и стоимость по результатам агентов */
 export function sumUsage(results: AgentResult[]): AgentUsage | undefined {
@@ -65,18 +64,4 @@ export function collectSessions(results: AgentResult[]): Record<string, string> 
     if (result.sessionId !== undefined) sessions[result.agent] = result.sessionId;
   }
   return sessions;
-}
-
-/** Строит промпт эксперта с подстановкой задачи */
-export function buildExpertPrompt(expertName: string, prompt: unknown, task: string): string {
-  if (typeof prompt === 'function') {
-    return prompt(task);
-  }
-  if (typeof prompt === 'string' && prompt.trim().length > 0) {
-    return prompt.replace(/\$\{task\}/g, task);
-  }
-  const fallback = Object.prototype.hasOwnProperty.call(DEFAULT_EXPERT_PROMPTS, expertName)
-    ? DEFAULT_EXPERT_PROMPTS[expertName]
-    : DEFAULT_EXPERT_PROMPTS.default;
-  return typeof fallback === 'function' ? fallback(task) : task;
 }

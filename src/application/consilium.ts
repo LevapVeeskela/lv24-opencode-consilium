@@ -25,7 +25,7 @@ import { DEFAULT_CONFIG, DEFAULT_CHAIR_PROMPT_TEMPLATE } from '../domain/default
 import { applyPreset } from '../domain/council/presets.js';
 import { selectSmartExperts } from '../domain/council/smart-experts.js';
 import { createCostTracker } from '../domain/council/fallback.js';
-import { buildExpertPrompt } from './helpers.js';
+import { buildExpertPrompt } from '../domain/council/prompts.js';
 import {
   applyCostTelemetryWarning,
   buildCancelledMetadata,
@@ -423,7 +423,7 @@ export class Consilium {
     const expertPrompts = experts.map(expert => ({
       agent: expert.name,
       model: expert.model,
-      prompt: buildExpertPrompt(expert.name, expert.prompt, task)
+      prompt: buildExpertPrompt(expert, task)
     }));
 
     const placeholderResults: AgentResult[] = experts.map(expert => ({

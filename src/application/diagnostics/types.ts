@@ -39,6 +39,9 @@ export interface OpenCodeConfigRead {
   error?: string;
 }
 
+/** Паттерн допустимой модели provider/model */
+export const MODEL_PATTERN = /^[A-Za-z0-9._:@\/#+-]+$/;
+
 /** Ограничивает список имён в сообщении */
 export function formatNames(names: string[], limit = 5): string {
   if (names.length <= limit) {
