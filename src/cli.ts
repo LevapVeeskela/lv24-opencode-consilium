@@ -1306,13 +1306,12 @@ async function commandWatch(options: CLIOptions): Promise<number> {
   }
 
   let running = false;
-  let pending = false;
   let closed = false;
+  let suppressUntil = 0;
   let active: Consilium | undefined;
 
   const runOnce = async (): Promise<void> => {
     if (running || closed) {
-      pending = true;
       return;
     }
     running = true;
@@ -1353,10 +1352,9 @@ async function commandWatch(options: CLIOptions): Promise<number> {
     } finally {
       active = undefined;
       running = false;
-      if (pending && !closed) {
-        pending = false;
-        void runOnce();
-      }
+      // Гасим события от собственных записей (report/-o/redirect), которые
+      // fs.watch может доставить уже после завершения прогона.
+      suppressUntil = Date.now() + Math.max(1000, debounceMs + 300);
     }
   };
 
@@ -1367,6 +1365,9 @@ async function commandWatch(options: CLIOptions): Promise<number> {
       debounceMs,
       ignore,
       onTrigger: () => {
+        // Не ставим в очередь: иначе перенаправленный в проект stdout/stderr
+        // запускает новый прогон после каждого завершения (бесконечный цикл).
+        if (closed || running || Date.now() < suppressUntil) return;
         void runOnce();
       }
     });
