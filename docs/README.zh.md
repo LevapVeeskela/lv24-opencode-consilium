@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.1`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.2`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -111,7 +111,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -233,6 +233,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.4.2** — 内部分层重构（`shared`、`domain`、`application`、`infrastructure`、`interfaces`）与切片 barrel；API 与行为不变，22 个 subpath 的导出与 1.4.1 完全一致；全新 README、`llms.txt`、`docs/architecture.md`；ru/zh 同步；构建前清理 `dist`；224 个测试。
 - **1.4.1** — 包更名 `lv24-opencode-consilium`（`opencode-consilium@1.0.2` 保持 deprecated）；译文移到 `docs/`；GHCR 镜像；无功能变化。
 - **1.4.0** — `--report`/`--report-file`、`--variant`、`watch`、`hooks`、V2 插件、`--replay` 恢复模型与标志；新增 `report`、`reportFile`、`variant`、`debounceMs`；224 个测试。
 - **1.3.0** — 运行产物、`--replay`/`--diff-runs`、`--consensus`、`--smart-experts`、`--max-cost`、`--fallback-models`、`--session` 及对应 MCP 参数。

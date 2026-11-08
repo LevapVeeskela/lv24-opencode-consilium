@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -87,7 +87,8 @@ test('JSONC-строки с ,} и ,] не повреждаются', () => {
 
 test('generateExampleConfig — валидный JSON с ключевыми полями', () => {
   const config = JSON.parse(generateExampleConfig());
-  assert.equal(config.version, '1.4.1');
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(config.version, pkg.version);
   assert.equal(config.output.file, false);
   assert.equal(config.retry.maxConcurrency, 3);
   assert.equal(config.standalone, true);

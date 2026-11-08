@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.1
+# consilium v1.4.2
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -243,7 +243,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -519,6 +519,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.4.2** — внутренний рефакторинг по слоям (`shared`, `domain`, `application`, `infrastructure`, `interfaces`) с баррелями на срезах. API и поведение не менялись: публичная поверхность экспортов идентична 1.4.1 по всем 22 subpath. Новый продуктовый README, [`llms.txt`](../llms.txt) и [`docs/architecture.md`](architecture.md); переводы ru/zh синхронизированы; `dist` очищается перед каждой сборкой. 224 теста.
 
 **1.4.1** — npm-пакет переименован в `lv24-opencode-consilium` (npm не умеет переименовывать на месте; `opencode-consilium@1.0.2` остаётся deprecated). На странице npm показывается этот README; переводы перенесены в `docs/`. Образ контейнера опубликован в GHCR. Функциональных изменений нет.
 

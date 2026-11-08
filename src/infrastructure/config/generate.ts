@@ -36,7 +36,7 @@ export function createMinimalConfig(experts: string[] = []): ConsiliumConfig {
 export function generateExampleConfig(): string {
   return JSON.stringify(
     {
-      version: '1.4.1',
+      version: '1.4.2',
       experts: [
         {
           name: 'arch',

@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.1   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.1
+# consilium v1.4.2
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -247,7 +247,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -523,6 +523,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 | Empty result | `consilium doctor`, then rerun with `-V` |
 
 ## Changelog
+
+**1.4.2** — internal refactor into layers (`shared`, `domain`, `application`, `infrastructure`, `interfaces`) with slice barrels. No API or behavior changes: the public export surface is identical to 1.4.1 across all 22 subpaths. Product README, [`llms.txt`](llms.txt) and [`docs/architecture.md`](docs/architecture.md); ru/zh docs synced; `dist` is cleaned before every build. 224 tests.
 
 **1.4.1** — npm package renamed to `lv24-opencode-consilium` (npm cannot rename in place; `opencode-consilium@1.0.2` stays deprecated). npm page shows this README; translations moved to `docs/`. Container image published to GHCR. No functional changes.
 
