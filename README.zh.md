@@ -62,6 +62,8 @@ consilium models --json
 
 来源：`models.dev` + OpenRouter + 内置精选回退。缓存路径 `%TEMP%/lv24-opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
 
+当前推荐组合（2026-11-08 目录）：`arch → opencode/flint-40b-free`、`ux → opencode/inkling-2-small-free`、`ba → opencode/deepseek-v4.1-flash-free`、`sec → opencode/iceman-free`、`chair → opencode/beam-free`。免费模型会轮换，`consilium init --free` 会重新验证并替换 stealth/alpha 模型。
+
 ## MCP 服务器（任意宿主）
 
 ```bash
@@ -164,10 +166,10 @@ consilium hooks uninstall  # 仅删除托管块，不动 hook 其余内容
 ```json
 {
   "experts": [
-    { "name": "arch", "model": "opencode/glm-5.3-flash-free" },
-    { "name": "sec",  "model": "opencode/nemotron-3.5-lightning-free" }
+    { "name": "arch", "model": "opencode/flint-40b-free" },
+    { "name": "sec",  "model": "opencode/iceman-free" }
   ],
-  "chair": { "agent": "consilium", "model": "opencode/deepseek-v4.1-flash-free" },
+  "chair": { "agent": "consilium", "model": "opencode/beam-free" },
   "retry": { "maxConcurrency": 3 }
 }
 ```

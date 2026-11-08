@@ -4,11 +4,11 @@ A council of AI experts for [OpenCode](https://opencode.ai): several agent perso
 
 ```
 consilium "Review the authentication design"
-  arch  → glm-5.3-flash-free
-  ux    → mimo-v2.6-flash-free
-  ba    → flint-40b-free
-  sec   → nemotron-3.5-lightning-free
-  chair → deepseek-v4.1-flash-free   ← synthesis
+  arch  → flint-40b-free
+  ux    → inkling-2-small-free
+  ba    → deepseek-v4.1-flash-free
+  sec   → iceman-free
+  chair → beam-free   ← synthesis
 ```
 
 ## Why
@@ -126,6 +126,18 @@ Sources and fallbacks:
 Cache: `%TEMP%/lv24-opencode-consilium/models-cache.json` (or `CONSILIUM_MODELS_CACHE`), TTL 12 h.
 
 The `opencode-go` provider is no longer excluded wholesale: its free models (`*-free`, `iceman-contributor-free`, and similar) take part in ranking. Paid models of that provider, such as `opencode-go/muse-spark-1.3-contributor`, are not selected by `--free`; set them manually in `experts[].model` or `chair.model`.
+
+Current recommended set (catalog as of 2026-11-08):
+
+| Role | Model | Why |
+| --- | --- | --- |
+| arch | `opencode/flint-40b-free` | coding agent, structured output, 262k |
+| ux | `opencode/inkling-2-small-free` | 1M context, multimodal, fast |
+| ba | `opencode/deepseek-v4.1-flash-free` | reasoning + agentic coding, 200k |
+| sec | `opencode/iceman-free` | newest reasoning model, 262k (stealth) |
+| chair | `opencode/beam-free` | top score, 1M, structured, coding/agentic |
+
+Free models rotate: `consilium init --free` re-checks the catalog and real responses. Stealth/alpha models (`iceman`, `crouton`) can disappear — `--refresh` will pick replacements.
 
 Ranking (0-1.2) is transparent and deterministic: context window 30%, tool calling 20%, structured output 10%, reasoning 10%, recency 10%, output limit 10%, family prior 10%, paid-sibling "shadow price" 15%; alpha/preview/stealth penalties.
 
@@ -330,12 +342,12 @@ Minimal example:
 ```json
 {
   "experts": [
-    { "name": "arch", "model": "opencode/glm-5.3-flash-free" },
-    { "name": "sec",  "model": "opencode/nemotron-3.5-lightning-free" }
+    { "name": "arch", "model": "opencode/flint-40b-free" },
+    { "name": "sec",  "model": "opencode/iceman-free" }
   ],
   "chair": {
     "agent": "consilium",
-    "model": "opencode/deepseek-v4.1-flash-free"
+    "model": "opencode/beam-free"
   },
   "retry": { "maxConcurrency": 3 }
 }

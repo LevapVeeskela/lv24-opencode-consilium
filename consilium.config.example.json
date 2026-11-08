@@ -5,7 +5,7 @@
   "experts": [
     {
       "name": "arch",
-      "model": "opencode/glm-5.3-flash-free",
+      "model": "opencode/flint-40b-free",
       "enabled": true,
       "priority": 1,
       "timeout": 300000,
@@ -14,21 +14,21 @@
     },
     {
       "name": "ux",
-      "model": "opencode/mimo-v2.6-flash-free",
+      "model": "opencode/inkling-2-small-free",
       "enabled": true,
       "priority": 2,
       "prompt": "Как UX-специалист, оцени задачу с точки зрения пользователя (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     },
     {
       "name": "ba",
-      "model": "opencode/flint-40b-free",
+      "model": "opencode/deepseek-v4.1-flash-free",
       "enabled": true,
       "priority": 3,
       "prompt": "Как бизнес-аналитик, оцени ценность и риски (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
     },
     {
       "name": "sec",
-      "model": "opencode/nemotron-3.5-lightning-free",
+      "model": "opencode/iceman-free",
       "enabled": true,
       "priority": 4,
       "prompt": "Как эксперт по безопасности, проанализируй риски (3-5 предложений): ${task}\nНе вызывай инструменты — ответь только текстом."
@@ -37,7 +37,7 @@
 
   "chair": {
     "agent": "consilium",
-    "model": "opencode/deepseek-v4.1-flash-free",
+    "model": "opencode/beam-free",
     "timeout": 600000,
     "maxExpertTextLength": 3000
   },

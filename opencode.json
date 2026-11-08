@@ -1,42 +1,42 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "theme": "consilium",
-  "model": "opencode/deepseek-v4.1-flash-free",
+  "model": "opencode/beam-free",
   "autoupdate": true,
   "agent": {
     "build": {
       "description": "Build agent for compilation",
       "mode": "primary",
-      "model": "opencode/glm-5.3-flash-free"
+      "model": "opencode/beam-free"
     },
     "arch": {
       "description": "Architecture expert",
       "mode": "primary",
-      "model": "opencode/glm-5.3-flash-free",
+      "model": "opencode/flint-40b-free",
       "prompt": "You are a software architecture expert. Analyze the task and provide recommendations. Do not call tools; answer in text only."
     },
     "ux": {
       "description": "UX expert",
       "mode": "primary",
-      "model": "opencode/mimo-v2.6-flash-free",
+      "model": "opencode/inkling-2-small-free",
       "prompt": "You are a UX expert. Analyze the task from user experience perspective. Do not call tools; answer in text only."
     },
     "ba": {
       "description": "Business analyst",
       "mode": "primary",
-      "model": "opencode/flint-40b-free",
+      "model": "opencode/deepseek-v4.1-flash-free",
       "prompt": "You are a business analyst. Analyze the business value and requirements. Do not call tools; answer in text only."
     },
     "sec": {
       "description": "Security expert",
       "mode": "primary",
-      "model": "opencode/nemotron-3.5-lightning-free",
+      "model": "opencode/iceman-free",
       "prompt": "You are a security expert. Analyze potential security risks. Do not call tools; answer in text only."
     },
     "consilium": {
       "description": "Consilium chair - synthesizes expert opinions",
       "mode": "primary",
-      "model": "opencode/deepseek-v4.1-flash-free",
+      "model": "opencode/beam-free",
       "prompt": "You are the chair of an AI expert consilium. Synthesize the expert opinions and provide a final recommendation. Do not call tools; answer in text only."
     }
   }

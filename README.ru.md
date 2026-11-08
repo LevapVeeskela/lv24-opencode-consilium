@@ -4,11 +4,11 @@
 
 ```
 consilium "Оцени дизайн аутентификации"
-  arch  → glm-5.3-flash-free
-  ux    → mimo-v2.6-flash-free
-  ba    → flint-40b-free
-  sec   → nemotron-3.5-lightning-free
-  chair → deepseek-v4.1-flash-free   ← синтез
+  arch  → flint-40b-free
+  ux    → inkling-2-small-free
+  ba    → deepseek-v4.1-flash-free
+  sec   → iceman-free
+  chair → beam-free   ← синтез
 ```
 
 ## Зачем
@@ -126,6 +126,18 @@ consilium models --json          # машинный формат
 Кэш: `%TEMP%/lv24-opencode-consilium/models-cache.json` (или `CONSILIUM_MODELS_CACHE`), TTL 12 ч.
 
 Провайдер `opencode-go` больше не исключается целиком: его бесплатные модели (`*-free`, `iceman-contributor-free` и т. п.) участвуют в рейтинге. Платные модели этого провайдера, например `opencode-go/muse-spark-1.3-contributor`, в `--free` не попадают — их можно задать вручную в `experts[].model` или `chair.model`.
+
+Текущий рекомендуемый состав (каталог на 2026-11-08):
+
+| Роль | Модель | Почему |
+| --- | --- | --- |
+| arch | `opencode/flint-40b-free` | coding-агент, structured output, 262k |
+| ux | `opencode/inkling-2-small-free` | 1M контекст, мультимодальность, быстрая |
+| ba | `opencode/deepseek-v4.1-flash-free` | reasoning + agentic coding, 200k |
+| sec | `opencode/iceman-free` | самая свежая reasoning-модель, 262k (stealth) |
+| chair | `opencode/beam-free` | топ рейтинга, 1M, structured, coding/agentic |
+
+Бесплатные модели ротируются: `consilium init --free` заново проверяет каталог и реальные ответы. Stealth/alpha-модели (`iceman`, `crouton`) могут исчезнуть — тогда `--refresh` подберёт замену.
 
 Рейтинг (0–1.2) детерминирован: контекст 30%, tools 20%, structured output 10%, reasoning 10%, свежесть 10%, лимит вывода 10%, приор семейства 10%, «теневая цена» платного аналога 15%; штрафы за alpha/preview/stealth.
 
@@ -331,12 +343,12 @@ PR-отчёт — это markdown для комментария GitHub с мар
 ```json
 {
   "experts": [
-    { "name": "arch", "model": "opencode/glm-5.3-flash-free" },
-    { "name": "sec",  "model": "opencode/nemotron-3.5-lightning-free" }
+    { "name": "arch", "model": "opencode/flint-40b-free" },
+    { "name": "sec",  "model": "opencode/iceman-free" }
   ],
   "chair": {
     "agent": "consilium",
-    "model": "opencode/deepseek-v4.1-flash-free"
+    "model": "opencode/beam-free"
   },
   "retry": { "maxConcurrency": 3 }
 }
