@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.3`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.5.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -100,7 +100,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 
 | 工具 | 参数 / 结果 |
 | --- | --- |
-| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts` → 方案 + 意见 + 元数据 |
+| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`findings` → 方案 + 意见 + 元数据 |
 | `consilium_list_agents` | 专家、模型、主席、预设、配置路径 |
 | `consilium_free_models` | `limit`、`available_only`、`refresh` |
 | `consilium_doctor` | 环境/配置诊断 |
@@ -111,20 +111,21 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
+  "findings": "consilium --findings -f json \"<task>\" -> metadata.findings",
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
-  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error" },
+  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error", "3": "策略门禁失败" },
   "docs_index": "llms.txt"
 }
 ```
 
 - **stdout 放数据，stderr 放进度。** 用 `-f json`、`consilium models --json` 或 MCP，不要解析人类文本。
-- **错误类型化。** `errorCode` 为 `RATE_LIMITED`、`MODEL_UNAVAILABLE`、`EMPTY_RESPONSE`、`AGENT_NOT_FOUND`、`COST_LIMIT`、`TIMEOUT` 等，退出码 `0/1/2`。
+- **错误类型化。** `errorCode` 为 `RATE_LIMITED`、`MODEL_UNAVAILABLE`、`EMPTY_RESPONSE`、`AGENT_NOT_FOUND`、`COST_LIMIT`、`TIMEOUT` 等，退出码 `0/1/2/3`（`3` = 策略门禁）。
 - **状态是文件。** 产物在 `.consilium/runs/<id>/`，`--replay <id>` 复原；`--auto` 默认关闭。
 
 机器索引：[`llms.txt`](../llms.txt)；内部实现：[`session-and-plugin.md`](session-and-plugin.md)。
@@ -138,6 +139,8 @@ consilium doctor
 consilium mcp [--install] [--global]
 consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
+consilium baseline accept <id|latest> [--dry-run]
+consilium baseline prune [--older-than <days>] [--all --yes]
 ```
 
 | 选项 | 说明 |
@@ -153,8 +156,9 @@ consilium hooks install|uninstall
 | `--artifacts`、`--no-artifacts`、`--artifacts-dir <path>`、`--replay <id>`、`--diff-runs <a> <b>` | 产物 / 目录 / 重跑 / 对比 |
 | `--report <html\|pr\|markdown>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告 / 写文件 / git diff / watch 防抖 |
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
+| `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
 
-退出码：`0` 成功，`1` 运行失败，`2` 用法错误。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
+退出码：`0` 成功，`1` 运行失败，`2` 用法错误，`3` 策略门禁失败。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
 ## 运行产物/报告/watch/git hooks
 ```bash
 consilium --report html --report-file report.html "Review the current changes"
@@ -166,6 +170,26 @@ consilium hooks uninstall                   # 只删托管块
 ```
 
 产物是普通文件：`.consilium/runs/<id>/` 下的 `run.json`、`report.md`、`experts/<agent>.md`。PR 报告带 `<!-- consilium:report -->` 和 `<details>`；HTML 自包含；hook 只写 `# >>> consilium >>>` … `# <<< consilium <<<` 块。
+## 结构化发现与策略门禁
+用 `--findings` 让评审返回结构化发现；每个专家（和主席）在回答末尾附一个 `json` 代码块：
+
+```json
+{"findings":[{"severity":"high","category":"security","file":"src/auth.ts","line":42,"claim":"删除项目未校验归属","evidence":"handler 调用 remove() 前没有 authorize()","confidence":0.9}],"rejected":[{"claim":"middleware 已校验归属","reason":"该路由未挂载 middleware"}]}
+```
+
+- `severity`：`critical`/`high`/`medium`/`low`/`info`；`claim` 必填，其余可选。
+- 按稳定指纹去重（category + file + 规范化 claim，忽略行号），严重性取最高值；主席拒绝的条目标记 `contested` 并列入 `rejected`。
+- `metadata.findings` = `{ items, counts, rejected, parseErrors }`；HTML/PR 报告渲染表格与异议账本（dissent ledger）。
+- JSON 缺失或损坏不会让运行失败：保留正文，问题记入 `parseErrors`。
+
+```bash
+consilium baseline accept latest            # 接受最近一次运行的发现
+consilium baseline prune --older-than 90    # 或 --all --yes
+consilium --findings --fail-on high --diff "Review the current changes"
+```
+
+- `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
+
 ## OpenCode V2 插件
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
@@ -201,9 +225,9 @@ consilium hooks uninstall                   # 只删托管块
 | `timeouts.expert` / `.chair`；`retry.expertRetries` / `.chairRetries` | 300000 / 600000；1 | 每次尝试 ms；重试次数（0 = 一次） |
 | `retry.jitter` / `retry.maxConcurrency` / `output.file` | `false` / 3 / `false` | 随机延迟（50–100%）/ 并行 1–8 / 关闭保存 |
 | `standalone` / `autoApprove` / `autoDiscoverAgents` | `true` / `false` / `true` | 私有服务器 / `--auto` / 复用 Agent |
-| `artifacts` / `consensus` / `smartExperts` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色 |
+| `artifacts` / `consensus` / `smartExperts` / `findings` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色；结构化发现 |
 | `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式 / 报告文件 / variant / watch 防抖 |
-| `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录 |
+| `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录；项目配置中除非用 `-c` 否则忽略 |
 
 完整 Schema：[`../schema/config.schema.json`](../schema/config.schema.json)。
 ## 库 API
@@ -240,6 +264,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.5.0** — 结构化发现与策略门禁：`--findings` 让专家和主席返回经过校验的 `findings[]` JSON（`severity`、`category`、`file`、`line`、`claim`、`evidence`、`confidence`），按稳定指纹去重合并，主席拒绝的条目记为 `contested`，并写入 `metadata.findings`；HTML/PR 报告渲染发现表与异议账本；`--fail-on <severity>` 只对**新**发现生效并以退出码 `3` 阻断，`consilium baseline accept|prune` 管理 `.consilium/baseline.json`。同时包含 P1 正确性修复（V1/V2 配置优先级、损坏配置告警、模型缓存回退/`minContext`/去重、成本遥测、SIGKILL 升级、`ses_` 会话前缀、CLI `argv[0]` 解析、watch 重跑/信号、preset/consensus/smart-experts 边界情况）以及 `/council` 斜杠命令；317 个测试。
 - **1.4.3** — 安全加固：项目配置默认不可信（`opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串写入路径需用 `-c` 显式信任）；Windows `.cmd` 参数白名单；MCP 拒绝无 `id` 的调用、限制队列、限制产物路径，`init_free` 生成 `.bak` 且 `force` 需确认；diff fence 与报告转义防注入；产物脱敏并生成 `.gitignore`；246 个测试。
 - **1.4.2** — 内部分层重构（`shared`、`domain`、`application`、`infrastructure`、`interfaces`）与切片 barrel；API 与行为不变，22 个 subpath 的导出与 1.4.1 完全一致；全新 README、`llms.txt`、`docs/architecture.md`；ru/zh 同步；构建前清理 `dist`；224 个测试。
 - **1.4.1** — 包更名 `lv24-opencode-consilium`（`opencode-consilium@1.0.2` 保持 deprecated）；译文移到 `docs/`；GHCR 镜像；无功能变化。

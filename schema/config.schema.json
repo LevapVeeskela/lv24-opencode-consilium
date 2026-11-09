@@ -57,6 +57,7 @@
     "autoApprove": { "type": "boolean" },
     "artifacts": { "type": ["string", "boolean"] },
     "consensus": { "type": "boolean" },
+    "findings": { "type": "boolean", "default": false },
     "smartExperts": { "type": "boolean" },
     "maxCost": { "type": "number", "minimum": 0 },
     "fallbackModels": { "type": "array", "items": { "type": "string" } },

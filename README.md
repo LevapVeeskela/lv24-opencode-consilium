@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.3
+# consilium v1.5.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -232,7 +232,7 @@ Any MCP client with stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carr
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts` | Chair synthesis + expert opinions + JSON metadata (time, usage, cost, models) |
+| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Chair synthesis + expert opinions + JSON metadata (time, usage, cost, models, findings) |
 | `consilium_list_agents` | — | Configured experts, models, chair, presets, config path |
 | `consilium_free_models` | `limit`, `available_only`, `refresh` | Ranked free models table |
 | `consilium_doctor` | — | Environment/config diagnostics |
@@ -247,14 +247,15 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
+  "findings": "consilium --findings -f json \"<task>\" -> metadata.findings",
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
-  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error" },
+  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error", "3": "policy gate failed" },
   "docs_index": "llms.txt"
 }
 ```
@@ -263,7 +264,7 @@ Rules that matter when you drive it:
 
 1. **stdout is for data, stderr is for progress.** `-f json` prints one JSON document on stdout; logs and progress stay on stderr.
 2. **Do not parse human text.** Use `-f json` (result + `metadata`), `consilium models --json`, or MCP tools.
-3. **Errors are typed.** `errorCode` is one of `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, … and exit codes are `0/1/2`.
+3. **Errors are typed.** `errorCode` is one of `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, … and exit codes are `0/1/2/3` (`3` = policy gate).
 4. **State is files, not a daemon.** Artifacts live in `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` restores a run.
 5. **No interactive prompts.** Every command is non-interactive; `--auto` is off by default and must be enabled deliberately.
 6. **Cheap first.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; add `--max-cost` for a hard budget.
@@ -291,6 +292,8 @@ consilium doctor
 consilium mcp [--install] [--global]
 consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
+consilium baseline accept <id|latest> [--dry-run]
+consilium baseline prune [--older-than <days>] [--all --yes]
 ```
 
 **Core**
@@ -339,8 +342,11 @@ consilium hooks install|uninstall
 | `hooks install\|uninstall` | Install/remove a git pre-commit hook (staged review before commit) |
 | `--native-v2` | Write native V2 config (`agents`/`system`) |
 | `--install`, `--global` | Register the MCP server in the project or global config |
+| `--findings` / `--no-findings` | Structured findings block in expert/chair answers (off by default) |
+| `--fail-on <severity>` | Exit `3` when new findings reach the threshold: `critical`, `high`, `medium`, `low`, `info`, `none` |
+| `baseline accept\|prune` | Manage `.consilium/baseline.json` (accepted finding fingerprints) |
 
-Exit codes: `0` success, `1` run failed, `2` usage error.
+Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy gate failed.
 
 ```bash
 consilium -e arch,sec "Threat-model the file upload endpoint"
@@ -386,8 +392,57 @@ How the analysis flags behave:
 - `--consensus` computes lexical agreement (Jaccard over significant terms, RU+EN stopwords): per-pair scores, an average and an `agreement` level (`high`/`medium`/`low`). It is a deterministic count, not an LLM judgement. Summary → chair prompt; full report → result and `metadata.consensus`.
 - `--smart-experts` picks 2–3 roles with a heuristic (role lexicons over task and diff); the selection lands in `metadata.smartExperts`.
 - `--max-cost` tracks expert + chair spend. Over the limit before the chair → chair skipped, partial result with `errorCode: COST_LIMIT` and `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`).
-- `--fallback-models` retries the same expert on the next model (max 2 substitutions), summing usage into `metadata.fallbackModels`.
+- `--fallback-models` retries the same expert on the next model (up to the configured list, capped at 10), summing usage into `metadata.fallbackModels`.
 - `--session` gives the chair the base session and each expert `ses_<base>-<agent>`; unknown agents run on the default agent with `ses_<base>-default-<agent>`, so nobody else's session is polluted. Sessions are not hidden from `opencode session list` by design.
+
+## Findings and policy gate
+
+Review runs can return structured findings instead of prose only — opt in with `--findings`:
+
+```bash
+consilium --findings --artifacts -f json "Review the current changes" > run.json
+consilium --findings --fail-on high --diff "Review the current changes"
+```
+
+Each expert (and the chair) ends with one fenced `json` block:
+
+````markdown
+```json
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "security",
+      "file": "src/auth.ts",
+      "line": 42,
+      "claim": "Deleting a project does not check ownership",
+      "evidence": "the handler calls remove() without authorize()",
+      "confidence": 0.9
+    }
+  ],
+  "rejected": [
+    { "claim": "Ownership is checked in middleware", "reason": "middleware is not mounted on this route" }
+  ]
+}
+```
+````
+
+- `severity`: `critical` | `high` | `medium` | `low` | `info`; `claim` is required, everything else is optional.
+- Experts report findings; the chair merges them and lists the positions it rejected in `rejected`.
+- Findings are deduplicated by a stable fingerprint (category + file + normalized claim, line excluded), so the same issue maps to one entry across runs; severity is the maximum reported.
+- `metadata.findings` = `{ items, counts, rejected, parseErrors }`; HTML and PR reports render the table plus a collapsible dissent ledger.
+- Missing or malformed JSON never fails the run: prose is kept and the problem lands in `parseErrors`.
+
+Baseline and gate:
+
+```bash
+consilium baseline accept latest           # accept the findings of the newest run
+consilium baseline accept <runId> --dry-run
+consilium baseline prune --older-than 90    # or --all --yes
+consilium --findings --fail-on high --diff "Review the current changes"
+```
+
+`--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
 
 ## OpenCode V2 plugin
 
@@ -468,8 +523,9 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `reportFile` | — | Report file path (`.html`/`.md` picks the format) |
 | `variant` | — | Model variant for models without `#variant` (explicit variants win) |
 | `debounceMs` | 400 | Watch-mode delay, ms |
-| `opencodePath` | `opencode` | Custom CLI path |
-| `cwd` | current | Working directory for OpenCode |
+| `findings` | `false` | Structured findings block in expert/chair answers |
+| `opencodePath` | `opencode` | Custom CLI path (ignored from project config unless `-c`) |
+| `cwd` | current | Working directory for OpenCode (ignored from project config unless `-c`) |
 
 Full schema: [`schema/config.schema.json`](schema/config.schema.json) · example: [`consilium.config.example.json`](consilium.config.example.json).
 
@@ -539,6 +595,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.5.0** — structured findings and a policy gate. `--findings` makes experts and the chair return a validated `findings[]` JSON block (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); findings are deduplicated by a stable fingerprint, merged across roles, marked `contested` when the chair rejects them, and stored in `metadata.findings`. HTML and PR reports render the findings table and the dissent ledger. `--fail-on <severity>` gates on **new** findings with exit code `3`; `consilium baseline accept|prune` manages `.consilium/baseline.json`. Also: P1 correctness fixes (config V1/V2 precedence, malformed-config warnings, model cache fallback/`minContext`/dedupe, cost telemetry, SIGKILL escalation, `ses_` session prefix, CLI `argv[0]` parsing, watch rerun/signals, preset/consensus/smart-experts edge cases) and the `/council` slash command. 317 tests.
+
 **1.4.3** — security hardening. Project config is untrusted by default: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` and string write paths are ignored unless the file is passed with `-c`. Windows `.cmd` spawning validates every argument; `.exe` spawns directly. MCP rejects id-less tool calls, caps the queue, confines output/artifacts to the workspace, and `init_free` makes backups and requires confirmation for `force`. Dynamic diff fences and report escaping block prompt/markdown injection; artifacts redact tokens and get a `.gitignore`. 246 tests.
 
 **1.4.2** — internal refactor into layers (`shared`, `domain`, `application`, `infrastructure`, `interfaces`) with slice barrels. No API or behavior changes: the public export surface is identical to 1.4.1 across all 22 subpaths. Product README, [`llms.txt`](llms.txt) and [`docs/architecture.md`](docs/architecture.md); ru/zh docs synced; `dist` is cleaned before every build. 224 tests.
@@ -563,7 +621,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (246 tests)
+npm test            # build + node:test (317 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

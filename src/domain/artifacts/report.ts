@@ -4,6 +4,13 @@
  */
 
 import type { AgentResult, ConsiliumResult } from '../types.js';
+import type {
+  Finding,
+  FindingSeverity,
+  FindingSource,
+  FindingsSummary,
+  RejectedPosition
+} from '../council/findings.js';
 
 /** Формат отчёта. */
 export type ReportFormat = 'html' | 'pr' | 'markdown';
@@ -17,6 +24,7 @@ export interface ReportOptions {
 const TEXT_LIMIT = 6000;
 const PACKAGE_NAME = 'lv24-opencode-consilium';
 const PR_MARKER = '<!-- consilium:report -->';
+const SEVERITIES: readonly FindingSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 interface ConsensusLike {
   agreement?: unknown;
@@ -140,6 +148,129 @@ function artifactsDirOf(result: ConsiliumResult): string | null {
   return typeof dir === 'string' && dir.length > 0 ? dir : null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toSeverity(value: unknown): FindingSeverity {
+  if (typeof value !== 'string') return 'medium';
+  const normalized = value.trim().toLowerCase();
+  return (SEVERITIES as readonly string[]).includes(normalized) ? (normalized as FindingSeverity) : 'medium';
+}
+
+function toFindingSource(value: unknown): FindingSource | null {
+  if (!isRecord(value)) return null;
+  const agent = typeof value['agent'] === 'string' ? value['agent'] : '';
+  if (agent.length === 0) return null;
+  const model = typeof value['model'] === 'string' && value['model'].length > 0 ? value['model'] : undefined;
+  return { agent, model };
+}
+
+function toFinding(value: unknown): Finding | null {
+  if (!isRecord(value)) return null;
+  const claim = typeof value['claim'] === 'string' ? value['claim'].trim() : '';
+  if (claim.length === 0) return null;
+  const lineValue = value['line'];
+  const line = typeof lineValue === 'number' && Number.isFinite(lineValue) && lineValue > 0
+    ? Math.floor(lineValue)
+    : undefined;
+  const confidenceValue = value['confidence'];
+  const confidence =
+    typeof confidenceValue === 'number' && Number.isFinite(confidenceValue) && confidenceValue >= 0 && confidenceValue <= 1
+      ? confidenceValue
+      : undefined;
+  const rejectedBy = strArray(value['rejectedBy']);
+  const sources = Array.isArray(value['sources'])
+    ? value['sources'].map(toFindingSource).filter((source): source is FindingSource => source !== null)
+    : [];
+  return {
+    fingerprint: typeof value['fingerprint'] === 'string' ? value['fingerprint'] : '',
+    severity: toSeverity(value['severity']),
+    category:
+      typeof value['category'] === 'string' && value['category'].trim().length > 0
+        ? value['category']
+        : 'general',
+    file: typeof value['file'] === 'string' && value['file'].length > 0 ? value['file'] : undefined,
+    line,
+    claim,
+    evidence: typeof value['evidence'] === 'string' ? value['evidence'] : undefined,
+    confidence,
+    sources,
+    contested: value['contested'] === true || rejectedBy.length > 0,
+    rejectedBy
+  };
+}
+
+function toRejectedPosition(value: unknown): RejectedPosition | null {
+  if (!isRecord(value)) return null;
+  const claim = typeof value['claim'] === 'string' ? value['claim'].trim() : '';
+  if (claim.length === 0) return null;
+  return {
+    claim,
+    reason: typeof value['reason'] === 'string' && value['reason'].length > 0 ? value['reason'] : undefined,
+    agent: typeof value['agent'] === 'string' ? value['agent'] : ''
+  };
+}
+
+function zeroCounts(): Record<FindingSeverity, number> {
+  return { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+}
+
+function normalizeCounts(value: unknown, items: Finding[]): Record<FindingSeverity, number> {
+  const derived = zeroCounts();
+  for (const item of items) derived[item.severity] += 1;
+  if (!isRecord(value)) return derived;
+  const parsed = zeroCounts();
+  let total = 0;
+  for (const severity of SEVERITIES) {
+    const count = value[severity];
+    if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) return derived;
+    parsed[severity] = Math.trunc(count);
+    total += parsed[severity];
+  }
+  return total === items.length ? parsed : derived;
+}
+
+/** Извлекает валидную сводку находок из `metadata.findings` или возвращает null. */
+export function findingsSummaryOf(result: ConsiliumResult): FindingsSummary | null {
+  const metadata = result.metadata;
+  if (!isRecord(metadata)) return null;
+  const raw = metadata['findings'];
+  if (!isRecord(raw) || !Array.isArray(raw['items'])) return null;
+  const items = raw['items']
+    .map(toFinding)
+    .filter((item): item is Finding => item !== null);
+  const rejected = Array.isArray(raw['rejected'])
+    ? raw['rejected']
+        .map(toRejectedPosition)
+        .filter((item): item is RejectedPosition => item !== null)
+    : [];
+  return {
+    items,
+    counts: normalizeCounts(raw['counts'], items),
+    rejected,
+    parseErrors: strArray(raw['parseErrors'])
+  };
+}
+
+/** Форматирует счётчики серьёзности: `critical: 0, high: 1, ...`. */
+export function formatFindingsCounts(counts: Record<FindingSeverity, number>): string {
+  return SEVERITIES.map(severity => `${severity}: ${counts[severity]}`).join(', ');
+}
+
+function findingsLocation(item: Finding): string {
+  if (item.file === undefined) return '—';
+  return item.line === undefined ? item.file : `${item.file}:${item.line}`;
+}
+
+function findingSourceLabel(source: FindingSource): string {
+  return source.model === undefined ? source.agent : `${source.agent} (${source.model})`;
+}
+
+function findingsSourcesLabel(sources: FindingSource[]): string {
+  return sources.length > 0 ? sources.map(findingSourceLabel).join(', ') : '—';
+}
+
 function consensusPairs(c: ConsensusLike): Array<{ left: string; right: string; similarity: number }> {
   if (!Array.isArray(c.pairs)) return [];
   const out: Array<{ left: string; right: string; similarity: number }> = [];
@@ -176,6 +307,43 @@ function totalCost(result: ConsiliumResult): number | null {
   return typeof c === 'number' && Number.isFinite(c) ? c : null;
 }
 
+function buildHtmlFindings(summary: FindingsSummary): string {
+  const rows = summary.items
+    .map(item => {
+      const location = findingsLocation(item);
+      const locationCell = location === '—' ? '—' : `<code>${escapeHtml(location)}</code>`;
+      const contested = item.contested ? '<span class="contested">⚠ contested</span>' : '—';
+      return `<tr><td><span class="sev sev-${item.severity}">${item.severity}</span></td>`
+        + `<td>${escapeHtml(item.category)}</td>`
+        + `<td>${locationCell}</td>`
+        + `<td>${escapeHtml(item.claim)}</td>`
+        + `<td>${escapeHtml(findingsSourcesLabel(item.sources))}</td>`
+        + `<td>${contested}</td></tr>`;
+    })
+    .join('');
+  const rejected = summary.rejected.length > 0
+    ? `<details><summary>Rejected positions (${summary.rejected.length})</summary><ul>`
+      + summary.rejected
+          .map(position => {
+            const reason = position.reason === undefined ? '' : ` — ${escapeHtml(position.reason)}`;
+            const agent = position.agent.length > 0 ? ` (${escapeHtml(position.agent)})` : '';
+            return `<li><strong>${escapeHtml(position.claim)}</strong>${reason}${agent}</li>`;
+          })
+          .join('')
+      + `</ul></details>`
+    : '';
+  const parseErrors = summary.parseErrors.length > 0
+    ? `<p class="note">Ошибки разбора: ${escapeHtml(summary.parseErrors.join('; '))}</p>`
+    : '';
+  return `<section class="findings"><h2>Находки (Findings)</h2>`
+    + `<p>Findings: ${summary.items.length} (${escapeHtml(formatFindingsCounts(summary.counts))}).</p>`
+    + `<table><thead><tr><th>Серьёзность</th><th>Категория</th><th>Файл</th><th>Утверждение</th><th>Источники</th><th>Спорность</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table>`
+    + rejected
+    + parseErrors
+    + `</section>`;
+}
+
 /**
  * Рендерит полностью автономный HTML-отчёт (один файл, инлайн-стили).
  */
@@ -187,6 +355,14 @@ export function renderHtmlReport(result: ConsiliumResult, options?: ReportOption
   const { ok, total } = expertsOkTotal(result);
   const consensus = consensusOf(result);
   const artifactsDir = artifactsDirOf(result);
+  const findings = findingsSummaryOf(result);
+  const findingsBlock = findings !== null && findings.items.length > 0 ? buildHtmlFindings(findings) : '';
+  const findingsStyles = findingsBlock.length > 0
+    ? `.sev{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff;background:#57606a}`
+      + `.sev-critical{background:#b42318}.sev-high{background:#d1242f}.sev-medium{background:#bf8700}.sev-low{background:#1a7f37}.sev-info{background:#57606a}`
+      + `.contested{color:#b42318;font-size:13px}.note{color:#555;font-size:13px}.findings details{margin:12px 0}.findings summary{cursor:pointer;color:#555}`
+      + `@media (prefers-color-scheme:dark){.note,.findings summary{color:#9aa4b2}.contested{color:#ff7b72}}`
+    : '';
 
   const modelsRows = (Array.isArray(result.experts) ? result.experts : [])
     .map(e => `<tr><td>${escapeHtml(e.agent ?? '—')}</td><td>${escapeHtml(e.model ?? '—')}</td><td>${e.success ? 'OK' : 'FAIL'}</td></tr>`)
@@ -226,10 +402,12 @@ export function renderHtmlReport(result: ConsiliumResult, options?: ReportOption
     + `.card{border:1px solid #ddd;border-radius:10px;padding:12px 16px;margin:12px 0}.meta{color:#555;font-size:13px}.err{color:#b42318;font-size:13px}.cut,.empty{color:#777;font-size:13px}`
     + `@media print{body{max-width:none;padding:0}.card{break-inside:avoid}}`
     + `@media (prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}pre{background:#161b22}.card{border-color:#30363d}th,td{border-color:#30363d}.meta,.cut,.empty{color:#9aa4b2}}`
+    + findingsStyles
     + `</style></head><body>`
     + `<header><h1>${escapeHtml(title)}</h1><p>Дата: ${escapeHtml(fmtDate(generatedAt))} <span class="badge">${result.success ? 'успешно' : 'частично'}</span></p></header>`
     + `<section><h2>Сводка</h2><p>Время: всего ${escapeHtml(fmtDuration(result.totalTime))}, параллельно ${escapeHtml(fmtDuration(result.parallelTime))}. `
     + `Эксперты: ${ok}/${total} успешно. Стоимость: ${escapeHtml(totalCost(result) === null ? '—' : money(totalCost(result)))}.</p></section>`
+    + findingsBlock
     + `<section><h2>Модели</h2><table><thead><tr><th>Эксперт</th><th>Модель</th><th>Статус</th></tr></thead><tbody>${modelsRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></section>`
     + consensusBlock
     + `<section><h2>Мнения экспертов</h2>${cards || '<p>—</p>'}</section>`
@@ -258,6 +436,49 @@ function buildHtmlConsensus(c: ConsensusLike): string {
     + `</section>`;
 }
 
+/** Экранирует значение для ячейки markdown-таблицы: HTML, ссылки, переводы строк и `|`. */
+function markdownTableCell(value: string): string {
+  return escapeMarkdownText(value)
+    .replace(/\r\n?|[\n\u2028\u2029]/g, ' ')
+    .replace(/\|/g, '\\|');
+}
+
+function buildPrFindings(summary: FindingsSummary): string[] {
+  const lines: string[] = [];
+  lines.push('### Находки (Findings)');
+  lines.push('');
+  lines.push(`Findings: ${summary.items.length} (${formatFindingsCounts(summary.counts)}).`);
+  lines.push('');
+  lines.push('| Severity | Category | Location | Claim | Sources |');
+  lines.push('| --- | --- | --- | --- | --- |');
+  for (const item of summary.items) {
+    const claim = item.contested ? `${item.claim} ⚠ contested` : item.claim;
+    lines.push(
+      `| ${markdownTableCell(item.severity)} | ${markdownTableCell(item.category)} | `
+      + `${markdownTableCell(findingsLocation(item))} | ${markdownTableCell(claim)} | `
+      + `${markdownTableCell(findingsSourcesLabel(item.sources))} |`
+    );
+  }
+  lines.push('');
+  if (summary.rejected.length > 0) {
+    lines.push(`<details><summary>Rejected positions (${summary.rejected.length})</summary>`);
+    lines.push('');
+    for (const position of summary.rejected) {
+      const reason = position.reason === undefined ? '' : ` — ${markdownTableCell(position.reason)}`;
+      const agent = position.agent.length > 0 ? ` (${markdownTableCell(position.agent)})` : '';
+      lines.push(`- **${markdownTableCell(position.claim)}**${reason}${agent}`);
+    }
+    lines.push('');
+    lines.push('</details>');
+    lines.push('');
+  }
+  if (summary.parseErrors.length > 0) {
+    lines.push(`_Ошибки разбора: ${markdownTableCell(summary.parseErrors.join('; '))}_`);
+    lines.push('');
+  }
+  return lines;
+}
+
 /**
  * Рендерит компактный PR-комментарий (GitHub markdown).
  */
@@ -269,6 +490,8 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
   lines.push('');
   lines.push(`Время ${fmtDuration(result.totalTime)} (параллельно ${fmtDuration(result.parallelTime)}) · эксперты ${ok}/${total} · стоимость ${cost === null ? '—' : money(cost)}`);
   lines.push('');
+  const findings = findingsSummaryOf(result);
+  if (findings !== null && findings.items.length > 0) lines.push(...buildPrFindings(findings));
   const experts = Array.isArray(result.experts) ? result.experts : [];
   if (experts.length === 0) {
     lines.push('Эксперты отсутствуют.');

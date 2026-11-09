@@ -236,6 +236,10 @@ export function validateConfig(config: ConsiliumConfig): string[] {
     warnings.push('maxCost должен быть числом >= 0 (USD).');
   }
 
+  if (config.findings !== undefined && typeof config.findings !== 'boolean') {
+    warnings.push('findings должен быть boolean.');
+  }
+
   if (config.fallbackModels !== undefined) {
     if (!Array.isArray(config.fallbackModels)) {
       warnings.push('fallbackModels должен быть массивом моделей provider/model.');

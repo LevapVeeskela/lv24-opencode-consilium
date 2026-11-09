@@ -1,6 +1,6 @@
 {
   "name": "lv24-opencode-consilium",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "Консилиум ИИ-экспертов для OpenCode CLI: мульти-модельный совет, MCP-сервер и подбор сильнейших бесплатных моделей",
   "type": "module",
   "main": "dist/index.js",

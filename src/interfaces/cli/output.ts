@@ -8,7 +8,7 @@ import { dirname, resolve } from 'path';
 import type { CLIOptions, ConsiliumConfig, ConsiliumResult } from '../../domain/types.js';
 import { Consilium } from '../../application/consilium.js';
 import { listPresets } from '../../domain/council/presets.js';
-import { renderReport, type ReportFormat } from '../../domain/artifacts/report.js';
+import { formatFindingsCounts, findingsSummaryOf, renderReport, type ReportFormat } from '../../domain/artifacts/report.js';
 import { writeFileAtomic } from '../../shared/fs.js';
 import { stripControlSequences } from '../../shared/redact.js';
 
@@ -76,8 +76,14 @@ export function printResult(result: ConsiliumResult, options: CLIOptions): void 
 export function printSummary(result: ConsiliumResult, options: CLIOptions): void {
   if (options.silent) return;
   const successful = result.experts.filter(expert => expert.success).length;
+  const findings = findingsSummaryOf(result);
+  const contested = findings === null ? 0 : findings.items.filter(item => item.contested).length;
+  const findingsSuffix =
+    findings === null
+      ? ''
+      : ` · Findings: ${findings.items.length} (${formatFindingsCounts(findings.counts)}) · contested: ${contested}`;
   console.error('─'.repeat(50));
-  console.error(`⏱️ Время: ${(result.totalTime / 1000).toFixed(1)}с · эксперты: ${successful}/${result.experts.length}`);
+  console.error(`⏱️ Время: ${(result.totalTime / 1000).toFixed(1)}с · эксперты: ${successful}/${result.experts.length}${findingsSuffix}`);
   if (result.usage?.cost && result.usage.cost > 0) {
     console.error(`💰 Стоимость: $${result.usage.cost.toFixed(6)}`);
   } else if (result.usage) {

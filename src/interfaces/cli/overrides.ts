@@ -53,6 +53,8 @@ export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions):
   if (options.noArtifacts) result.artifacts = false;
   if (options.consensus === true) result.consensus = true;
   if (options.noConsensus) result.consensus = false;
+  if (options.findings === true) result.findings = true;
+  if (options.noFindings) result.findings = false;
   if (options.smartExperts) result.smartExperts = true;
   if (options.maxCost !== undefined) result.maxCost = options.maxCost;
   if (options.fallbackModels !== undefined) result.fallbackModels = options.fallbackModels;

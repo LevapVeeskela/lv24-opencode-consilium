@@ -3,6 +3,9 @@
  * @module lv24-opencode-consilium
  */
 
+import type { FindingsSummary } from './council/findings.js';
+import type { FailOnLevel } from './artifacts/baseline.js';
+
 /** Код ошибки агента */
 export type AgentErrorCode =
   | 'TIMEOUT'
@@ -57,6 +60,14 @@ export interface AgentResult {
 }
 
 /**
+ * Метаданные результата консилиума
+ */
+export interface ConsiliumMetadata extends Record<string, unknown> {
+  /** Сводка структурированных находок (только при findings: true) */
+  findings?: FindingsSummary;
+}
+
+/**
  * Результат консилиума
  */
 export interface ConsiliumResult {
@@ -75,7 +86,7 @@ export interface ConsiliumResult {
   /** Суммарный расход токенов и стоимость */
   usage?: AgentUsage;
   /** Дополнительные данные */
-  metadata?: Record<string, unknown>;
+  metadata?: ConsiliumMetadata;
 }
 
 /**
@@ -202,6 +213,8 @@ export interface ConsiliumConfig {
   artifacts?: boolean | string;
   /** Добавлять анализ согласия экспертов в промпт председателя и метаданные */
   consensus?: boolean;
+  /** Запрашивать структурированные находки в ответах и собирать metadata.findings */
+  findings?: boolean;
   /** Автоматически выбирать экспертов по задаче/диффу */
   smartExperts?: boolean;
   /** Лимит стоимости запуска в USD; при превышении председатель не запускается */
@@ -247,13 +260,15 @@ export interface RunOptions {
   /** Дополнительные хуки */
   hooks?: Partial<ConsiliumHooks>;
   /** Метаданные */
-  metadata?: Record<string, unknown>;
+  metadata?: ConsiliumMetadata;
   /** Пресет (fast, deep, security, review) */
   preset?: string;
   /** Сохранять артефакт запуска */
   artifacts?: boolean | string;
   /** Переопределить анализ согласия */
   consensus?: boolean;
+  /** Переопределить сбор структурированных находок */
+  findings?: boolean;
   /** Переопределить умный выбор экспертов */
   smartExperts?: boolean;
   /** Лимит стоимости запуска в USD */
@@ -294,7 +309,17 @@ export type ProgressCallback = (event: ProgressEvent) => void;
  */
 export interface CLIOptions {
   task: string;
-  command?: 'run' | 'init' | 'models' | 'doctor' | 'mcp' | 'watch' | 'hooks' | 'help' | 'version';
+  command?:
+    | 'run'
+    | 'init'
+    | 'models'
+    | 'doctor'
+    | 'mcp'
+    | 'watch'
+    | 'hooks'
+    | 'baseline'
+    | 'help'
+    | 'version';
   config?: string;
   experts?: string;
   chair?: string;
@@ -349,6 +374,10 @@ export interface CLIOptions {
   smartExperts?: boolean;
   /** Отключить анализ согласия */
   noConsensus?: boolean;
+  /** Включить структурированные находки */
+  findings?: boolean;
+  /** Отключить структурированные находки */
+  noFindings?: boolean;
   /** Отключить джиттер retry */
   noJitter?: boolean;
   /** Повторить сохранённый запуск (файл артефакта) */
@@ -373,6 +402,18 @@ export interface CLIOptions {
   variant?: string;
   /** Задержка watch-режима, мс */
   debounceMs?: number;
+  /** Порог политики: завершиться с кодом 3 при находках не ниже уровня */
+  failOn?: FailOnLevel;
+  /** Действие команды baseline */
+  baselineAction?: 'accept' | 'prune';
+  /** Аргумент baseline accept: id артефакта или latest */
+  baselineTarget?: string;
+  /** Удалить записи baseline старше N дней */
+  olderThan?: number;
+  /** Удалить все записи baseline */
+  all?: boolean;
+  /** Подтвердить опасное действие */
+  yes?: boolean;
   /** Действие команды hooks */
   hookAction?: 'install' | 'uninstall';
   /** Писать нативный V2-формат конфигурации OpenCode */

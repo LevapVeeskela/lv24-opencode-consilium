@@ -58,6 +58,7 @@ function formatConsiliumResult(result: ConsiliumResult): string {
             };
           })()
         : undefined,
+    findings: result.metadata?.findings,
     experts: result.experts.map((expert) => ({
       agent: expert.agent,
       model: expert.model,
@@ -148,6 +149,7 @@ export async function toolConsiliumRun(
   const format: OutputFormat | undefined = optionalEnum(args, 'format', OUTPUT_FORMATS);
   const preset: PresetName | undefined = optionalEnum(args, 'preset', PRESET_NAMES);
   const consensus = optionalBoolean(args, 'consensus');
+  const findings = optionalBoolean(args, 'findings');
   const smartExperts = optionalBoolean(args, 'smart_experts');
   const maxCostRaw = args['max_cost'];
   if (
@@ -188,6 +190,7 @@ export async function toolConsiliumRun(
     config.output.format = format;
   }
   if (consensus !== undefined) config.consensus = consensus;
+  if (findings !== undefined) config.findings = findings;
   if (smartExperts !== undefined) config.smartExperts = smartExperts;
   if (maxCost !== undefined) config.maxCost = maxCost;
   if (fallbackModels !== undefined) config.fallbackModels = fallbackModels;

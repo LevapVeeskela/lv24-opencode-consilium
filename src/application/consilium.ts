@@ -25,7 +25,8 @@ import { DEFAULT_CONFIG, DEFAULT_CHAIR_PROMPT_TEMPLATE } from '../domain/default
 import { applyPreset } from '../domain/council/presets.js';
 import { selectSmartExperts } from '../domain/council/smart-experts.js';
 import { createCostTracker } from '../domain/council/fallback.js';
-import { buildExpertPrompt } from '../domain/council/prompts.js';
+import { appendFindingsInstruction, buildExpertPrompt } from '../domain/council/prompts.js';
+import { collectFindings } from './findings.js';
 import {
   applyCostTelemetryWarning,
   buildCancelledMetadata,
@@ -158,12 +159,16 @@ export class Consilium {
     // Опции запуска переопределяют конфигурацию; сами значения нужны и агентам.
     const artifactsSetting = options.artifacts ?? runConfig.artifacts;
     const consensusEnabled = options.consensus ?? runConfig.consensus === true;
+    const findingsEnabled = options.findings ?? runConfig.findings === true;
     const smartEnabled = options.smartExperts ?? runConfig.smartExperts === true;
     const maxCost = options.maxCost ?? runConfig.maxCost;
     const fallbackModels = options.fallbackModels ?? runConfig.fallbackModels ?? [];
     const session = options.session ?? runConfig.session;
 
     runConfig.consensus = consensusEnabled;
+    if (options.findings !== undefined) {
+      runConfig.findings = findingsEnabled;
+    }
     runConfig.fallbackModels = fallbackModels;
     runConfig.session = session;
     if (maxCost !== undefined) runConfig.maxCost = maxCost;
@@ -271,7 +276,8 @@ export class Consilium {
             undefined,
             options.metadata,
             costTracker.report(),
-            session
+            session,
+            findingsEnabled ? collectFindings(expertResults) : undefined
           )
         };
         this.status = 'cancelled';
@@ -318,6 +324,10 @@ export class Consilium {
         }
       }
 
+      const findingsSummary = findingsEnabled
+        ? collectFindings(expertResults, chairResult)
+        : undefined;
+
       if (controller.isCancelled()) {
         const result = createCancelledResult(
           expertResults,
@@ -333,7 +343,8 @@ export class Consilium {
             chairResult,
             options.metadata,
             costTracker.report(),
-            session
+            session,
+            findingsSummary
           )
         };
         this.status = 'cancelled';
@@ -353,6 +364,7 @@ export class Consilium {
         cost: costTracker.report(),
         costExceeded,
         consensusEnabled,
+        findings: findingsSummary,
         smartSelection,
         session,
         fallbackModels
@@ -419,11 +431,12 @@ export class Consilium {
     chairPromptTemplate: string;
   } {
     const experts = this.config.experts.filter(expert => expert.enabled !== false);
+    const findingsEnabled = this.config.findings === true;
 
     const expertPrompts = experts.map(expert => ({
       agent: expert.name,
       model: expert.model,
-      prompt: buildExpertPrompt(expert, task)
+      prompt: buildExpertPrompt(expert, task, findingsEnabled)
     }));
 
     const placeholderResults: AgentResult[] = experts.map(expert => ({
@@ -433,9 +446,12 @@ export class Consilium {
       success: true
     }));
 
-    const chairPromptTemplate = this.config.chair.promptTemplate
+    const baseChairPrompt = this.config.chair.promptTemplate
       ? this.config.chair.promptTemplate(task, placeholderResults)
       : DEFAULT_CHAIR_PROMPT_TEMPLATE(task, placeholderResults);
+    const chairPromptTemplate = findingsEnabled
+      ? appendFindingsInstruction(baseChairPrompt, 'chair')
+      : baseChairPrompt;
 
     return {
       expertPrompts,
@@ -496,6 +512,8 @@ export * from '../infrastructure/config/compat.js';
 export * from '../domain/artifacts/artifacts.js';
 export * from '../infrastructure/artifacts/store.js';
 export * from '../domain/council/consensus.js';
+export * from '../domain/council/findings.js';
+export * from './findings.js';
 export * from '../domain/council/smart-experts.js';
 export * from '../domain/council/fallback.js';
 export * from '../domain/artifacts/report.js';

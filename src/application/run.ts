@@ -9,9 +9,11 @@ import { dirname, resolve } from 'path';
 import type {
   AgentResult,
   ConsiliumConfig,
-  ConsiliumResult
+  ConsiliumResult,
+  ConsiliumMetadata
 } from '../domain/types.js';
 import { analyzeConsensus, formatConsensusReport } from '../domain/council/consensus.js';
+import type { FindingsSummary } from '../domain/council/findings.js';
 import type { SmartExpertSelection } from '../domain/council/smart-experts.js';
 import type { CostReport } from '../domain/council/fallback.js';
 import type { ArtifactRun } from '../domain/artifacts/artifacts.js';
@@ -95,17 +97,19 @@ export function createCancelledResult(
 export function buildCancelledMetadata(
   experts: AgentResult[],
   chair: AgentResult | undefined,
-  metadata: Record<string, unknown> | undefined,
+  metadata: ConsiliumMetadata | undefined,
   cost: CostReport,
-  session: string | undefined
-): Record<string, unknown> {
+  session: string | undefined,
+  findings?: FindingsSummary
+): ConsiliumMetadata {
   const results = chair ? [...experts, chair] : experts;
   return {
     ...metadata,
     models: collectModels(results),
     sessions: collectSessions(results),
     cost,
-    ...(session ? { session } : {})
+    ...(session ? { session } : {}),
+    ...(findings ? { findings } : {})
   };
 }
 
@@ -115,10 +119,11 @@ export interface BuildCompletedResultInput {
   chair: AgentResult;
   parallelTime: number;
   startTime: number;
-  metadata?: Record<string, unknown>;
+  metadata?: ConsiliumMetadata;
   cost: CostReport;
   costExceeded: boolean;
   consensusEnabled: boolean;
+  findings?: FindingsSummary;
   smartSelection?: SmartExpertSelection;
   session?: string;
   fallbackModels: string[];
@@ -151,6 +156,7 @@ export function buildCompletedResult(input: BuildCompletedResultInput): Consiliu
       cost: input.cost,
       ...(input.costExceeded ? { costExceeded: true } : {}),
       ...(consensusReport ? { consensus: consensusReport } : {}),
+      ...(input.findings ? { findings: input.findings } : {}),
       ...(input.smartSelection
         ? {
             smartExperts: {

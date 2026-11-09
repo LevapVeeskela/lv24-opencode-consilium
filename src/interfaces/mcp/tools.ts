@@ -59,6 +59,11 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: 'boolean',
           description: 'Include expert agreement analysis in the chair prompt and the report.'
         },
+        findings: {
+          type: 'boolean',
+          description:
+            'Collect structured findings (severity, category, file, line, claim, evidence, confidence) into metadata.findings.'
+        },
         smart_experts: {
           type: 'boolean',
           description: 'Pick 2-3 relevant experts for the task instead of running all enabled experts.'

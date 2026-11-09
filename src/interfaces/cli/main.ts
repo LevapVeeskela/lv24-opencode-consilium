@@ -10,7 +10,7 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { CLIOptions } from '../../domain/types.js';
 import { startMcpServer } from '../mcp/mcp.js';
-import { parseArgs, UsageError } from './args.js';
+import { EXIT_CODES, parseArgs, UsageError } from './args.js';
 import { printHelp } from './help.js';
 import { commandRun } from './commands/run.js';
 import { commandInit } from './commands/init.js';
@@ -19,6 +19,7 @@ import { commandDoctor } from './commands/doctor.js';
 import { commandMcpInstall } from './commands/mcp-install.js';
 import { commandWatch } from './commands/watch.js';
 import { commandHooks } from './commands/hooks.js';
+import { commandBaseline } from './commands/baseline.js';
 
 export { applyCliOverrides } from './overrides.js';
 
@@ -39,7 +40,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   } catch (error) {
     if (error instanceof UsageError) {
       console.error(`❌ ${error.message}`);
-      return 2;
+      return EXIT_CODES.usage;
     }
     throw error;
   }
@@ -50,10 +51,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     switch (command) {
       case 'help':
         printHelp();
-        return 0;
+        return EXIT_CODES.success;
       case 'version':
         console.log(`consilium v${readVersion()}`);
-        return 0;
+        return EXIT_CODES.success;
       case 'init':
         return await commandInit(options);
       case 'models':
@@ -66,22 +67,24 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         }
         if (!options.silent) console.error('lv24-opencode-consilium MCP server (stdio). Логи — в stderr.');
         await startMcpServer({ version: readVersion() });
-        return 0;
+        return EXIT_CODES.success;
       }
       case 'watch':
         return await commandWatch(options);
       case 'hooks':
         return await commandHooks(options);
+      case 'baseline':
+        return await commandBaseline(options);
       case 'run':
         return await commandRun(options);
       default:
         console.error(`❌ Неизвестная команда: ${command}`);
-        return 2;
+        return EXIT_CODES.usage;
     }
   } catch (error) {
     if (error instanceof UsageError) {
       console.error(`❌ ${error.message}`);
-      return 2;
+      return EXIT_CODES.usage;
     }
     throw error;
   }

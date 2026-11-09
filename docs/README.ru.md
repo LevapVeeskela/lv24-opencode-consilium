@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.3
+# consilium v1.5.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -228,7 +228,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 
 | Инструмент | Аргументы | Результат |
 | --- | --- | --- |
-| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели) |
+| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки) |
 | `consilium_list_agents` | — | Настроенные эксперты, модели, председатель, пресеты, путь конфига |
 | `consilium_free_models` | `limit`, `available_only`, `refresh` | Таблица рейтинга бесплатных моделей |
 | `consilium_doctor` | — | Диагностика окружения и конфига |
@@ -243,14 +243,15 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
+  "findings": "consilium --findings -f json \"<task>\" -> metadata.findings",
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
-  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error" },
+  "exit_codes": { "0": "success", "1": "run failed", "2": "usage error", "3": "провал policy gate" },
   "docs_index": "llms.txt"
 }
 ```
@@ -259,7 +260,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 
 1. **stdout — для данных, stderr — для прогресса.** `-f json` печатает один JSON-документ в stdout; логи и прогресс остаются в stderr.
 2. **Не парсите человеческий текст.** Используйте `-f json` (результат + `metadata`), `consilium models --json` или MCP-инструменты.
-3. **Ошибки типизированы.** `errorCode` — одно из `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, …; коды выхода — `0/1/2`.
+3. **Ошибки типизированы.** `errorCode` — одно из `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, …; коды выхода — `0/1/2/3` (`3` = policy gate).
 4. **Состояние — это файлы, а не демон.** Артефакты лежат в `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` восстанавливает запуск.
 5. **Никаких интерактивных запросов.** Каждая команда неинтерактивна; `--auto` выключен по умолчанию и включается осознанно.
 6. **Сначала дешёвое.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; добавьте `--max-cost` для жёсткого бюджета.
@@ -287,6 +288,8 @@ consilium doctor
 consilium mcp [--install] [--global]
 consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
+consilium baseline accept <id|latest> [--dry-run]
+consilium baseline prune [--older-than <days>] [--all --yes]
 ```
 
 **Ядро**
@@ -335,8 +338,11 @@ consilium hooks install|uninstall
 | `hooks install\|uninstall` | Установить/удалить git pre-commit hook (ревью staged перед коммитом) |
 | `--native-v2` | Писать нативный V2-конфиг (`agents`/`system`) |
 | `--install`, `--global` | Зарегистрировать MCP-сервер в проектном или глобальном конфиге |
+| `--findings` / `--no-findings` | Структурированный блок находок в ответах экспертов и председателя (по умолчанию выключено) |
+| `--fail-on <severity>` | Выход `3`, когда новые находки достигают порога: `critical`, `high`, `medium`, `low`, `info`, `none` |
+| `baseline accept\|prune` | Управление `.consilium/baseline.json` (принятые отпечатки находок) |
 
-Коды выхода: `0` успех, `1` запуск неуспешен, `2` ошибка использования.
+Коды выхода: `0` успех, `1` запуск неуспешен, `2` ошибка использования, `3` провал policy gate.
 
 ```bash
 consilium -e arch,sec "Смоделируй угрозы для эндпоинта загрузки файлов"
@@ -384,6 +390,55 @@ consilium hooks uninstall   # убирает только управляемый
 - `--max-cost` считает расходы экспертов и председателя. Превышение до председателя → председатель пропущен, частичный результат с `errorCode: COST_LIMIT` и `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`); при превышении добавляется `metadata.costExceeded`.
 - `--fallback-models` повторяет того же эксперта на следующей модели (максимум 2 подмены), суммируя usage в `metadata.fallbackModels`.
 - `--session` даёт председателю базовую сессию, а каждому эксперту `ses_<base>-<agent>` (префикс `ses_` требует OpenCode); неизвестные агенты идут на default-агенте с `ses_<base>-default-<agent>`, поэтому чужая сессия не засоряется. Сессии намеренно не скрываются из `opencode session list`.
+
+## Находки и policy gate
+
+Ревью-запуски могут возвращать структурированные находки, а не только текст — включите `--findings`:
+
+```bash
+consilium --findings --artifacts -f json "Сделай ревью текущих изменений" > run.json
+consilium --findings --fail-on high --diff "Сделай ревью текущих изменений"
+```
+
+Каждый эксперт (и председатель) завершает ответ одним fenced-блоком `json`:
+
+````markdown
+```json
+{
+  "findings": [
+    {
+      "severity": "high",
+      "category": "security",
+      "file": "src/auth.ts",
+      "line": 42,
+      "claim": "Удаление проекта не проверяет владельца",
+      "evidence": "обработчик вызывает remove() без authorize()",
+      "confidence": 0.9
+    }
+  ],
+  "rejected": [
+    { "claim": "Владение проверяется в middleware", "reason": "middleware не подключён к этому маршруту" }
+  ]
+}
+```
+````
+
+- `severity`: `critical` | `high` | `medium` | `low` | `info`; `claim` обязателен, остальное опционально.
+- Эксперты сообщают находки; председатель объединяет их и перечисляет отклонённые позиции в `rejected`.
+- Находки дедуплицируются по стабильному отпечатку (категория + файл + нормализованный `claim`, строка исключена), поэтому одна проблема сопоставляется с одной записью между запусками; берётся максимальная серьёзность, а отклонённые председателем находки помечаются `contested`.
+- `metadata.findings` = `{ items, counts, rejected, parseErrors }`; HTML- и PR-отчёты рисуют таблицу и сворачиваемый реестр разногласий (dissent ledger).
+- Отсутствующий или битый JSON никогда не валит запуск: текст сохраняется, а проблема попадает в `parseErrors`.
+
+Baseline и гейт:
+
+```bash
+consilium baseline accept latest           # принять находки последнего запуска
+consilium baseline accept <runId> --dry-run
+consilium baseline prune --older-than 90    # или --all --yes
+consilium --findings --fail-on high --diff "Сделай ревью текущих изменений"
+```
+
+`--fail-on` гейтит по **новым** находкам: отпечатки из `.consilium/baseline.json` игнорируются. Код выхода `3` означает, что гейт не пройден. `--fail-on` без `--findings` — ошибка использования. Baseline-файл проектный, и его можно коммитить, чтобы делить принятые находки с командой.
 
 ## Плагин OpenCode V2
 
@@ -464,8 +519,9 @@ consilium hooks uninstall   # убирает только управляемый
 | `reportFile` | — | Путь к файлу отчёта (`.html`/`.md` выбирает формат) |
 | `variant` | — | Вариант модели для моделей без `#variant` (явный вариант приоритетнее) |
 | `debounceMs` | 400 | Задержка watch-режима, мс |
-| `opencodePath` | `opencode` | Свой путь к CLI |
-| `cwd` | текущая | Рабочая директория для OpenCode |
+| `findings` | `false` | Структурированный блок находок в ответах экспертов и председателя |
+| `opencodePath` | `opencode` | Свой путь к CLI (игнорируется из проектного конфига без `-c`) |
+| `cwd` | текущая | Рабочая директория для OpenCode (игнорируется из проектного конфига без `-c`) |
 
 Полная схема: [`schema/config.schema.json`](../schema/config.schema.json) · пример: [`consilium.config.example.json`](../consilium.config.example.json).
 
@@ -534,6 +590,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.5.0** — структурированные находки и policy gate. `--findings` заставляет экспертов и председателя возвращать провалидированный JSON-блок `findings[]` (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); находки дедуплицируются по стабильному отпечатку, сливаются по ролям, помечаются `contested`, если председатель их отклонил, и попадают в `metadata.findings`. HTML- и PR-отчёты рисуют таблицу находок и реестр разногласий. `--fail-on <severity>` гейтит по **новым** находкам с кодом выхода `3`; `consilium baseline accept|prune` управляет `.consilium/baseline.json`. Также: исправления корректности P1 (приоритет конфигов V1/V2, предупреждения о битом конфиге, fallback/`minContext`/дедупликация кэша моделей, телеметрия стоимости, эскалация SIGKILL, префикс сессий `ses_`, разбор `argv[0]` в CLI, перезапуск/сигналы watch, крайние случаи preset/consensus/smart-experts) и слэш-команда `/council`. 317 тестов.
 
 **1.4.3** — усиление безопасности. Конфиг проекта недоверенный по умолчанию: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` и строковые пути записи игнорируются, если файл не передан через `-c`. На Windows `.cmd` запускается только с проверенными аргументами, `.exe` — напрямую. MCP отклоняет `tools/call` без `id`, ограничивает очередь, удерживает output/артефакты внутри workspace, а `init_free` делает `.bak` и требует подтверждения для `force`. Динамические fence для diff и экранирование отчётов блокируют инъекции; артефакты редактируют токены и получают `.gitignore`. 246 тестов.
 

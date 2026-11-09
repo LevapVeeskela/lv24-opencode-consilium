@@ -14,6 +14,12 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium models [--available] [--json]
   consilium doctor
   consilium mcp
+  consilium baseline accept <runId|latest> [--dry-run]
+  consilium baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
+
+КОДЫ ВЫХОДА:
+  0 — успех; 1 — запуск не удался; 2 — ошибка использования;
+  3 — сработала политика --fail-on (находки не ниже порога)
 
 ОСНОВНЫЕ ОПЦИИ:
   -h, --help              Показать эту справку
@@ -44,6 +50,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
 АНАЛИЗ И АРТЕФАКТЫ:
   --consensus             Анализ согласия экспертов (в промпт председателя и отчёт)
   --no-consensus          Отключить анализ согласия
+  --findings              Структурированные находки экспертов и председателя в metadata.findings
+  --no-findings           Отключить структурированные находки
+  --fail-on <уровень>     Код 3, если после baseline остались находки >= уровня:
+                          critical, high, medium, low, info, none (по умолчанию none)
   --smart-experts         Выбрать 2–3 релевантных эксперта по задаче/диффу
   --max-cost <usd>        Лимит стоимости; при превышении председатель не запускается
   --fallback-models a,b   Запасные модели при RATE_LIMITED/MODEL_UNAVAILABLE/EMPTY_RESPONSE
@@ -70,6 +80,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   doctor                  Проверить окружение, конфиг, агентов и модели
   mcp [--install] [--global]
                           Запустить MCP-сервер (stdio) или зарегистрировать его в opencode.json
+  baseline accept <runId|latest> [--dry-run]
+                          Принять находки запуска в .consilium/baseline.json
+  baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
+                          Удалить старые записи baseline (по умолчанию старше 90 дней)
 
 СОВМЕСТИМОСТЬ:
   Работает с OpenCode V1 и V2. Формат opencode.json определяется автоматически:
@@ -100,6 +114,8 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium "Оценить архитектуру проекта"
   consilium -e arch,sec "Проверить безопасность API"
   git diff | consilium - --diff "Сделай ревью изменений"
+  consilium --findings --fail-on high "Проверить безопасность API"
+  consilium baseline accept latest
   consilium models --available
   consilium doctor
 

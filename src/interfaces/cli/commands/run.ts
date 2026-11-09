@@ -6,9 +6,14 @@
 import type { CLIOptions, RunOptions } from '../../../domain/types.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
 import { diffArtifacts, type ArtifactRun } from '../../../domain/artifacts/artifacts.js';
+import {
+  evaluatePolicyGate,
+  formatPolicyGate,
+  loadBaseline
+} from '../../../domain/artifacts/baseline.js';
 import { loadArtifact, resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import { planReplay } from '../../../domain/artifacts/replay.js';
-import { UsageError } from '../args.js';
+import { EXIT_CODES, UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { buildTask } from '../task.js';
 import {
@@ -41,9 +46,17 @@ export async function commandRun(options: CLIOptions): Promise<number> {
     options.silent = true;
   }
 
+  const failOn = options.failOn ?? 'none';
+  if (failOn !== 'none' && config.findings !== true) {
+    throw new UsageError(
+      `Флаг --fail-on ${failOn} требует включённых находок: ` +
+        'добавьте --findings или findings: true в конфигурацию.'
+    );
+  }
+
   if (options.listAgents) {
     printAgentList(config);
-    return 0;
+    return EXIT_CODES.success;
   }
 
   const artifactsSetting = options.noArtifacts
@@ -66,7 +79,7 @@ export async function commandRun(options: CLIOptions): Promise<number> {
       const left = loadArtifact(leftId, artifactsRoot);
       const right = loadArtifact(rightId, artifactsRoot);
       console.log(diffArtifacts(left, right));
-      return 0;
+      return EXIT_CODES.success;
     } catch (error) {
       throw new UsageError((error as Error).message);
     }
@@ -149,7 +162,7 @@ export async function commandRun(options: CLIOptions): Promise<number> {
 
   if (options.dryRun) {
     printDryRun(task, config);
-    return 0;
+    return EXIT_CODES.success;
   }
 
   setupConsoleHooks(config, options);
@@ -183,9 +196,30 @@ export async function commandRun(options: CLIOptions): Promise<number> {
     const reportPrinted = writeRunReport(result, config, options);
     if (!reportPrinted) printResult(result, options);
     printSummary(result, options);
-    return result.success ? 0 : 1;
+
+    if (!result.success) {
+      return EXIT_CODES.runFailed;
+    }
+
+    if (failOn !== 'none') {
+      const loadedBaseline = loadBaseline(process.cwd());
+      if (loadedBaseline.warning !== undefined && !options.silent) {
+        console.error(`⚠️ ${loadedBaseline.warning}`);
+      }
+      const gate = evaluatePolicyGate(
+        result.metadata?.findings?.items,
+        loadedBaseline.baseline,
+        failOn
+      );
+      if (gate.failed) {
+        console.error(formatPolicyGate(gate));
+        return EXIT_CODES.policyGate;
+      }
+    }
+
+    return EXIT_CODES.success;
   } catch (error) {
     console.error(`\n❌ Ошибка: ${(error as Error).message}`);
-    return 1;
+    return EXIT_CODES.runFailed;
   }
 }

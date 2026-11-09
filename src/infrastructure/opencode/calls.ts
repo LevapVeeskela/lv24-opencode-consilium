@@ -11,7 +11,11 @@ import type {
 } from '../../domain/types.js';
 import { resolveOpenCodeAgent } from '../config/config.js';
 import { buildFallbackChain, shouldFallback } from '../../domain/council/fallback.js';
-import { buildChairPrompt, buildExpertPrompt } from '../../domain/council/prompts.js';
+import {
+  appendFindingsInstruction,
+  buildChairPrompt,
+  buildExpertPrompt
+} from '../../domain/council/prompts.js';
 import { buildAgentSession, buildChairSession } from '../../domain/council/sessions.js';
 import { isValidAgentName, isValidModelName } from './args.js';
 import {
@@ -418,7 +422,7 @@ export async function callExpertsParallel(
 
   const runExpert = async (expert: ExpertConfig): Promise<AgentResult> => {
     try {
-      const prompt = buildExpertPrompt(expert, task);
+      const prompt = buildExpertPrompt(expert, task, config.findings === true);
 
       await invokeHook(
         config,
@@ -500,16 +504,19 @@ export async function callChair(
   const maxExpertTextLength =
     positiveInteger(config.chair?.maxExpertTextLength) ?? DEFAULT_MAX_EXPERT_TEXT;
 
+  const findings = config.findings === true;
   let prompt: string;
   const template = config.chair?.promptTemplate;
   if (template) {
     prompt = template(task, expertResults);
+    if (findings) prompt = appendFindingsInstruction(prompt, 'chair');
   } else {
     prompt = buildChairPrompt(
       task,
       expertResults,
       maxExpertTextLength,
-      config.consensus === true
+      config.consensus === true,
+      findings
     );
   }
 

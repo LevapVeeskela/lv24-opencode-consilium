@@ -4,11 +4,37 @@
  */
 
 import type { CLIOptions } from '../../domain/types.js';
+import {
+  FAIL_ON_LEVELS,
+  type FailOnLevel
+} from '../../domain/artifacts/baseline.js';
 
-export const COMMANDS = new Set(['run', 'init', 'models', 'doctor', 'mcp', 'watch', 'hooks', 'help', 'version']);
+export const COMMANDS = new Set([
+  'run',
+  'init',
+  'models',
+  'doctor',
+  'mcp',
+  'watch',
+  'hooks',
+  'baseline',
+  'help',
+  'version'
+]);
 
 /** Команды, у которых есть собственные позиционные аргументы (задача/действие) */
-const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks']);
+const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline']);
+
+/** Типизированные коды выхода CLI */
+export const EXIT_CODES = {
+  success: 0,
+  runFailed: 1,
+  usage: 2,
+  policyGate: 3
+} as const;
+
+/** Код выхода CLI */
+export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
 
 export class UsageError extends Error {}
 
@@ -63,7 +89,7 @@ export function parseCsv(value: string): string[] {
  * Парсит аргументы командной строки
  */
 export function parseArgs(argv: string[]): CLIOptions {
-  const options: CLIOptions = { task: '' };
+  const options: CLIOptions = { task: '', failOn: 'none' };
   const taskParts: string[] = [];
   let afterTerminator = false;
 
@@ -196,6 +222,25 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--max-cost':
         options.maxCost = parseNonNegativeFloat(requireNumericValue(argv, ++i, arg), arg);
         break;
+      case '--fail-on': {
+        const level = requireValue(argv, ++i, arg);
+        if (!(FAIL_ON_LEVELS as readonly string[]).includes(level)) {
+          throw new UsageError(
+            `Флаг --fail-on ожидает ${FAIL_ON_LEVELS.join(', ')}, получено: ${level}`
+          );
+        }
+        options.failOn = level as FailOnLevel;
+        break;
+      }
+      case '--older-than':
+        options.olderThan = parseNonNegativeInt(requireNumericValue(argv, ++i, arg), arg);
+        break;
+      case '--all':
+        options.all = true;
+        break;
+      case '--yes':
+        options.yes = true;
+        break;
       case '--fallback-models':
         options.fallbackModels = parseCsv(requireValue(argv, ++i, arg));
         break;
@@ -235,6 +280,12 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--no-consensus':
         options.noConsensus = true;
         break;
+      case '--findings':
+        options.findings = true;
+        break;
+      case '--no-findings':
+        options.noFindings = true;
+        break;
       case '--smart-experts':
         options.smartExperts = true;
         break;
@@ -260,9 +311,18 @@ export function parseArgs(argv: string[]): CLIOptions {
         if (arg === '-') {
           options.taskFile = '-';
         } else if (!arg.startsWith('-')) {
-          // Команда распознаётся только до первого слова задачи; флаги перед
-          // ней не считаются частью задачи.
-          if (options.command === undefined && taskParts.length === 0 && COMMANDS.has(arg)) {
+          // baseline — подкоманда только в самом начале argv, чтобы слово
+          // в задаче или после флагов не переключало режим.
+          if (arg === 'baseline' && i === 0) {
+            options.command = 'baseline';
+          } else if (
+            arg !== 'baseline' &&
+            options.command === undefined &&
+            taskParts.length === 0 &&
+            COMMANDS.has(arg)
+          ) {
+            // Команда распознаётся только до первого слова задачи; флаги перед
+            // ней не считаются частью задачи.
             options.command = arg as CLIOptions['command'];
           } else {
             taskParts.push(arg);
@@ -290,6 +350,16 @@ export function parseArgs(argv: string[]): CLIOptions {
     const action = options.task.trim();
     if (action === 'install' || action === 'uninstall') {
       options.hookAction = action;
+      options.task = '';
+    }
+  }
+  if (options.command === 'baseline') {
+    const parts = options.task.trim().length > 0 ? options.task.trim().split(/\s+/) : [];
+    const action = parts[0];
+    if (action === 'accept' || action === 'prune') {
+      options.baselineAction = action;
+      options.baselineTarget =
+        parts.length > 1 ? parts.slice(1).join(' ').trim() : undefined;
       options.task = '';
     }
   }
