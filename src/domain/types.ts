@@ -7,6 +7,9 @@ import type { FindingsSummary } from './council/findings.js';
 import type { FailOnLevel } from './artifacts/baseline.js';
 import type { CouncilPreset } from './council/presets.js';
 
+/** Формат отчёта. */
+export type ReportFormat = 'html' | 'pr' | 'markdown' | 'sarif';
+
 /** Код ошибки агента */
 export type AgentErrorCode =
   | 'TIMEOUT'
@@ -240,7 +243,7 @@ export interface ConsiliumConfig {
   /** Переиспользовать сессию OpenCode (`run --session`) между запусками */
   session?: string;
   /** Формат отчёта после запуска */
-  report?: 'html' | 'pr' | 'markdown';
+  report?: ReportFormat;
   /** Файл отчёта (по умолчанию stdout) */
   reportFile?: string;
   /** Вариант модели (`provider/model#variant`) для всех агентов */
@@ -427,6 +430,8 @@ export interface CLIOptions {
   deadlineMs?: number;
   /** Число раундов дебатов: 1 или 2 */
   rounds?: 1 | 2;
+  /** (eval) Сравнить прогоны с rounds=1 и rounds=2 */
+  compareRounds?: boolean;
   /** Git ref, с которого начинается аудит изменений */
   since?: string;
   /** Разрешить только локальные модели */
@@ -440,7 +445,7 @@ export interface CLIOptions {
   /** Сессия OpenCode для продолжения контекста */
   session?: string;
   /** Формат отчёта после запуска */
-  report?: 'html' | 'pr' | 'markdown';
+  report?: ReportFormat;
   /** Файл отчёта (по умолчанию stdout) */
   reportFile?: string;
   /** Файл для HTML-отчёта команды stats */

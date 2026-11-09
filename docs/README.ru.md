@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.8.0
+# consilium v1.9.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -271,7 +271,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -318,7 +318,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
-consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium eval [--fixtures <dir>] [--json] [--rounds <1|2>] [--compare-rounds] [--fail-under <pct>] [--max-cost <usd>]
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
@@ -334,7 +334,8 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `--chair <agent>` | Имя агента-председателя |
 | `--preset <name>` | `fast`, `deep`, `security`, `review`, `free` или свой пресет из конфига |
 | `--deadline <ms>` | Бюджет времени фазы экспертов; отставшие отменяются, председатель синтезирует частичные результаты (максимум 24 ч) |
-| `--rounds <1\|2>` | `2` добавляет раунд анонимизированного peer-review; удваивает вызовы моделей (по умолчанию 1) |
+| `--rounds <1\|2>` | `2` добавляет раунд анонимизированного peer-review; применяется к run/watch/eval и удваивает вызовы моделей (по умолчанию 1) |
+| `--compare-rounds` | `eval`: прогнать каждую фикстуру с одним и двумя раундами и напечатать таблицу дельт |
 | `--local-only` | Требовать явную локальную модель для каждого агента; отклонять нелокальных провайдеров до запуска |
 | `--expert-timeout`, `--chair-timeout` | Таймауты в мс (на попытку) |
 | `-r, --retries <n>` | Число повторов (0 = одна попытка) |
@@ -366,8 +367,8 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `--artifacts-dir <path>` | Свой каталог артефактов (вместо `.consilium/runs/<id>/`) |
 | `--replay <id>` | Повторить сохранённый запуск (восстанавливает модели председателя/экспертов и флаги consensus/smartExperts/fallbackModels/session) |
 | `--diff-runs <a> <b>` | Напечатать markdown-сравнение двух сохранённых запусков |
-| `--report <format>` | Отчёт после запуска: `html`, `pr`, `markdown` (`markdown` — тот же PR-вариант) |
-| `--report-file <file>` | Записать отчёт в файл (`.html` → html, `.md` → pr; без файла отчёт идёт в stdout, кроме `-f json`) |
+| `--report <format>` | Отчёт после запуска: `html`, `pr`, `markdown`, `sarif` (`markdown` — тот же PR-вариант) |
+| `--report-file <file>` | Записать отчёт в файл (`.html` → html, `.md` → pr, `.sarif` → sarif; без файла отчёт идёт в stdout, кроме `-f json`) |
 | `--diff [--staged] [--base <ref>]` | Приложить текущий git diff к задаче |
 | `--debounce <ms>` | Задержка watch-режима (по умолчанию 400) |
 | `watch [--debounce <ms>] [task]` | Следить за проектом и перезапускать при изменениях (до Ctrl+C) |
@@ -412,7 +413,7 @@ consilium hooks install
 consilium --report html --report-file report.html "Сделай ревью текущих изменений"
 consilium --report pr "Сделай ревью текущих изменений"
 
-# --report-file сам определяет формат: .html → html, .md → pr
+# --report-file сам определяет формат: .html → html, .md → pr, .sarif → sarif
 consilium --report-file notes.md "Спроектируй схему БД для подписок"
 
 # Перезапуск при изменениях файлов (игнорирует .git/node_modules/dist/.consilium/coverage/*.tmp/*.log,
@@ -486,6 +487,14 @@ consilium --findings --fail-on high --diff "Сделай ревью текущи
 
 `--fail-on` гейтит по **новым** находкам: отпечатки из `.consilium/baseline.json` игнорируются. Код выхода `3` означает, что гейт не пройден. `--fail-on` без `--findings` — ошибка использования. Baseline-файл проектный, и его можно коммитить, чтобы делить принятые находки с командой.
 
+## SARIF и code scanning
+
+```bash
+consilium --findings --report sarif --report-file consilium.sarif "Сделай ревью текущих изменений"
+```
+
+`--report sarif` пишет SARIF 2.1.0 для GitHub code scanning и других SARIF-просмотрщиков: один результат на находку, `critical`/`high` → `error`, `medium` → `warning`, `low`/`info` → `note`, локации файл/строка, стабильные отпечатки и одно правило на категорию. `--report-file` определяет формат по `.sarif`/`.sarif.json`. Загружайте файл через `github/codeql-action/upload-sarif` в CI; находки, уже принятые в baseline, всё равно попадают в файл, если их не отфильтровать.
+
 ## Дедлайны и частичный синтез
 
 Долгие запуски на бесплатных моделях не должны подвешивать CI или pre-commit hook:
@@ -518,6 +527,15 @@ consilium eval --max-cost 0.50        # остановиться при исче
 
 Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. Десять стартовых фикстур лежат в [`eval/fixtures`](../eval/fixtures); свои можно добавлять рядом.
 
+Сравните одиночный проход с раундами дебатов на тех же фикстурах:
+
+```bash
+consilium eval --compare-rounds
+consilium eval --rounds 2 --json
+```
+
+`--compare-rounds` прогоняет каждую фикстуру дважды (один и два раунда) и печатает таблицу дельт по catch rate, FP rate, p50-латентности и суммарной стоимости с вердиктом. `--fail-under` гейтит catch rate дебатов; `--max-cost` покрывает оба прогона.
+
 ## История и статистика
 
 ```bash
@@ -539,6 +557,10 @@ consilium audit --since HEAD~5 --dry-run
 ```
 
 `audit` строит недоверенный diff для `<ref>...HEAD`, запускает на нём совет и переиспользует отчёты, артефакты и policy gate. `--dry-run` печатает ref, число файлов и флаг усечения, не вызывая модели; `--since` обязателен и валидируется (без shell-метасимволов). Запускайте по расписанию из cron, Task Scheduler или CI — встроенного демона нет.
+
+## Запуск по расписанию
+
+В [`scheduling.md`](scheduling.md) есть готовые рецепты для cron, Windows Task Scheduler, launchd и GitHub Actions — с `consilium audit --since <ref>`, `--deadline` и `--max-cost`. Запускаемые обёртки лежат в [`examples/consilium-audit.sh`](../examples/consilium-audit.sh), [`examples/consilium-audit.ps1`](../examples/consilium-audit.ps1) и [`examples/consilium-audit-nightly.yml`](../examples/consilium-audit-nightly.yml). Пример workflow намеренно находится вне `.github/workflows/`, поэтому в этом репозитории ничего не запускается автоматически.
 
 ## Плагин OpenCode V2
 
@@ -574,7 +596,7 @@ consilium audit --since HEAD~5 --dry-run
 Композитный action ревьюит diff пул-реквеста и публикует или обновляет ровно один комментарий с маркером `<!-- consilium:report -->`:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.8.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -721,6 +743,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
+**1.9.0** — экспорт SARIF, оценка дебатов и рецепты планировщика. `--report sarif` выдаёт SARIF 2.1.0 (маппинг серьёзности, локации файл/строка, стабильные отпечатки, id правил по категориям) для GitHub code scanning и других SARIF-просмотрщиков; расширения `.sarif`/`.sarif.json` определяются автоматически. `eval --compare-rounds` прогоняет каждую фикстуру с одним и двумя раундами и печатает дельты catch/FP/p50/cost; `eval --rounds 2` запускает набор в режиме дебатов. `docs/scheduling.md` плюс примеры для cron, Task Scheduler, launchd и GitHub Actions позволяют планировать аудит диапазона коммитов без демона. 515 тестов.
+
 **1.8.0** — раунды дебатов, локальный bootstrap и аудит диапазона коммитов. `--rounds 2` добавляет раунд анонимизированного peer-review: каждый эксперт критикует коллег и формулирует итоговую позицию; председатель видит итоговые позиции и то, кто изменил мнение, а `metadata.debate` фиксирует участников и изменения. `consilium init --local` опрашивает Ollama/LM Studio, назначает локальные модели по кругу всем ролям и председателю и пишет конфиг с `localOnly`. `consilium audit --since <ref>` ревьюит диапазон коммитов целиком, переиспользуя отчёты, артефакты и `--fail-on`; `--dry-run` печатает запрос без вызова моделей. 491 тест.
 
 **1.7.0** — дедлайны и приватность. `--deadline <ms>` ограничивает фазу экспертов: отставшие отменяются, председатель синтезирует завершённых экспертов с пометкой о недостающих ролях, а запуск без единого завершённого эксперта падает с `DEADLINE`. `--local-only` требует явную локальную модель (Ollama, LM Studio, llama.cpp, vLLM) для каждого агента; `models --local` фильтрует каталог, `models --probe-local` сообщает, запущены ли локальные провайдеры; `doctor` добавляет проверку `local-providers`. Свои пресеты в `consilium.config.json` сливаются поверх встроенных и работают в CLI, MCP и плагине (`consilium presets` перечисляет их). Маркер доверенного конфига теперь переживает spread-объекты. 446 тестов.
@@ -753,7 +777,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (491 тест)
+npm test            # build + node:test (515 тестов)
 npm run typecheck   # tsc --noEmit
 ```
 

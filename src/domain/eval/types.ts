@@ -52,6 +52,15 @@ export interface EvalMatchResult {
   falsePositiveRate: number;
 }
 
+/** Число раундов дебатов в eval-прогоне: 1 — обычный, 2 — с peer-review */
+export type EvalRounds = 1 | 2;
+
+/** Опции, которые харнесс передаёт runner-у для каждой фикстуры */
+export interface EvalRunnerOptions {
+  /** Раунды дебатов; харнесс всегда передаёт значение, по умолчанию 1 */
+  rounds?: EvalRounds;
+}
+
 /** Ответ инжектированного runner-а: без вызовов моделей внутри харнесса */
 export interface EvalRunnerOutput {
   findings: Finding[];
@@ -61,7 +70,10 @@ export interface EvalRunnerOutput {
 }
 
 /** Функция прогона одной фикстуры; в тестах подменяется заглушкой */
-export type EvalRunner = (fixture: EvalFixture) => Promise<EvalRunnerOutput>;
+export type EvalRunner = (
+  fixture: EvalFixture,
+  options?: EvalRunnerOptions
+) => Promise<EvalRunnerOutput>;
 
 /** Входные данные запуска eval-набора */
 export interface EvalRunInput {
@@ -71,6 +83,36 @@ export interface EvalRunInput {
   runner: EvalRunner;
   /** Необязательный фильтр по именам фикстур */
   names?: string[];
+  /** Раунды дебатов для каждой фикстуры; по умолчанию 1 */
+  rounds?: EvalRounds;
+}
+
+/** Входные данные сравнения одиночного прогона и дебатов */
+export interface EvalComparisonInput {
+  /** Каталог с подкаталогами фикстур */
+  fixturesDir: string;
+  /** Один и тот же runner для обоих прогонов */
+  runner: EvalRunner;
+  /** Необязательный фильтр по именам фикстур */
+  names?: string[];
+}
+
+/**
+ * Разница метрик debate − single в абсолютных единицах:
+ * доли — как доли (0.25 = +25 п.п.), latency — мс, стоимость — USD.
+ */
+export interface EvalComparisonDelta {
+  catchRate: number;
+  falsePositiveRate: number;
+  p50LatencyMs: number;
+  totalCost: number;
+}
+
+/** Результат сравнения: обе сводки с per-fixture деталями и дельта */
+export interface EvalComparison {
+  single: EvalSummary;
+  debate: EvalSummary;
+  delta: EvalComparisonDelta;
 }
 
 /** Ошибка выполнения одной фикстуры */

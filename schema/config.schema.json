@@ -69,7 +69,7 @@
     "maxCost": { "type": "number", "minimum": 0 },
     "fallbackModels": { "type": "array", "items": { "type": "string" } },
     "session": { "type": "string", "minLength": 1 },
-    "report": { "enum": ["html", "pr", "markdown"] },
+    "report": { "enum": ["html", "pr", "markdown", "sarif"] },
     "reportFile": { "type": "string", "minLength": 1 },
     "variant": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
     "debounceMs": { "type": "integer", "minimum": 0 }

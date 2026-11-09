@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.8.0
+# consilium v1.9.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -275,7 +275,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -322,7 +322,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
-consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium eval [--fixtures <dir>] [--json] [--rounds <1|2>] [--compare-rounds] [--fail-under <pct>] [--max-cost <usd>]
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
@@ -338,7 +338,8 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `--chair <agent>` | Chair agent name |
 | `--preset <name>` | `fast`, `deep`, `security`, `review`, `free`, or a custom preset from config |
 | `--deadline <ms>` | Expert-phase wall-clock budget; stragglers are cancelled and the chair synthesizes partial results (max 24 h) |
-| `--rounds <1\|2>` | `2` adds an anonymized peer-review round; doubles model calls (default 1) |
+| `--rounds <1\|2>` | `2` adds an anonymized peer-review round; applies to run/watch/eval and doubles model calls (default 1) |
+| `--compare-rounds` | `eval`: run every fixture with one and two rounds and print the delta table |
 | `--local-only` | Require an explicit local model for every agent; reject non-local providers before running |
 | `--expert-timeout`, `--chair-timeout` | Timeouts in ms (per attempt) |
 | `-r, --retries <n>` | Retry count (0 = single attempt) |
@@ -370,8 +371,8 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `--artifacts-dir <path>` | Custom artifact directory (instead of `.consilium/runs/<id>/`) |
 | `--replay <id>` | Rerun a saved run (restores chair/expert models and consensus/smartExperts/fallbackModels/session flags) |
 | `--diff-runs <a> <b>` | Print a markdown comparison of two saved runs |
-| `--report <format>` | Report after the run: `html`, `pr`, `markdown` |
-| `--report-file <file>` | Write the report to a file (`.html` → html, `.md` → pr) |
+| `--report <format>` | Report after the run: `html`, `pr`, `markdown`, `sarif` |
+| `--report-file <file>` | Write the report to a file (`.html` → html, `.md` → pr, `.sarif` → sarif) |
 | `--diff [--staged] [--base <ref>]` | Append the current git diff to the task |
 | `--debounce <ms>` | Watch-mode debounce delay (default 400) |
 | `watch [--debounce <ms>] [task]` | Watch the project and rerun on changes (until Ctrl+C) |
@@ -415,7 +416,7 @@ consilium hooks install
 consilium --report html --report-file report.html "Review the current changes"
 consilium --report pr "Review the current changes"
 
-# --report-file infers the format: .html → html, .md → pr
+# --report-file infers the format: .html → html, .md → pr, .sarif → sarif
 consilium --report-file notes.md "Design the subscriptions DB schema"
 
 # Rerun on file changes (ignores .git/node_modules/dist/.consilium/coverage/*.tmp/*.log,
@@ -489,6 +490,14 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 `--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
 
+## SARIF and code scanning
+
+```bash
+consilium --findings --report sarif --report-file consilium.sarif "Review the current changes"
+```
+
+`--report sarif` writes SARIF 2.1.0 for GitHub code scanning and other SARIF viewers: one result per finding, `critical`/`high` → `error`, `medium` → `warning`, `low`/`info` → `note`, file/line locations, stable fingerprints and one rule per category. `--report-file` infers the format from `.sarif`/`.sarif.json`. Upload it with `github/codeql-action/upload-sarif` in CI; findings that were already accepted in the baseline still appear in the file unless you filter them.
+
 ## Deadlines and partial synthesis
 
 Long free-model runs should not stall CI or a pre-commit hook:
@@ -521,6 +530,15 @@ consilium eval --max-cost 0.50        # stop when the budget is exhausted
 
 Each fixture is a task, a small diff with a planted bug, and an `expected.json` (`mustFind` / `mustNotFind` claim substrings, optional `file`, `category`, `minSeverity`). Matching is a normalized claim substring check — no LLM judge — so results are reproducible. The report shows per-fixture caught/missed/false positives, aggregate catch and FP rates, p50 latency and cost. Ten seed fixtures ship in [`eval/fixtures`](eval/fixtures); add your own next to them.
 
+Compare a single pass with debate rounds on the same fixtures:
+
+```bash
+consilium eval --compare-rounds
+consilium eval --rounds 2 --json
+```
+
+`--compare-rounds` runs every fixture twice (one and two rounds) and prints a delta table for catch rate, false-positive rate, p50 latency and total cost, with a verdict. `--fail-under` gates the debate catch rate; `--max-cost` covers both runs.
+
 ## History and stats
 
 ```bash
@@ -539,6 +557,10 @@ consilium audit --since HEAD~5 --dry-run
 ```
 
 `audit` builds an untrusted diff for `<ref>...HEAD`, runs the council on it, and reuses reports, artifacts and the policy gate. `--dry-run` prints the ref, file count and truncation flag without calling models; `--since` is required and validated (no shell metacharacters). Schedule it from cron, Task Scheduler or CI — there is no built-in daemon.
+
+## Running on a schedule
+
+[`docs/scheduling.md`](docs/scheduling.md) has ready recipes for cron, Windows Task Scheduler, launchd and GitHub Actions, using `consilium audit --since <ref>` with `--deadline` and `--max-cost`. Runnable wrappers live in [`examples/consilium-audit.sh`](examples/consilium-audit.sh), [`examples/consilium-audit.ps1`](examples/consilium-audit.ps1) and [`examples/consilium-audit-nightly.yml`](examples/consilium-audit-nightly.yml). The workflow example is deliberately outside `.github/workflows/`, so nothing runs automatically in this repository.
 
 ## OpenCode V2 plugin
 
@@ -574,7 +596,7 @@ V1 note: OpenCode V1 reads the singular `command/` directory (`.opencode/command
 A composite action reviews a pull request diff and posts or updates exactly one comment with the `<!-- consilium:report -->` marker:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.8.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -721,6 +743,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.9.0** — SARIF export, debate evaluation and scheduler recipes. `--report sarif` emits SARIF 2.1.0 (severity mapping, file/line locations, stable fingerprints, rule ids per category) for GitHub code scanning and other SARIF viewers; `.sarif`/`.sarif.json` extensions are inferred. `eval --compare-rounds` runs every fixture with one and two rounds and prints catch/FP/p50/cost deltas; `eval --rounds 2` runs the suite in debate mode. `docs/scheduling.md` plus cron, Task Scheduler, launchd and GitHub Actions examples make commit-range audits schedulable without a daemon. 515 tests.
+
 **1.8.0** — debate rounds, local bootstrap and commit-range audits. `--rounds 2` adds an anonymized peer-review round: each expert critiques the others and states a final position; the chair sees the final positions plus which experts changed, and `metadata.debate` records participants and changes. `consilium init --local` probes Ollama/LM Studio, assigns local models round-robin to every role and the chair, and writes a `localOnly` config. `consilium audit --since <ref>` reviews a commit range end-to-end, reusing reports, artifacts and `--fail-on`; `--dry-run` prints the request without model calls. 491 tests.
 
 **1.7.0** — deadlines and privacy. `--deadline <ms>` caps the expert phase: stragglers are cancelled, the chair synthesizes the finished experts with a missing-roles note, and a run with zero completed experts fails with `DEADLINE`. `--local-only` requires an explicit local model (Ollama, LM Studio, llama.cpp, vLLM) for every agent; `models --local` filters the catalog and `models --probe-local` reports whether local providers are running; `doctor` adds a `local-providers` check. Custom presets in `consilium.config.json` merge over built-ins and work in CLI, MCP and the plugin (`consilium presets` lists them). The trusted-config marker now survives object spreads. 446 tests.
@@ -753,7 +777,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (491 tests)
+npm test            # build + node:test (515 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

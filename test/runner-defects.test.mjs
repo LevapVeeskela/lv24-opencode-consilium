@@ -79,7 +79,7 @@ test('таймаут оставляет SIGKILL-таймер: потомок, и
     }
     if (previousPidFile === undefined) delete process.env.CONSILIUM_TEST_PID_FILE;
     else process.env.CONSILIUM_TEST_PID_FILE = previousPidFile;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -199,7 +199,7 @@ test('--no-artifacts не меняет корень чтения --diff-runs', a
     assert.equal(code, 0);
     assert.ok(logged.join('\n').includes(`Сравнение запусков: ${leftId}`));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

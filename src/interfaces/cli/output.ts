@@ -172,6 +172,7 @@ export function printDryRun(task: string, config: ConsiliumConfig): void {
 /** Определяет формат отчёта по расширению файла */
 export function inferReportFormat(file: string): ReportFormat {
   const lower = file.toLowerCase();
+  if (lower.endsWith('.sarif') || lower.endsWith('.sarif.json')) return 'sarif';
   if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'pr';
   return 'html';
@@ -190,7 +191,7 @@ export function writeRunReport(
   const format = formatSetting ?? inferReportFormat(fileSetting ?? '');
   let text: string;
   try {
-    text = renderReport(result, format);
+    text = renderReport(result, format, config.version === undefined ? undefined : { version: config.version });
   } catch (error) {
     console.error(`⚠️ Не удалось построить отчёт: ${safeText((error as Error).message)}`);
     return false;

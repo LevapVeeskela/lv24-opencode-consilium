@@ -1,9 +1,9 @@
 /**
- * @fileoverview Отчёты консилиума: HTML и PR-markdown рендеры.
+ * @fileoverview Отчёты консилиума: HTML, PR-markdown и SARIF рендеры.
  * @module lv24-opencode-consilium/report
  */
 
-import type { AgentResult, ConsiliumResult } from '../types.js';
+import type { AgentResult, ConsiliumResult, ReportFormat } from '../types.js';
 import type {
   Finding,
   FindingSeverity,
@@ -11,14 +11,19 @@ import type {
   FindingsSummary,
   RejectedPosition
 } from '../council/findings.js';
+import { DEFAULT_CONFIG } from '../defaults.js';
+import { buildSarifReport } from './sarif.js';
 
-/** Формат отчёта. */
-export type ReportFormat = 'html' | 'pr' | 'markdown';
+export type { ReportFormat } from '../types.js';
+export { buildSarifReport } from './sarif.js';
+export type { SarifOptions } from './sarif.js';
 
 /** Опции рендера отчёта. */
 export interface ReportOptions {
   title?: string;
   generatedAt?: Date;
+  /** Версия инструмента для SARIF `tool.driver.version`. */
+  version?: string;
 }
 
 const TEXT_LIMIT = 6000;
@@ -555,11 +560,24 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
 }
 
 /**
- * Диспетчер форматов: html, pr, markdown (markdown = PR-вариант).
+ * Рендерит SARIF 2.1.0 документ с находками запуска.
+ * Без находок возвращает валидный документ с пустым `results`.
+ */
+export function renderSarifReport(
+  result: ConsiliumResult,
+  version: string = DEFAULT_CONFIG.version ?? '0.0.0'
+): string {
+  const document = buildSarifReport(findingsSummaryOf(result) ?? undefined, { version });
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+/**
+ * Диспетчер форматов: html, pr, markdown (markdown = PR-вариант), sarif.
  * @throws {Error} при неизвестном формате.
  */
 export function renderReport(result: ConsiliumResult, format: ReportFormat, options?: ReportOptions): string {
   if (format === 'html') return renderHtmlReport(result, options);
   if (format === 'pr' || format === 'markdown') return renderPrMarkdown(result);
+  if (format === 'sarif') return renderSarifReport(result, options?.version);
   throw new Error(`Неизвестный формат отчёта: ${String(format)}`);
 }

@@ -320,7 +320,7 @@ export function validateConfig(config: ConsiliumConfig): string[] {
     warnings.push('session должен быть непустой строкой.');
   }
 
-  if (config.report !== undefined && !['html', 'pr', 'markdown'].includes(config.report)) {
+  if (config.report !== undefined && !['html', 'pr', 'markdown', 'sarif'].includes(config.report)) {
     warnings.push(`Неизвестный формат отчёта: ${String(config.report)}`);
   }
   if (config.reportFile !== undefined && config.reportFile.trim().length === 0) {

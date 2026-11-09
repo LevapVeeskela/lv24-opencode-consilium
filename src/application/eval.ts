@@ -12,9 +12,12 @@ import { matchFindings } from '../domain/eval/matcher.js';
 import { errorMessage } from '../shared/errors.js';
 import { isRecord } from '../shared/record.js';
 import type {
+  EvalComparison,
+  EvalComparisonInput,
   EvalExpectations,
   EvalFixture,
   EvalFixtureResult,
+  EvalRounds,
   EvalRunInput,
   EvalRunner,
   EvalSummary,
@@ -23,14 +26,19 @@ import type {
 } from '../domain/eval/types.js';
 
 export type {
+  EvalComparison,
+  EvalComparisonDelta,
+  EvalComparisonInput,
   EvalExpectations,
   EvalFixture,
   EvalFixtureResult,
   EvalFindingMatch,
   EvalMatchResult,
+  EvalRounds,
   EvalRunError,
   EvalRunInput,
   EvalRunner,
+  EvalRunnerOptions,
   EvalRunnerOutput,
   EvalSummary,
   ExpectedFinding,
@@ -86,16 +94,53 @@ export function loadEvalFixture(directory: string, name: string = basename(direc
  * а попадает в `error` и учитывается как пропущенная находка.
  */
 export async function runEvalSuite(input: EvalRunInput): Promise<EvalSummary> {
+  return runFixtures(selectFixtures(input), input.runner, input.rounds ?? 1);
+}
+
+/**
+ * Прогоняет одни и те же фикстуры дважды — с rounds=1 и rounds=2 — и
+ * возвращает обе сводки с per-fixture результатами и абсолютную дельту
+ * debate − single (доли остаются долями, не процентами от процентов).
+ */
+export async function runEvalComparison(
+  input: EvalComparisonInput
+): Promise<EvalComparison> {
+  const fixtures = selectFixtures(input);
+  const single = await runFixtures(fixtures, input.runner, 1);
+  const debate = await runFixtures(fixtures, input.runner, 2);
+  return {
+    single,
+    debate,
+    delta: {
+      catchRate: debate.catchRate - single.catchRate,
+      falsePositiveRate: debate.falsePositiveRate - single.falsePositiveRate,
+      p50LatencyMs: debate.p50LatencyMs - single.p50LatencyMs,
+      totalCost: debate.totalCost - single.totalCost
+    }
+  };
+}
+
+function selectFixtures(input: {
+  fixturesDir: string;
+  names?: string[];
+}): EvalFixture[] {
   const wanted =
     input.names === undefined || input.names.length === 0
       ? null
       : new Set(input.names);
-  const fixtures = loadEvalFixtures(input.fixturesDir).filter(
+  return loadEvalFixtures(input.fixturesDir).filter(
     fixture => wanted === null || wanted.has(fixture.name)
   );
+}
+
+async function runFixtures(
+  fixtures: EvalFixture[],
+  runner: EvalRunner,
+  rounds: EvalRounds
+): Promise<EvalSummary> {
   const results: EvalFixtureResult[] = [];
   for (const fixture of fixtures) {
-    results.push(await runFixture(fixture, input.runner));
+    results.push(await runFixture(fixture, runner, rounds));
   }
   return summarize(results);
 }
@@ -161,10 +206,57 @@ export function formatEvalSummary(
   return `${lines.join('\n')}\n`;
 }
 
-async function runFixture(fixture: EvalFixture, runner: EvalRunner): Promise<EvalFixtureResult> {
+/**
+ * Форматирует сравнение single/debate как компактную markdown-таблицу.
+ * Дельта — абсолютная разница debate − single: п.п. для долей, мс и USD.
+ */
+export function formatEvalComparison(comparison: EvalComparison): string {
+  const { single, debate, delta } = comparison;
+  const verdict: string[] = [];
+  if (delta.catchRate > 0) {
+    verdict.push(
+      `debate catches more (${formatRate(single.catchRate)} → ${formatRate(debate.catchRate)})`
+    );
+  }
+  if (delta.totalCost > 0) {
+    verdict.push(
+      `costs more (${formatCost(single.totalCost)} → ${formatCost(debate.totalCost)})`
+    );
+  }
+  const verdictLine =
+    verdict.length === 0
+      ? 'Verdict: debate shows no catch-rate or cost increase.'
+      : `Verdict: ${verdict.join(' and ')}.`;
+
+  return [
+    '# Consilium eval comparison',
+    '',
+    '| metric | single | debate | delta |',
+    '| --- | ---: | ---: | ---: |',
+    `| Catch rate | ${formatRate(single.catchRate)} | ${formatRate(debate.catchRate)} | ` +
+      `${formatRateDelta(delta.catchRate)} |`,
+    `| FP rate | ${formatRate(single.falsePositiveRate)} | ` +
+      `${formatRate(debate.falsePositiveRate)} | ` +
+      `${formatRateDelta(delta.falsePositiveRate)} |`,
+    `| p50 latency | ${formatNumber(single.p50LatencyMs)} ms | ` +
+      `${formatNumber(debate.p50LatencyMs)} ms | ` +
+      `${formatLatencyDelta(delta.p50LatencyMs)} |`,
+    `| Total cost | ${formatCost(single.totalCost)} | ` +
+      `${formatCost(debate.totalCost)} | ${formatCostDelta(delta.totalCost)} |`,
+    '',
+    verdictLine,
+    ''
+  ].join('\n');
+}
+
+async function runFixture(
+  fixture: EvalFixture,
+  runner: EvalRunner,
+  rounds: EvalRounds
+): Promise<EvalFixtureResult> {
   const startedAt = Date.now();
   try {
-    const output = await runner(fixture);
+    const output = await runner(fixture, { rounds });
     const findings = Array.isArray(output.findings) ? output.findings : [];
     const elapsed = Math.max(0, Date.now() - startedAt);
     const latencyMs = nonNegative(output.latencyMs) ?? elapsed;
@@ -378,6 +470,23 @@ function formatNumber(value: number): string {
 
 function formatCost(value: number | undefined): string {
   return value === undefined ? '—' : `$${value.toFixed(4)}`;
+}
+
+/** Дельта долей в процентных пунктах: +25.0 pp, -5.0 pp, 0.0 pp. */
+function formatRateDelta(value: number): string {
+  const points = Number((value * 100).toFixed(1));
+  return `${points > 0 ? '+' : ''}${points.toFixed(1)} pp`;
+}
+
+function formatLatencyDelta(value: number): string {
+  const rounded = Number(value.toFixed(2));
+  return `${rounded > 0 ? '+' : ''}${formatNumber(rounded)} ms`;
+}
+
+function formatCostDelta(value: number): string {
+  const rounded = Number(value.toFixed(4));
+  const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
+  return `${sign}$${Math.abs(rounded).toFixed(4)}`;
 }
 
 function describeExpected(target: ExpectedFinding): string {

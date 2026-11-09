@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.8.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.9.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -135,7 +135,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -165,7 +165,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
-consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium eval [--fixtures <dir>] [--json] [--rounds <1|2>] [--compare-rounds] [--fail-under <pct>] [--max-cost <usd>]
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
@@ -177,7 +177,8 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `-c, --config <file>` / `-e, --experts a,b` / `--chair <agent>` | 配置文件 / 专家子集 / 主席 |
 | `--preset <name>` | `fast`、`deep`、`security`、`review`、`free` 或配置中的自定义预设 |
 | `--deadline <ms>` / `--local-only` | 专家阶段时限（最多 24 小时，超时后部分综合）/ 每个 Agent 必须显式使用本地模型，启动前拒绝非本地提供商 |
-| `--rounds <1\|2>` | `2` 增加匿名化同伴评审轮次，模型调用翻倍（默认 1） |
+| `--rounds <1\|2>` | `2` 增加匿名化同伴评审轮次，适用于 run/watch/eval，模型调用翻倍（默认 1） |
+| `--compare-rounds` | `eval`：以一轮和两轮分别运行每个 fixture，并打印差值表 |
 | `--expert-timeout`、`--chair-timeout`、`-r, --retries <n>` | 每次尝试超时（ms）、重试（0 = 一次） |
 | `-o, --output <file>` / `--no-save` / `-f, --format <fmt>` | 保存 / 不保存 / `text`、`markdown`、`json` |
 | `--task-file <file>` / `-s, --silent` / `-V, --verbose` / `-v, --version` / `-h, --help` | 文件或 stdin 读任务 / 只出结果 / 原始事件 / 版本 / 帮助 |
@@ -185,7 +186,7 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 | `--max-cost <usd>` / `--fallback-models a,b` | 成本上限（`COST_LIMIT`）/ 换模型重试（最多 2 次） |
 | `--session <id>` / `--variant <name>` | 会话基 id（`ses_<base>-<agent>`）/ variant，非法退出 2 |
 | `--artifacts`、`--no-artifacts`、`--artifacts-dir <path>`、`--replay <id>`、`--diff-runs <a> <b>` | 产物 / 目录 / 重跑 / 对比 |
-| `--report <html\|pr\|markdown>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告 / 写文件 / git diff / watch 防抖 |
+| `--report <html\|pr\|markdown\|sarif>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告（SARIF 2.1.0）/ 写文件（`.sarif`/`.sarif.json` 推断为 SARIF）/ git diff / watch 防抖 |
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
 | `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
 | `--context <off\|auto>` / `eval [--fixtures <dir>]` / `--fail-under <pct>` / `--reliability` | 上下文包（`auto`，默认 `off`）/ 运行评估 fixture（默认 `eval/fixtures`）/ eval 门禁：低于 catch 百分比退出 `3` / `models` 打印 `.consilium/reliability.json` 的成功率与延迟 |
@@ -200,7 +201,7 @@ consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 ```bash
 consilium --report html --report-file report.html "Review the current changes"
 consilium --report pr "Review the current changes"
-consilium --report-file notes.md "..."      # .html → html，.md → pr
+consilium --report-file notes.md "..."      # .html → html，.md → pr，.sarif → sarif
 consilium watch --debounce 500 "Review the current changes"
 consilium hooks install                     # 提交前评审 staged，失败则阻止提交
 consilium hooks uninstall                   # 只删托管块
@@ -226,6 +227,13 @@ consilium --findings --fail-on high --diff "Review the current changes"
 ```
 
 - `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
+
+## SARIF 与代码扫描
+```bash
+consilium --findings --report sarif --report-file consilium.sarif "Review the current changes"
+```
+
+`--report sarif` 输出 SARIF 2.1.0，可用于 GitHub code scanning 及其他 SARIF 查看器：每个发现一条结果，`critical`/`high` → `error`，`medium` → `warning`，`low`/`info` → `note`，包含文件/行号位置、稳定指纹和每个类别一条规则。`--report-file` 根据 `.sarif`/`.sarif.json` 推断格式。在 CI 中用 `github/codeql-action/upload-sarif` 上传；已加入 baseline 的发现仍会出现在文件中，除非将其过滤掉。
 
 ## 截止时间与部分综合
 长时间运行的免费模型不应拖住 CI 或 pre-commit hook：
@@ -256,6 +264,15 @@ consilium eval --max-cost 0.50        # 预算耗尽时停止
 
 每个 fixture 是一段任务、一个埋入 bug 的小 diff 和 `expected.json`（`mustFind` / `mustNotFind` 为 claim 子串，可选 `file`、`category`、`minSeverity`）。匹配是规范化后的 claim 子串检查——不用 LLM 裁判——因此结果可复现。报告给出每个 fixture 的 caught/missed/false positives、总体 catch 与 FP 率、p50 延迟和成本。内置十个种子 fixture：[`eval/fixtures`](../eval/fixtures)，可在旁边添加自己的。
 
+在同一批 fixture 上比较单轮与辩论轮次：
+
+```bash
+consilium eval --compare-rounds
+consilium eval --rounds 2 --json
+```
+
+`--compare-rounds` 对每个 fixture 运行两次（一轮和两轮），打印 catch rate、FP rate、p50 延迟和总成本的差值表，并给出结论。`--fail-under` 以辩论的 catch rate 作为门禁；`--max-cost` 覆盖两次运行。
+
 ## 历史与统计
 
 ```bash
@@ -277,6 +294,9 @@ consilium audit --since HEAD~5 --dry-run
 
 `audit` 为 `<ref>...HEAD` 构建不可信 diff，运行议会，并复用报告、产物与策略门禁。`--dry-run` 只打印 ref、文件数和截断标记，不调用模型；`--since` 为必填项并会校验（不允许 shell 元字符）。用 cron、任务计划程序或 CI 定期调度——没有内置守护进程。
 
+## 定时运行
+[`scheduling.md`](scheduling.md) 提供 cron、Windows 任务计划程序、launchd 和 GitHub Actions 的现成方案，使用 `consilium audit --since <ref>` 配合 `--deadline` 与 `--max-cost`。可直接运行的包装脚本位于 [`examples/consilium-audit.sh`](../examples/consilium-audit.sh)、[`examples/consilium-audit.ps1`](../examples/consilium-audit.ps1) 和 [`examples/consilium-audit-nightly.yml`](../examples/consilium-audit-nightly.yml)。示例 workflow 特意放在 `.github/workflows/` 之外，因此本仓库不会自动运行任何内容。
+
 ## OpenCode V2 插件
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
@@ -288,7 +308,7 @@ consilium audit --since HEAD~5 --dry-run
 复合 Action 会评审 PR diff，并发布或更新恰好一条带 `<!-- consilium:report -->` 标记的评论：
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.8.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -377,6 +397,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.9.0** — SARIF 导出、辩论评估与调度方案：`--report sarif` 输出 SARIF 2.1.0（严重性映射、文件/行号位置、稳定指纹、按类别划分的规则 id），可用于 GitHub code scanning 及其他 SARIF 查看器，`.sarif`/`.sarif.json` 扩展名自动推断；`eval --compare-rounds` 以一轮和两轮运行每个 fixture 并打印 catch/FP/p50/cost 差值，`eval --rounds 2` 以辩论模式运行整套用例；`docs/scheduling.md` 与 cron、任务计划程序、launchd、GitHub Actions 示例让提交范围审计无需守护进程即可定时执行；515 个测试。
 - **1.8.0** — 辩论轮次、本地引导与提交范围审计：`--rounds 2` 增加匿名化同伴评审，每位专家点评他人并给出最终立场，主席看到最终立场及哪些专家改变立场，`metadata.debate` 记录参与者与变化；`consilium init --local` 探测 Ollama/LM Studio，将本地模型轮流分配给各角色和主席，并写入 `localOnly` 配置；`consilium audit --since <ref>` 端到端评审提交范围，复用报告、产物与 `--fail-on`，`--dry-run` 不调用模型即可打印请求；491 个测试。
 - **1.7.0** — 截止时间与隐私：`--deadline <ms>` 限制专家阶段，超时后取消落后专家、保留已完成的回答，主席带缺失角色说明进行部分综合；没有任何专家完成时以 `DEADLINE` 失败。`--local-only` 要求每位专家和主席都显式使用本地模型（Ollama、LM Studio、llama.cpp、vLLM）；`models --local` 过滤目录，`models --probe-local` 检查本地提供商是否运行；`doctor` 新增 `local-providers` 检查。`consilium.config.json` 中的自定义预设合并覆盖内置预设，并可在 CLI、MCP 和插件中使用（`consilium presets` 列出）。受信任配置标记现在能跨对象展开保留。446 个测试。
 - **1.6.0** — 评估工具、上下文包、可靠性记忆与 GitHub Action：`consilium eval` 用埋入 bug 的 fixture 和确定性 claim 匹配报告 catch/FP/p50 延迟/成本（`--fail-under` 低于阈值退出 `3`）；`--context auto` 在字符预算内补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交；模型结果与延迟写入 `.consilium/reliability.json`（`models --reliability`）；复合 GitHub Action 评审 PR diff 并发布或更新一条评论；模糊 claim 合并去重同义发现；`consilium history` 与 `consilium stats` 汇总运行、延迟与可靠性；381 个测试。
@@ -390,6 +411,6 @@ const top = selectCouncilModels(models, 5);
 ## 路线图
 - TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，491 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，515 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
 ## 许可证
 [MIT](../LICENSE)

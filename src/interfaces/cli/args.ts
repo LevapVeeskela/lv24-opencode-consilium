@@ -165,6 +165,9 @@ export function parseArgs(argv: string[]): CLIOptions {
         options.rounds = value === '2' ? 2 : 1;
         break;
       }
+      case '--compare-rounds':
+        options.compareRounds = true;
+        break;
       case '-o':
       case '--output':
         options.output = requireValue(argv, ++i, arg);
@@ -308,8 +311,8 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--report': {
         const format = requireValue(argv, ++i, arg);
-        if (format !== 'html' && format !== 'pr' && format !== 'markdown') {
-          throw new UsageError(`Неизвестный формат отчёта: ${format} (html, pr, markdown)`);
+        if (format !== 'html' && format !== 'pr' && format !== 'markdown' && format !== 'sarif') {
+          throw new UsageError(`Неизвестный формат отчёта: ${format} (html, pr, markdown, sarif)`);
         }
         options.report = format;
         break;
@@ -391,6 +394,12 @@ export function parseArgs(argv: string[]): CLIOptions {
         }
         break;
     }
+  }
+
+  if (options.compareRounds === true && options.rounds !== undefined) {
+    throw new UsageError(
+      'Флаги --compare-rounds и --rounds взаимоисключающие: выберите один.'
+    );
   }
 
   options.task = taskParts.join(' ').trim();

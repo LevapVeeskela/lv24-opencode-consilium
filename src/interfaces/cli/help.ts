@@ -15,7 +15,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium presets [--json]
   consilium doctor
   consilium mcp
-  consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+  consilium eval [--fixtures <dir>] [--rounds <1|2> | --compare-rounds] [--json]
+                 [--fail-under <pct>] [--max-cost <usd>]
   consilium baseline accept <runId|latest> [--dry-run]
   consilium baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
   consilium history [--limit N] [--json]
@@ -27,6 +28,7 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
   3 — сработала политика --fail-on (находки не ниже порога)
       или catch rate eval ниже --fail-under
+      (в compare-режиме — catch rate дебатов)
 
 ОСНОВНЫЕ ОПЦИИ:
   -h, --help              Показать эту справку
@@ -43,7 +45,9 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --chair-timeout <мс>    Таймаут председателя (по умолчанию: 600000)
   --deadline <мс>         Общий дедлайн экспертной фазы (не больше 24 часов)
   --rounds <1|2>          Раундов дебатов: 1 — обычный, 2 — анонимное peer-review
-                          экспертов перед председателем
+                          экспертов перед председателем (run, watch, eval)
+  --compare-rounds        (eval) Сравнить прогоны rounds=1 и rounds=2 на тех же
+                          фикстурах; взаимоисключающе с --rounds
   --local-only            Только локальные модели (ollama/lmstudio/vllm/…);
                           завершиться с кодом 2, если модель внешняя
   -r, --retries <число>   Повторные попытки
@@ -77,8 +81,9 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --no-artifacts          Не сохранять артефакты
   --replay <id>           Повторить сохранённый запуск
   --diff-runs <a> <b>     Сравнить два артефакта
-  --report <формат>       Отчёт после запуска: html, pr, markdown
-  --report-file <файл>    Записать отчёт в файл (по умолчанию stdout)
+  --report <формат>       Отчёт после запуска: html, pr, markdown, sarif (SARIF 2.1.0)
+  --report-file <файл>    Записать отчёт в файл (по умолчанию stdout);
+                          .sarif — автоматически SARIF 2.1.0
   --variant <имя>         Вариант для моделей без #variant (существующий сохраняется)
 
 РЕЖИМ НАБЛЮДЕНИЯ:
@@ -101,9 +106,14 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   doctor                  Проверить окружение, конфиг, агентов и модели
   mcp [--install] [--global]
                           Запустить MCP-сервер (stdio) или зарегистрировать его в opencode.json
-  eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+  eval [--fixtures <dir>] [--rounds <1|2> | --compare-rounds] [--json]
+       [--fail-under <pct>] [--max-cost <usd>]
                           Прогнать eval-фикстуры (по умолчанию eval/fixtures);
+                          --rounds 2 — прогон с peer-review, --compare-rounds — сравнение
+                          rounds=1 и rounds=2 (взаимоисключающе с --rounds);
                           --fail-under — код 3, если catch rate ниже порога
+                          (в compare-режиме — catch rate дебатов);
+                          --max-cost в compare-режиме ограничивает сумму обоих прогонов
   baseline accept <runId|latest> [--dry-run]
                           Принять находки запуска в .consilium/baseline.json
   baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
@@ -157,6 +167,7 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium presets --json
   consilium models --reliability
   consilium eval --fail-under 80
+  consilium eval --compare-rounds --fail-under 80
   consilium init --local --dry-run
   consilium audit --since HEAD~1 --fail-on high
   consilium --rounds 2 "Оценить архитектуру проекта"

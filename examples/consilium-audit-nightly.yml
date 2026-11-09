@@ -1,0 +1,114 @@
+# EXAMPLE ONLY - NOT ENABLED IN THIS REPOSITORY.
+#
+# GitHub Actions only runs workflows from .github/workflows/. This file lives in
+# examples/ so copying the repository does not schedule or spend anything. To
+# adopt it, copy it to .github/workflows/consilium-audit-nightly.yml in YOUR
+# repository, then review the permissions, secrets, and schedule below.
+#
+# Zero-spend by design: the job runs the published npm package on your runner.
+# There is no hosted Consilium app and no paid service. GitHub Actions minutes
+# and model-provider usage still apply.
+name: Consilium nightly audit
+
+on:
+  schedule:
+    # 03:00 UTC. GitHub cron is UTC and may start a few minutes late.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  # The audit only reads the repository. It does not comment or push.
+  contents: read
+
+concurrency:
+  # Queue at most one audit; do not cancel a review that is already running.
+  group: consilium-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # Pin third-party actions to full commit SHAs in production.
+      - name: Check out the default branch with full history
+        uses: actions/checkout@v4
+        with:
+          # Needs the full history and the remote base ref for <ref>...HEAD.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install OpenCode CLI
+        # Pin a version you have tested. Consilium drives the OpenCode CLI.
+        run: npm install --global --no-fund --no-audit opencode-ai@1.19.5
+
+      - name: Run Consilium audit
+        id: audit
+        shell: bash
+        env:
+          # Store these as repository or environment secrets, never inline.
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Optional repository variable. Use a tag or HEAD~20 for meaningful
+          # nightly coverage of the default branch; see docs/scheduling.md.
+          CONSILIUM_SINCE: ${{ vars.CONSILIUM_SINCE }}
+        run: |
+          set -uo pipefail
+
+          # Default requested by the recipe: audit since the default branch.
+          # When this job checks out that same branch, the range is empty.
+          since="${CONSILIUM_SINCE}"
+          if [ -z "$since" ]; then
+            since="origin/${{ github.event.repository.default_branch }}"
+          fi
+          echo "Auditing since: $since"
+
+          current="$(git rev-parse --abbrev-ref HEAD)"
+          if [ "$since" = "origin/$current" ]; then
+            echo "::warning::The audit range is empty on the current branch. Set CONSILIUM_SINCE to a tag or HEAD~20 for nightly coverage."
+          fi
+
+          code=0
+          npx -y lv24-opencode-consilium@1.9.0 audit \
+            --since "$since" \
+            --fail-on high \
+            --deadline 900000 \
+            --max-cost 2.00 \
+            --report sarif \
+            --report-file consilium-audit.sarif || code=$?
+
+          # audit always writes .consilium/runs; keep the job alive so the
+          # artifacts and the gate step run even when the gate fails.
+          echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Consilium artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consilium-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            .consilium/runs
+            consilium-audit.sarif
+
+      - name: Enforce the policy gate
+        if: always()
+        shell: bash
+        env:
+          CODE: ${{ steps.audit.outputs.exit-code }}
+        run: |
+          code="${CODE:-1}"
+          case "$code" in
+            0) echo "Consilium audit passed." ;;
+            2) echo "::error::Consilium could not run (usage or setup error)." ;;
+            3) echo "::error::Consilium gate failed: new findings at or above high." ;;
+            *) echo "::error::Consilium run failed with exit code ${code}." ;;
+          esac
+          exit "$code"

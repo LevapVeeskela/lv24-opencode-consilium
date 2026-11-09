@@ -2,13 +2,13 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.8.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.9.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -30,6 +30,9 @@ Version: 1.8.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium init --local [--dry-run] [--force]` — probe Ollama/LM Studio and write a `localOnly` config.
 - `--rounds <1|2>` — second anonymized peer-review round; `metadata.debate`.
 - `consilium audit --since <ref> [--dry-run] [--fail-on <severity>]` — review `<ref>...HEAD` end-to-end.
+- `--report sarif --report-file report.sarif` — SARIF 2.1.0 for code scanning (findings required).
+- `consilium eval --compare-rounds` / `--rounds 2` — compare single-pass vs debate catch/FP/latency/cost.
+- Scheduling recipes: docs/scheduling.md (cron, Task Scheduler, launchd, GitHub Actions).
 - `--context <off|auto>` — add changed files, rules, tests and commits to the task.
 - `consilium models --reliability` — per-model success/latency table.
 
@@ -86,5 +89,6 @@ Version: 1.8.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - Chinese: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/README.zh.md
 - Sessions and plugin internals: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/session-and-plugin.md
 - Architecture (layers, barrels, extension guides): https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/architecture.md
+- Scheduling: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/scheduling.md
 - npm: https://www.npmjs.com/package/lv24-opencode-consilium
 - Container: https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium
