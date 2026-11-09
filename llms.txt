@@ -2,13 +2,14 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.9.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0`
+- `pip install lv24-opencode-consilium` — thin Python launcher that delegates to the npm CLI via `npx` (still needs Node.js >= 18 and OpenCode; npm is canonical).
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -31,6 +32,7 @@ Version: 1.9.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `--rounds <1|2>` — second anonymized peer-review round; `metadata.debate`.
 - `consilium audit --since <ref> [--dry-run] [--fail-on <severity>]` — review `<ref>...HEAD` end-to-end.
 - `--report sarif --report-file report.sarif` — SARIF 2.1.0 for code scanning (findings required).
+- `consilium sarif [--run <id|latest>] [--output <file>]` — export SARIF from saved artifacts without re-running.
 - `consilium eval --compare-rounds` / `--rounds 2` — compare single-pass vs debate catch/FP/latency/cost.
 - Scheduling recipes: docs/scheduling.md (cron, Task Scheduler, launchd, GitHub Actions).
 - `--context <off|auto>` — add changed files, rules, tests and commits to the task.
@@ -69,7 +71,7 @@ Version: 1.9.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## GitHub Action
 
-- `.github/actions/consilium` — composite action; runs `--diff --base --report pr --fail-on <level>`, posts/updates one PR comment with `<!-- consilium:report -->`. Guide: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/github-action.md
+- `.github/actions/consilium` — composite action; runs `--diff --base --artifacts --report pr --fail-on <level>`, posts/updates one PR comment with `<!-- consilium:report -->`, exports SARIF and uploads it with `github/codeql-action/upload-sarif` (`sarif`, `sarif-file`, `category`; requires `security-events: write`). Guide: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/github-action.md
 
 ## Evaluation
 
@@ -90,5 +92,7 @@ Version: 1.9.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - Sessions and plugin internals: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/session-and-plugin.md
 - Architecture (layers, barrels, extension guides): https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/architecture.md
 - Scheduling: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/scheduling.md
+- PyPI publishing and wrapper: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/pypi.md
 - npm: https://www.npmjs.com/package/lv24-opencode-consilium
+- PyPI: https://pypi.org/project/lv24-opencode-consilium/
 - Container: https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium

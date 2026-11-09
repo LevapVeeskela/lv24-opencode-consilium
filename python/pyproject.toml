@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lv24-opencode-consilium"
+version = "1.10.0"
+description = "Python launcher for the lv24-opencode-consilium (Consilium) Node.js CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "LevapVeeskela" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/LevapVeeskela/lv24-opencode-consilium"
+Repository = "https://github.com/LevapVeeskela/lv24-opencode-consilium"
+Issues = "https://github.com/LevapVeeskela/lv24-opencode-consilium/issues"
+Documentation = "https://github.com/LevapVeeskela/lv24-opencode-consilium/tree/master/docs"
+
+[project.scripts]
+consilium = "lv24_opencode_consilium.cli:main"
+lv24-opencode-consilium = "lv24_opencode_consilium.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

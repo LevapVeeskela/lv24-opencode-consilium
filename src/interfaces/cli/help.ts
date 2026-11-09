@@ -23,6 +23,7 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium stats [--json] [--html <файл>]
   consilium audit --since <ref> [--dry-run] [--json] [--findings|--no-findings]
                    [--fail-on <уровень>] [--max-cost <usd>]
+  consilium sarif [--run <id|latest>] [--output <файл>]
 
 КОДЫ ВЫХОДА:
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
@@ -127,6 +128,9 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
                           Аудит изменений с git ref: ревью diff, баги, безопасность и тесты;
                           --dry-run — показать запрос без вызова моделей
                           --fail-on автоматически включает находки
+  sarif [--run <id|latest>] [--output <файл>]
+                          Экспорт находок запуска в SARIF 2.1.0 (stdout или файл);
+                          по умолчанию — самый свежий запуск из .consilium/runs
 
 СОВМЕСТИМОСТЬ:
   Работает с OpenCode V1 и V2. Формат opencode.json определяется автоматически:
@@ -170,6 +174,7 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium eval --compare-rounds --fail-under 80
   consilium init --local --dry-run
   consilium audit --since HEAD~1 --fail-on high
+  consilium sarif --run latest --output consilium.sarif
   consilium --rounds 2 "Оценить архитектуру проекта"
   consilium doctor
 

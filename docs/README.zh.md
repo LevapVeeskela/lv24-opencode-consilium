@@ -42,11 +42,14 @@ $ consilium "Review the authentication design"
 ```bash
 npm install -g lv24-opencode-consilium
 npx -y lv24-opencode-consilium --help   # 不安装直接运行
+pip install lv24-opencode-consilium     # PyPI 薄启动器（仍需 Node.js + OpenCode）
 ```
 
-要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
+`pip` 会安装 `consilium` 控制台脚本，通过 `npx` 委托给 npm 包；npm 仍是规范发行版。仍需 Node.js >= 18（含 npm/npx）与 OpenCode CLI；启动器需要 Python 3.9+。详情：[`pypi.md`](pypi.md)。
+
+要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；PyPI 启动器需要 Python 3.9+；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.9.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.10.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -135,7 +138,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -170,6 +173,7 @@ consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
 consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
+consilium sarif [--run <id|latest>] [--output <file>]
 ```
 
 | 选项 | 说明 |
@@ -234,6 +238,15 @@ consilium --findings --report sarif --report-file consilium.sarif "Review the cu
 ```
 
 `--report sarif` 输出 SARIF 2.1.0，可用于 GitHub code scanning 及其他 SARIF 查看器：每个发现一条结果，`critical`/`high` → `error`，`medium` → `warning`，`low`/`info` → `note`，包含文件/行号位置、稳定指纹和每个类别一条规则。`--report-file` 根据 `.sarif`/`.sarif.json` 推断格式。在 CI 中用 `github/codeql-action/upload-sarif` 上传；已加入 baseline 的发现仍会出现在文件中，除非将其过滤掉。
+
+已有产物时，无需重新运行议会即可导出最近或指定的已保存运行：
+
+```bash
+consilium sarif --run latest --output consilium.sarif
+consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON 输出到 stdout
+```
+
+运行不存在属于用法错误（退出码 2）；没有发现时会生成合法的空 SARIF。
 
 ## 截止时间与部分综合
 长时间运行的免费模型不应拖住 CI 或 pre-commit hook：
@@ -305,16 +318,22 @@ consilium audit --since HEAD~5 --dry-run
 斜杠命令：`.opencode/commands/council.md`（或全局 `~/.config/opencode/commands/`），用法 `/council <task>`；需要先注册 V2 插件或 MCP 服务器。
 
 ## GitHub Action
-复合 Action 会评审 PR diff，并发布或更新恰好一条带 `<!-- consilium:report -->` 标记的评论：
+复合 Action 会评审 PR diff，发布或更新恰好一条带 `<!-- consilium:report -->` 标记的评论，并默认将发现以 SARIF 上传到 GitHub code scanning：
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write   # SARIF 上传所需
+
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.10.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
+    sarif: true             # 默认；设为 false 可跳过 SARIF
 ```
 
-它运行 `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，然后传递门禁退出码（`3`）。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
+它运行 `consilium --diff --base origin/<base> --artifacts --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
 
 ## 预设
 | 预设 | 专家 | 行为 |
@@ -397,6 +416,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.10.0** — PyPI 发行与 GitHub Action 的 SARIF 上传：`pip install lv24-opencode-consilium` 安装一个无依赖的薄 `consilium` 启动器，通过 `npx` 委托给 npm CLI（仍需 Node.js >= 18 与 OpenCode；npm 仍是规范发行版）；PyPI 发布使用 `.github/workflows/pypi-publish.yml` 中的 Trusted Publishing（OIDC），GitHub release 无需令牌或 OTP 即可同时发布 npm 与 PyPI；`consilium sarif --run <id|latest> [--output <file>]` 从已保存产物导出 SARIF，无需重新运行议会；复合 Action 现在传入 `--artifacts`、导出 SARIF 并通过 `github/codeql-action/upload-sarif` 上传（`sarif`、`sarif-file`、`category` 输入；需要 `security-events: write`），SARIF 失败不会掩盖门禁；522 个 JavaScript 测试 + 5 个 Python 测试。
 - **1.9.0** — SARIF 导出、辩论评估与调度方案：`--report sarif` 输出 SARIF 2.1.0（严重性映射、文件/行号位置、稳定指纹、按类别划分的规则 id），可用于 GitHub code scanning 及其他 SARIF 查看器，`.sarif`/`.sarif.json` 扩展名自动推断；`eval --compare-rounds` 以一轮和两轮运行每个 fixture 并打印 catch/FP/p50/cost 差值，`eval --rounds 2` 以辩论模式运行整套用例；`docs/scheduling.md` 与 cron、任务计划程序、launchd、GitHub Actions 示例让提交范围审计无需守护进程即可定时执行；515 个测试。
 - **1.8.0** — 辩论轮次、本地引导与提交范围审计：`--rounds 2` 增加匿名化同伴评审，每位专家点评他人并给出最终立场，主席看到最终立场及哪些专家改变立场，`metadata.debate` 记录参与者与变化；`consilium init --local` 探测 Ollama/LM Studio，将本地模型轮流分配给各角色和主席，并写入 `localOnly` 配置；`consilium audit --since <ref>` 端到端评审提交范围，复用报告、产物与 `--fail-on`，`--dry-run` 不调用模型即可打印请求；491 个测试。
 - **1.7.0** — 截止时间与隐私：`--deadline <ms>` 限制专家阶段，超时后取消落后专家、保留已完成的回答，主席带缺失角色说明进行部分综合；没有任何专家完成时以 `DEADLINE` 失败。`--local-only` 要求每位专家和主席都显式使用本地模型（Ollama、LM Studio、llama.cpp、vLLM）；`models --local` 过滤目录，`models --probe-local` 检查本地提供商是否运行；`doctor` 新增 `local-providers` 检查。`consilium.config.json` 中的自定义预设合并覆盖内置预设，并可在 CLI、MCP 和插件中使用（`consilium presets` 列出）。受信任配置标记现在能跨对象展开保留。446 个测试。
@@ -411,6 +431,6 @@ const top = selectCouncilModels(models, 5);
 ## 路线图
 - TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，515 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，522 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
 ## 许可证
 [MIT](../LICENSE)

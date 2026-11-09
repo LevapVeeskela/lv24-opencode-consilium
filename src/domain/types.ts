@@ -354,6 +354,7 @@ export interface CLIOptions {
     | 'stats'
     | 'presets'
     | 'audit'
+    | 'sarif'
     | 'help'
     | 'version';
   config?: string;
@@ -418,6 +419,8 @@ export interface CLIOptions {
   noJitter?: boolean;
   /** Повторить сохранённый запуск (файл артефакта) */
   replay?: string;
+  /** (sarif) id артефакта или latest */
+  run?: string;
   /** Сравнить два артефакта */
   diffRuns?: [string, string];
   /** Каталог артефактов (переопределяет .consilium/runs) */

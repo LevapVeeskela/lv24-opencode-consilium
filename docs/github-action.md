@@ -46,6 +46,9 @@ any review or spend any quota.
     and review the generated files before committing them. The action does not
     run `init` automatically because it writes project files and probes models.
 - `pull-requests: write` for the comment. See [Permissions](#permissions).
+- `security-events: write` when SARIF upload is enabled (the default), and code
+  scanning must be enabled for the repository. See
+  [SARIF and code scanning](#sarif-and-code-scanning).
 
 ## Installation
 
@@ -57,7 +60,7 @@ Pin the action to a commit SHA (recommended) or a release tag:
 - name: Run Consilium
   uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.5.0'
+    version: '1.10.0'
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
@@ -92,6 +95,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write
 
 jobs:
   review:
@@ -122,6 +126,9 @@ jobs:
 | `node-version` | `20` | Node.js version used by the action. |
 | `max-cost` | empty | Optional soft cost cap in USD, passed to `--max-cost`. |
 | `version` | `latest` | npm version of `lv24-opencode-consilium` to install. Pin an exact version for reproducibility. |
+| `sarif` | `true` | Export findings as SARIF 2.1.0 and upload them to GitHub code scanning. Requires `security-events: write` and code scanning enabled for the repository. Set to `false` to skip both SARIF steps. |
+| `sarif-file` | `consilium.sarif` | Path to the generated SARIF file, relative to the workspace or absolute. |
+| `category` | `consilium` | Category passed to `github/codeql-action/upload-sarif`, so several SARIF reports can coexist in one repository. |
 
 Outputs:
 
@@ -130,9 +137,10 @@ Outputs:
 | `exit-code` | Consilium CLI exit code (`0`, `1`, `2`, or `3`). |
 | `report-file` | Absolute path to `consilium-review.md` in the workspace. |
 
-When `fail-on` is not `none`, the action adds `--findings` automatically. The
-CLI requires structured findings for the gate; without this, it would exit `2`
-before producing a report.
+When `fail-on` is not `none` or `sarif` is `true`, the action adds
+`--findings` automatically. The CLI requires structured findings for the gate
+and for a non-empty SARIF report; without this, the gate would exit `2` before
+producing a report.
 
 ## Permissions
 
@@ -142,16 +150,20 @@ The workflow needs at least:
 permissions:
   contents: read
   pull-requests: write
+  security-events: write
 ```
 
 `contents: read` lets `actions/checkout` fetch the repository and lets the
 action compute the diff. `pull-requests: write` allows listing issue comments
-on the PR and creating or updating the Consilium comment.
+on the PR and creating or updating the Consilium comment. `security-events:
+write` is required only for SARIF uploads (the default `sarif: true`); remove it
+when `sarif: false`.
 
 Set permissions at the workflow or job level. If your organization sets a
-restricted default `GITHUB_TOKEN` policy, grant `pull-requests: write` in the
-workflow or repository settings. The action does not need `contents: write`,
-`issues: write`, `actions: write`, or a personal access token.
+restricted default `GITHUB_TOKEN` policy, grant `pull-requests: write` and
+`security-events: write` in the workflow or repository settings. The action does
+not need `contents: write`, `issues: write`, `actions: write`, or a personal
+access token.
 
 The `github-token` input defaults to `${{ github.token }}`. Prefer that scoped
 token to a long-lived PAT. A PAT is only useful if your organization's policy
@@ -190,6 +202,45 @@ PR. The action skips the script when `comment` is not `true` or when
 Comment failures do not turn a passing review into a failing job, and they do
 not replace exit code `3`. If the comment matters for branch protection, monitor
 the workflow warnings or add a separate check for the comment step's outcome.
+
+## SARIF and code scanning
+
+The review run always writes artifacts with `--artifacts`, so
+`.consilium/runs/<id>/run.json` exists. When `sarif` is `true` (the default), the
+action also adds `--findings` so `run.json` contains `metadata.findings`.
+
+After the review, the action:
+
+1. Runs `consilium sarif --run latest --output consilium.sarif` (or the path in
+   `sarif-file`). This step uses `continue-on-error: true`.
+2. Uploads the file with `github/codeql-action/upload-sarif`, passing
+   `sarif_file` and `category`. This step also uses `continue-on-error: true`.
+
+Both SARIF steps are independent of the gate. A missing permission, a disabled
+code scanning setup, or an upload failure produces a warning or a failed step,
+but it does not replace exit code `3` and does not turn a passing review into a
+failing job. The comment and gate steps still run.
+
+Requirements for SARIF upload:
+
+- `security-events: write` on the workflow or job.
+- Code scanning must be enabled for the repository. Public repositories can use
+  code scanning directly; private repositories may require GitHub Advanced
+  Security depending on your plan. If code scanning is unavailable, set
+  `sarif: false` and keep the review comment and gate.
+- On fork pull requests the token is read-only, so uploads fail; that is
+  expected and does not affect the gate.
+
+Use a Consilium package version that includes the `consilium sarif` command. If
+the example pins an older version, either upgrade it or set `sarif: false`.
+
+The SARIF file contains every finding from the run. Findings accepted in
+`.consilium/baseline.json` still appear there; the baseline only changes the
+gate result. Use `consilium sarif` locally to inspect the same document:
+
+```bash
+consilium sarif --run latest --output consilium.sarif
+```
 
 ## Fork pull request caveat
 
@@ -263,11 +314,13 @@ The action order is deliberate:
 
 1. Run Consilium and capture its exit code with `set +e`.
 2. Write `consilium-review.md`.
-3. Post or update the comment.
-4. Re-exit with the captured code.
+3. Export `consilium.sarif` and upload it when `sarif` is `true`.
+4. Post or update the comment.
+5. Re-exit with the captured code.
 
-A failing gate therefore never skips the comment. A failing comment never
-replaces the gate code. If `comment: false` is set, steps 1, 2, and 4 still run.
+A failing gate therefore never skips the comment or the SARIF upload. A failing
+comment or SARIF upload never replaces the gate code. If `comment: false` is
+set, the review, report, SARIF, and gate steps still run.
 
 `fail-on` levels, from most to least severe: `critical`, `high`, `medium`, `low`,
 `info`. The default `none` disables the gate and keeps the job green. To make the
@@ -280,7 +333,7 @@ Three things can move independently:
 
 1. **The action ref.** Pin `uses:` to a full commit SHA (or a reviewed release
    tag) instead of `@main`.
-2. **The npm package.** Pass an exact `version`, for example `1.5.0`, instead
+2. **The npm package.** Pass an exact `version`, for example `1.10.0`, instead
    of the default `latest`.
 3. **The OpenCode CLI.** The action installs `opencode-ai@latest` only when
    `opencode` is not already on `PATH`. To pin it, install a specific version in
@@ -293,7 +346,7 @@ Three things can move independently:
    - name: Run Consilium
      uses: ./.github/actions/consilium
      with:
-       version: '1.5.0'
+       version: '1.10.0'
    ```
 
    Also pin `actions/checkout` to a commit SHA in production workflows.
@@ -303,7 +356,7 @@ Example remote pin:
 ```yaml
 - uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.5.0'
+    version: '1.10.0'
     fail-on: high
 ```
 

@@ -24,6 +24,7 @@ import { commandEval } from './commands/eval.js';
 import { commandHistory, commandStats } from './commands/history.js';
 import { commandPresets } from './commands/presets.js';
 import { commandAudit } from './commands/audit.js';
+import { commandSarif } from './commands/sarif.js';
 
 export { applyCliOverrides } from './overrides.js';
 
@@ -89,6 +90,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         return await commandPresets(options);
       case 'audit':
         return await commandAudit(options);
+      case 'sarif':
+        return await commandSarif(options);
       case 'run':
         return await commandRun(options);
       default:

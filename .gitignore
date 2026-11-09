@@ -21,6 +21,13 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Python build/test artifacts
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.venv/
+
 # Consilium run artifacts
 .consilium/
 

@@ -76,7 +76,12 @@ npm install -g lv24-opencode-consilium
 
 # или запуск без установки
 npx -y lv24-opencode-consilium --help
+
+# или тонкий Python-лаунчер из PyPI (Node.js + OpenCode всё равно нужны)
+pip install lv24-opencode-consilium
 ```
+
+`pip` устанавливает консольный скрипт `consilium`, который делегирует npm-пакету через `npx`; npm остаётся канонической дистрибуцией. По-прежнему нужны Node.js >= 18 с npm/npx и OpenCode CLI; для лаунчера — Python 3.9+. Подробности: [`pypi.md`](pypi.md).
 
 **Требования**
 
@@ -91,9 +96,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.9.0
+# consilium v1.10.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -271,7 +276,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -323,6 +328,7 @@ consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
 consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
+consilium sarif [--run <id|latest>] [--output <file>]
 ```
 
 **Ядро**
@@ -495,6 +501,15 @@ consilium --findings --report sarif --report-file consilium.sarif "Сделай 
 
 `--report sarif` пишет SARIF 2.1.0 для GitHub code scanning и других SARIF-просмотрщиков: один результат на находку, `critical`/`high` → `error`, `medium` → `warning`, `low`/`info` → `note`, локации файл/строка, стабильные отпечатки и одно правило на категорию. `--report-file` определяет формат по `.sarif`/`.sarif.json`. Загружайте файл через `github/codeql-action/upload-sarif` в CI; находки, уже принятые в baseline, всё равно попадают в файл, если их не отфильтровать.
 
+Уже есть артефакты? Экспортируйте последний или указанный сохранённый запуск без повторного запуска совета:
+
+```bash
+consilium sarif --run latest --output consilium.sarif
+consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON на stdout
+```
+
+Несуществующий запуск — ошибка использования (выход 2); запуск без находок даёт валидный пустой SARIF.
+
 ## Дедлайны и частичный синтез
 
 Долгие запуски на бесплатных моделях не должны подвешивать CI или pre-commit hook:
@@ -593,16 +608,22 @@ consilium audit --since HEAD~5 --dry-run
 
 ## GitHub Action
 
-Композитный action ревьюит diff пул-реквеста и публикует или обновляет ровно один комментарий с маркером `<!-- consilium:report -->`:
+Композитный action ревьюит diff пул-реквеста, публикует или обновляет ровно один комментарий с маркером `<!-- consilium:report -->` и по умолчанию загружает находки в GitHub code scanning как SARIF:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write   # нужно для загрузки SARIF
+
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.10.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
+    sarif: true             # по умолчанию; false отключает SARIF
 ```
 
-Он запускает `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`, комментирует один раз и затем передаёт код выхода гейта (`3`). PR из форков по умолчанию пропускаются, потому что секреты недоступны; версию npm можно закрепить входом `version`. Action выполняется на вашем runner — без хостингового приложения и платного сервиса. Полное руководство: [`github-action.md`](github-action.md).
+Он запускает `consilium --diff --base origin/<base> --artifacts --report pr --report-file consilium-review.md --fail-on <level>`, комментирует один раз, экспортирует находки через `consilium sarif --run latest` и загружает их с помощью `github/codeql-action/upload-sarif`, а затем передаёт код выхода гейта (`3`). Сбои SARIF и загрузки никогда не маскируют гейт (эти шаги помечены `continue-on-error`). Для загрузки должны быть включены code scanning и разрешение `security-events: write`; путь к файлу задаёт `sarif-file`, а `category` отличает отчёт от других SARIF-загрузок репозитория. `sarif: false` пропускает оба шага. PR из форков по умолчанию пропускаются, потому что секреты недоступны; версию npm можно закрепить входом `version`. Action выполняется на вашем runner — без хостингового приложения и платного сервиса. Полное руководство: [`github-action.md`](github-action.md).
 
 ## Пресеты
 
@@ -743,6 +764,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
+**1.10.0** — дистрибуция PyPI и загрузка SARIF в GitHub Action. `pip install lv24-opencode-consilium` устанавливает тонкий лаунчер `consilium` без зависимостей, который делегирует npm CLI через `npx` (Node.js >= 18 и OpenCode остаются обязательными; npm остаётся каноническим). Публикация в PyPI использует Trusted Publishing (OIDC) из `.github/workflows/pypi-publish.yml`, поэтому GitHub-релиз публикует npm и PyPI без токенов и OTP. `consilium sarif --run <id|latest> [--output <file>]` экспортирует SARIF из сохранённых артефактов без повторного запуска совета; композитный action теперь передаёт `--artifacts`, экспортирует SARIF и загружает его через `github/codeql-action/upload-sarif` (входы `sarif`, `sarif-file`, `category`; требуется `security-events: write`), а сбои SARIF никогда не маскируют гейт. 522 теста JavaScript + 5 тестов Python.
+
 **1.9.0** — экспорт SARIF, оценка дебатов и рецепты планировщика. `--report sarif` выдаёт SARIF 2.1.0 (маппинг серьёзности, локации файл/строка, стабильные отпечатки, id правил по категориям) для GitHub code scanning и других SARIF-просмотрщиков; расширения `.sarif`/`.sarif.json` определяются автоматически. `eval --compare-rounds` прогоняет каждую фикстуру с одним и двумя раундами и печатает дельты catch/FP/p50/cost; `eval --rounds 2` запускает набор в режиме дебатов. `docs/scheduling.md` плюс примеры для cron, Task Scheduler, launchd и GitHub Actions позволяют планировать аудит диапазона коммитов без демона. 515 тестов.
 
 **1.8.0** — раунды дебатов, локальный bootstrap и аудит диапазона коммитов. `--rounds 2` добавляет раунд анонимизированного peer-review: каждый эксперт критикует коллег и формулирует итоговую позицию; председатель видит итоговые позиции и то, кто изменил мнение, а `metadata.debate` фиксирует участников и изменения. `consilium init --local` опрашивает Ollama/LM Studio, назначает локальные модели по кругу всем ролям и председателю и пишет конфиг с `localOnly`. `consilium audit --since <ref>` ревьюит диапазон коммитов целиком, переиспользуя отчёты, артефакты и `--fail-on`; `--dry-run` печатает запрос без вызова моделей. 491 тест.
@@ -777,7 +800,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (515 тестов)
+npm test            # build + node:test (522 теста)
 npm run typecheck   # tsc --noEmit
 ```
 

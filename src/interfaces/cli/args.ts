@@ -23,6 +23,7 @@ export const COMMANDS = new Set([
   'stats',
   'presets',
   'audit',
+  'sarif',
   'help',
   'version'
 ]);
@@ -31,7 +32,15 @@ export const COMMANDS = new Set([
 const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline', 'audit']);
 
 /** Команды, распознаваемые только в самом начале argv (не после флагов) */
-const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats', 'presets', 'audit']);
+const START_ONLY_COMMANDS = new Set([
+  'baseline',
+  'eval',
+  'history',
+  'stats',
+  'presets',
+  'audit',
+  'sarif'
+]);
 
 /** Типизированные коды выхода CLI */
 export const EXIT_CODES = {
@@ -353,6 +362,9 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--replay':
         options.replay = requireValue(argv, ++i, arg);
+        break;
+      case '--run':
+        options.run = requireValue(argv, ++i, arg);
         break;
       case '--diff-runs': {
         const left = requireValue(argv, ++i, arg);

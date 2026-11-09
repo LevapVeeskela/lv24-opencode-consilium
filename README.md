@@ -80,7 +80,12 @@ npm install -g lv24-opencode-consilium
 
 # or run without installing
 npx -y lv24-opencode-consilium --help
+
+# or install the thin Python launcher from PyPI (still needs Node.js + OpenCode)
+pip install lv24-opencode-consilium
 ```
+
+`pip` installs a `consilium` console script that delegates to the npm package via `npx`; npm remains the canonical distribution. Python 3.9+ is required for the launcher. Details: [`docs/pypi.md`](docs/pypi.md).
 
 **Requirements**
 
@@ -95,9 +100,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.9.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.9.0
+# consilium v1.10.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -275,7 +280,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -327,6 +332,7 @@ consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
 consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
+consilium sarif [--run <id|latest>] [--output <file>]
 ```
 
 **Core**
@@ -498,6 +504,13 @@ consilium --findings --report sarif --report-file consilium.sarif "Review the cu
 
 `--report sarif` writes SARIF 2.1.0 for GitHub code scanning and other SARIF viewers: one result per finding, `critical`/`high` → `error`, `medium` → `warning`, `low`/`info` → `note`, file/line locations, stable fingerprints and one rule per category. `--report-file` infers the format from `.sarif`/`.sarif.json`. Upload it with `github/codeql-action/upload-sarif` in CI; findings that were already accepted in the baseline still appear in the file unless you filter them.
 
+Already have artifacts? Export the newest run without re-running the council:
+
+```bash
+consilium sarif --run latest --output consilium.sarif
+consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON on stdout
+```
+
 ## Deadlines and partial synthesis
 
 Long free-model runs should not stall CI or a pre-commit hook:
@@ -593,16 +606,22 @@ V1 note: OpenCode V1 reads the singular `command/` directory (`.opencode/command
 
 ## GitHub Action
 
-A composite action reviews a pull request diff and posts or updates exactly one comment with the `<!-- consilium:report -->` marker:
+A composite action reviews a pull request diff, posts or updates exactly one comment with the `<!-- consilium:report -->` marker, and uploads findings to GitHub code scanning as SARIF by default:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.9.0
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write   # required for the SARIF upload
+
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.10.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
+    sarif: true             # default; set false to skip SARIF
 ```
 
-It runs `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`, comments once, then propagates the gate exit code (`3`). Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
+It runs `consilium --diff --base origin/<base> --artifacts --report pr --report-file consilium-review.md --fail-on <level>`, comments once, exports `consilium sarif --run latest` and uploads it with `github/codeql-action/upload-sarif`, then propagates the gate exit code (`3`). SARIF and upload failures never mask the gate. Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
 
 ## Presets
 
@@ -743,6 +762,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.10.0** — PyPI distribution and SARIF upload in the GitHub Action. `pip install lv24-opencode-consilium` installs a thin, dependency-free `consilium` launcher that delegates to the npm CLI via `npx` (Node.js >= 18 and OpenCode remain prerequisites; npm stays canonical). PyPI publishing uses Trusted Publishing (OIDC) from `.github/workflows/pypi-publish.yml`, so a GitHub release publishes npm and PyPI without tokens or OTP. `consilium sarif --run <id|latest> [--output <file>]` exports SARIF from saved artifacts without re-running the council; the composite action now passes `--artifacts`, exports SARIF and uploads it with `github/codeql-action/upload-sarif` (`sarif`, `sarif-file`, `category` inputs; `security-events: write` required), and SARIF failures never mask the gate. 522 JavaScript tests + 5 Python tests.
+
 **1.9.0** — SARIF export, debate evaluation and scheduler recipes. `--report sarif` emits SARIF 2.1.0 (severity mapping, file/line locations, stable fingerprints, rule ids per category) for GitHub code scanning and other SARIF viewers; `.sarif`/`.sarif.json` extensions are inferred. `eval --compare-rounds` runs every fixture with one and two rounds and prints catch/FP/p50/cost deltas; `eval --rounds 2` runs the suite in debate mode. `docs/scheduling.md` plus cron, Task Scheduler, launchd and GitHub Actions examples make commit-range audits schedulable without a daemon. 515 tests.
 
 **1.8.0** — debate rounds, local bootstrap and commit-range audits. `--rounds 2` adds an anonymized peer-review round: each expert critiques the others and states a final position; the chair sees the final positions plus which experts changed, and `metadata.debate` records participants and changes. `consilium init --local` probes Ollama/LM Studio, assigns local models round-robin to every role and the chair, and writes a `localOnly` config. `consilium audit --since <ref>` reviews a commit range end-to-end, reusing reports, artifacts and `--fail-on`; `--dry-run` prints the request without model calls. 491 tests.
@@ -777,7 +798,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (515 tests)
+npm test            # build + node:test (522 tests)
 npm run typecheck   # tsc --noEmit
 ```
 
