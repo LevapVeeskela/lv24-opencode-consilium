@@ -28,7 +28,7 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
     throw new UsageError('watch не читает задачу из stdin (-)');
   }
 
-  const loaded = loadConfig(options.config);
+  const loaded = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
   if (!options.silent) {
     for (const warning of loaded.warnings) {
       console.error(`⚠️ ${warning}`);

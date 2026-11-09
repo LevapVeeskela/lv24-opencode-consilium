@@ -51,7 +51,7 @@ export class Consilium {
 
   constructor(config?: Partial<ConsiliumConfig> | string) {
     if (typeof config === 'string') {
-      const result = loadConfig(config);
+      const result = loadConfig(config, { trustProjectConfig: true });
       this.config = result.config;
       this.warnings = result.warnings;
     } else if (config) {

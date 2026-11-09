@@ -3,11 +3,15 @@
  * @module lv24-opencode-consilium
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execFileSync, type ChildProcess } from 'child_process';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { StringDecoder } from 'string_decoder';
 import type { AgentErrorCode, AgentResult, ConsiliumConfig } from '../../domain/types.js';
+import { isTrustedProjectConfig } from '../config/load.js';
 import { createEventDecoder, type ParsedStream, type StreamError } from './stream.js';
-import { buildRunArgs } from './args.js';
+import { buildRunArgs, validateWindowsArg } from './args.js';
+export { UnsafeWindowsArgumentError, validateWindowsArg } from './args.js';
 import {
   getControllerState,
   killProcessTree,
@@ -59,25 +63,45 @@ export async function invokeErrorHook(
   }
 }
 
-interface SpawnSpec {
+/** Описание команды запуска процесса */
+export interface SpawnSpec {
   command: string;
   args: string[];
   windowsVerbatimArguments?: boolean;
 }
 
-function quoteCmdArg(arg: string): string {
-  return `"${arg.replace(/"/g, '\\"')}"`;
+/** Символы, которые cmd.exe интерпретирует даже внутри кавычек */
+const WINDOWS_CMD_FORBIDDEN = /["'%!^&|<>]/;
+
+function isWindowsShim(opencodePath: string): boolean {
+  return /\.(cmd|bat)$/i.test(opencodePath);
 }
 
-/** Готовит команду запуска (на Windows — через cmd.exe для .cmd-шимов) */
-function buildSpawnSpec(opencodePath: string, args: string[]): SpawnSpec {
-  if (process.platform !== 'win32') {
+function validateWindowsCommandPath(opencodePath: string): void {
+  if (WINDOWS_CMD_FORBIDDEN.test(opencodePath) || /[\r\n\0]/.test(opencodePath)) {
+    throw new Error(
+      `Небезопасный путь к OpenCode для запуска через cmd.exe: ${JSON.stringify(opencodePath)}`
+    );
+  }
+}
+
+function quoteCmdArg(arg: string): string {
+  return `"${arg}"`;
+}
+
+/**
+ * Готовит команду запуска.
+ * Через cmd.exe идут только .cmd/.bat-шимы; .exe и прочие пути запускаются напрямую.
+ */
+export function buildSpawnSpec(opencodePath: string, args: string[]): SpawnSpec {
+  if (process.platform !== 'win32' || !isWindowsShim(opencodePath)) {
     return { command: opencodePath, args };
   }
 
+  validateWindowsCommandPath(opencodePath);
+  const validatedArgs = args.map(validateWindowsArg);
   const comspec = process.env.ComSpec || 'cmd.exe';
-  const safePath = opencodePath.replace(/"/g, '');
-  const commandLine = `"${safePath}" ` + args.map(quoteCmdArg).join(' ');
+  const commandLine = [`"${opencodePath}"`, ...validatedArgs.map(quoteCmdArg)].join(' ');
   return {
     command: comspec,
     args: ['/d', '/s', '/c', `"${commandLine}"`],
@@ -85,10 +109,97 @@ function buildSpawnSpec(opencodePath: string, args: string[]): SpawnSpec {
   };
 }
 
-/** Путь к исполняемому файлу opencode из конфигурации */
-export function resolveOpenCodePath(config?: Pick<ConsiliumConfig, 'opencodePath'>): string {
+/** Опции разрешения пути к opencode */
+export interface OpenCodePathOptions {
+  /** Явное доверие конфигурации проекта (CLI `-c`) */
+  trustProjectConfig?: boolean;
+}
+
+function assertSafeConfiguredPath(configured: string): void {
+  if (configured.includes('\0')) {
+    throw new Error('Недопустимый путь к OpenCode: содержит нулевой символ.');
+  }
+  if (configured.includes('..')) {
+    throw new Error(`Недопустимый путь к OpenCode (содержит ".."): ${configured}`);
+  }
+}
+
+let cachedPathLookup: Map<string, string> | undefined;
+
+/**
+ * Находит bare-команду в PATH на Windows. Без этого spawn('opencode') не
+ * подхватывает npm-шим opencode.cmd (cmd.exe больше не используется для
+ * произвольных путей). Предпочитает .exe, затем .cmd/.bat.
+ */
+function resolveFromPath(name: string): string | undefined {
+  if (process.platform !== 'win32') return undefined;
+  if (cachedPathLookup === undefined) cachedPathLookup = new Map();
+  const cached = cachedPathLookup.get(name);
+  if (cached !== undefined) return cached;
+
+  try {
+    const output = execFileSync('where.exe', [name], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 3000
+    });
+    const candidates = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const resolved =
+      candidates.find((line) => /\.exe$/i.test(line)) ??
+      candidates.find((line) => /\.cmd$/i.test(line)) ??
+      candidates.find((line) => /\.bat$/i.test(line)) ??
+      candidates[0];
+    if (resolved !== undefined) cachedPathLookup.set(name, resolved);
+    return resolved;
+  } catch {
+    return undefined;
+  }
+}
+
+function isBareCommand(value: string): boolean {
+  return !value.includes('/') && !value.includes('\\');
+}
+
+/**
+ * Путь к исполняемому файлу opencode из конфигурации.
+ * Голое имя разрешается через PATH (на Windows — where.exe, чтобы найти
+ * opencode.cmd); путь с разделителями разрешается в абсолютный и должен
+ * существовать. `.cmd`/`.bat` из недоверенной конфигурации проекта запрещены.
+ */
+export function resolveOpenCodePath(
+  config?: Pick<ConsiliumConfig, 'opencodePath'>,
+  options: OpenCodePathOptions = {}
+): string {
   const configured = config?.opencodePath?.trim();
-  return configured !== undefined && configured.length > 0 ? configured : 'opencode';
+  if (configured === undefined || configured.length === 0) {
+    return resolveFromPath('opencode') ?? 'opencode';
+  }
+
+  assertSafeConfiguredPath(configured);
+
+  if (process.platform === 'win32' && isWindowsShim(configured)) {
+    const trusted = options.trustProjectConfig === true || isTrustedProjectConfig(config);
+    if (!trusted) {
+      throw new Error(
+        `Путь к OpenCode ${JSON.stringify(configured)} указывает на .cmd/.bat-шим. ` +
+          'Такие пути не принимаются из недоверенной конфигурации проекта: ' +
+          'передайте файл явно через -c или используйте .exe.'
+      );
+    }
+  }
+
+  if (isBareCommand(configured)) {
+    return resolveFromPath(configured) ?? configured;
+  }
+
+  const absolute = resolve(configured);
+  if (!existsSync(absolute)) {
+    throw new Error(`OpenCode не найден по пути: ${absolute}`);
+  }
+  return absolute;
 }
 
 /** Рабочий каталог запуска из конфигурации */
@@ -201,6 +312,7 @@ export function executeOpenCode(options: ProcessRunOptions): Promise<ProcessOutc
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
+        shell: false,
         windowsVerbatimArguments: spec.windowsVerbatimArguments
       });
     } catch (error) {

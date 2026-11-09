@@ -149,6 +149,11 @@ export const MCP_TOOLS: McpToolDef[] = [
           default: false,
           description: 'Overwrite existing agent models and consilium.config.json.'
         },
+        confirm: {
+          type: 'boolean',
+          default: false,
+          description: 'Required together with "force": true to confirm overwriting existing files.'
+        },
         verify: {
           type: 'boolean',
           default: false,

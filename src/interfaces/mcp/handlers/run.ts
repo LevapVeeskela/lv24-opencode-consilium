@@ -1,5 +1,5 @@
 // consilium_run tool handler.
-import { resolve, sep } from 'node:path';
+import { canonicalizePath, resolveInside } from '../../../shared/paths.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
 import { applyPreset } from '../../../domain/council/presets.js';
 import type {
@@ -88,19 +88,23 @@ function formatConsiliumResult(result: ConsiliumResult): string {
   return sections.join('\n\n');
 }
 
-function resolveOutputFile(outputFile: string | undefined): { value?: string; error?: string } {
+function resolveOutputFile(
+  outputFile: string | undefined,
+  workspace: string
+): { value?: string; error?: string } {
   if (outputFile === undefined || outputFile.trim().length === 0) {
     return {};
   }
-  const cwd = process.cwd();
-  const resolved = resolve(cwd, outputFile);
-  const prefix = cwd.endsWith(sep) ? cwd : `${cwd}${sep}`;
-  if (!resolved.startsWith(prefix)) {
-    return {
-      error: `output_file must stay inside the workspace (${cwd}); got: ${outputFile}`
-    };
+  try {
+    const resolved = resolveInside(workspace, outputFile, 'output_file');
+    if (resolved === workspace) {
+      return { error: '"output_file" must stay inside the workspace' };
+    }
+    return { value: resolved };
+  } catch {
+    // Не показываем абсолютные пути за пределами workspace.
+    return { error: '"output_file" must stay inside the workspace' };
   }
-  return { value: resolved };
 }
 
 function applyPresetFor(config: ConsiliumConfig, name: PresetName): ConsiliumConfig {
@@ -131,23 +135,22 @@ export async function toolConsiliumRun(
   const maxCost = maxCostRaw as number | undefined;
   const fallbackModels = optionalStringArray(args, 'fallback_models');
   const session = optionalString(args, 'session');
+  const workspace = canonicalizePath(process.cwd());
   const artifactsArg = args['artifacts'];
   let artifacts: boolean | string | undefined;
   if (typeof artifactsArg === 'boolean') {
     artifacts = artifactsArg;
   } else if (typeof artifactsArg === 'string') {
-    const cwd = process.cwd();
-    const resolved = resolve(cwd, artifactsArg);
-    const prefix = cwd.endsWith(sep) ? cwd : `${cwd}${sep}`;
-    if (resolved !== cwd && !resolved.startsWith(prefix)) {
+    try {
+      artifacts = resolveInside(workspace, artifactsArg, 'artifacts');
+    } catch {
       throw new ToolInputError('"artifacts" must stay inside the workspace');
     }
-    artifacts = resolved;
   } else if (artifactsArg !== undefined) {
     throw new ToolInputError('"artifacts" must be a boolean or a string path');
   }
 
-  const outputPath = resolveOutputFile(outputFile);
+  const outputPath = resolveOutputFile(outputFile, workspace);
   if (outputPath.error !== undefined) {
     return toolError(outputPath.error);
   }

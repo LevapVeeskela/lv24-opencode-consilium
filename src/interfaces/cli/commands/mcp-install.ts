@@ -28,7 +28,7 @@ function resolveGlobalOpenCodePath(): string {
  */
 export async function commandMcpInstall(options: CLIOptions): Promise<number> {
   const global = options.globalConfig === true;
-  const loaded = loadConfig(options.config);
+  const loaded = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
   const cwd = loaded.config.cwd ?? process.cwd();
 
   const path = global

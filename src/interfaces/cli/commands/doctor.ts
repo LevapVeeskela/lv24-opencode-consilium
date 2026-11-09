@@ -8,7 +8,7 @@ import { loadConfig } from '../../../application/consilium.js';
 import { formatDoctorReport, runDoctor } from '../../../application/diagnostics/doctor.js';
 
 export async function commandDoctor(options: CLIOptions): Promise<number> {
-  const loaded = loadConfig(options.config);
+  const loaded = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
   if (loaded.warnings.length > 0 && !options.silent) {
     for (const warning of loaded.warnings) {
       console.error(`⚠️ ${warning}`);

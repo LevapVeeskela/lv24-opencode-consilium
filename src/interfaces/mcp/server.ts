@@ -8,11 +8,22 @@ import {
   DEFAULT_VERSION,
   getNotificationSink,
   jsonRpcError,
+  normalizeRequestId,
   readLines,
   safeJson,
   setNotificationSink
 } from './protocol.js';
 import { isRecord } from './validation.js';
+
+/** Максимум одновременно принятых (ожидающих или выполняющихся) tool-call. */
+const MAX_PENDING_TOOL_CALLS = 16;
+const MAX_CANCELLED_IDS = 256;
+
+function requestIdKey(value: unknown): string | null {
+  if (typeof value === 'string') return `s:${value}`;
+  if (typeof value === 'number') return `n:${value}`;
+  return null;
+}
 
 export interface StartMcpServerOptions {
   version?: string;
@@ -102,15 +113,38 @@ export async function startMcpServer(opts: StartMcpServerOptions = {}): Promise<
 
   let queue: Promise<void> = Promise.resolve();
   let transportClosed = false;
+  let pendingToolCalls = 0;
+  const queuedIds = new Set<string>();
+  const cancelledIds = new Set<string>();
 
-  const enqueueToolCall = (line: string): void => {
+  const enqueueToolCall = (line: string, id: unknown): void => {
+    if (pendingToolCalls >= MAX_PENDING_TOOL_CALLS) {
+      writeJsonLine(
+        stdout,
+        jsonRpcError(normalizeRequestId(id), -32000, 'Server busy: too many pending tool calls')
+      );
+      return;
+    }
+
+    const key = requestIdKey(id);
+    if (key !== null) queuedIds.add(key);
+    pendingToolCalls += 1;
+
     queue = queue
       .then(async () => {
+        if (key !== null) {
+          queuedIds.delete(key);
+          // Отменённый до старта запрос не должен выполнять инструмент.
+          if (cancelledIds.delete(key)) return;
+        }
         if (transportClosed) return;
         await processInputLine(line, stdout, version);
       })
       .catch((error: unknown) => {
         process.stderr.write(`MCP handler error: ${describeError(error)}\n`);
+      })
+      .finally(() => {
+        pendingToolCalls -= 1;
       });
   };
 
@@ -128,14 +162,29 @@ export async function startMcpServer(opts: StartMcpServerOptions = {}): Promise<
       if (method === 'notifications/cancelled') {
         const cancelParams = isRecord(parsed['params']) ? parsed['params'] : undefined;
         const target = cancelParams?.['requestId'];
+        const key = requestIdKey(target);
+        if (key !== null && queuedIds.has(key)) {
+          cancelledIds.add(key);
+          if (cancelledIds.size > MAX_CANCELLED_IDS) {
+            const oldest = cancelledIds.values().next().value;
+            if (typeof oldest === 'string') cancelledIds.delete(oldest);
+          }
+        }
         if (target === undefined || target === getActiveRunRequestId()) {
           cancelActiveConsilium();
         }
         return;
       }
-      const hasId = Object.prototype.hasOwnProperty.call(parsed, 'id');
-      if (hasId && method === 'tools/call') {
-        enqueueToolCall(line);
+      if (method === 'tools/call') {
+        const hasId = Object.prototype.hasOwnProperty.call(parsed, 'id');
+        if (!hasId) {
+          writeJsonLine(
+            stdout,
+            jsonRpcError(null, -32600, 'Invalid Request: tools/call requires an id')
+          );
+          return;
+        }
+        enqueueToolCall(line, parsed['id']);
         return;
       }
     }

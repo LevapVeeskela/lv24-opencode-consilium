@@ -22,6 +22,39 @@ export function isValidModelName(value: string): boolean {
   return MODEL_PATTERN.test(value);
 }
 
+/** Ошибка небезопасного аргумента при запуске через cmd.exe */
+export class UnsafeWindowsArgumentError extends Error {
+  /** Аргумент, который не прошёл проверку */
+  readonly argument: string;
+
+  constructor(argument: string) {
+    super(
+      `Небезопасный аргумент Windows "${argument}": при запуске .cmd/.bat через cmd.exe ` +
+        'запрещены кавычки, %, !, ^, &, |, <, >, переводы строк и пробелы. ' +
+        'Разрешены обычные флаги и значения вида --model=provider/model.'
+    );
+    this.name = 'UnsafeWindowsArgumentError';
+    this.argument = argument;
+  }
+}
+
+/** Символы, которые cmd.exe интерпретирует даже внутри кавычек */
+const WINDOWS_CMD_FORBIDDEN = /["'%!^&|<>]/;
+
+/** Управляющие символы и любые пробелы ломают разбиение командной строки */
+const WINDOWS_CMD_WHITESPACE = /[\s\0]/;
+
+/**
+ * Проверяет аргумент перед подстановкой в командную строку cmd.exe.
+ * Возвращает исходное значение или бросает типизированную ошибку.
+ */
+export function validateWindowsArg(argument: string): string {
+  if (WINDOWS_CMD_FORBIDDEN.test(argument) || WINDOWS_CMD_WHITESPACE.test(argument)) {
+    throw new UnsafeWindowsArgumentError(argument);
+  }
+  return argument;
+}
+
 /**
  * Формирует аргументы `opencode run`.
  * Невалидные agent/model отбрасываются.

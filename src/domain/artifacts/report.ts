@@ -58,10 +58,27 @@ function fencedBlock(body: string): string[] {
   return [`${fence}text`, body, fence];
 }
 
+/** Нейтрализует открытие HTML-комментария, чтобы нельзя было внедрить маркер отчёта. */
+function neutralizeCommentOpener(text: string): string {
+  return text.replace(/<!--/g, '&lt;!--');
+}
+
+/** Экранирует markdown-синтаксис ссылок в тексте вне code span. */
+function escapeMarkdownLinks(text: string): string {
+  return text.replace(/[\[\]()]/g, ch => `\\${ch}`);
+}
+
+/** Экранирует текст для markdown вне code span: HTML и синтаксис ссылок. */
+function escapeMarkdownText(text: string): string {
+  return escapeMarkdownLinks(escapeHtml(text));
+}
+
 /** Инлайн-код без выхода за пределы code span. */
 function inlineCode(text: string): string {
-  const fence = '`'.repeat(Math.max(1, longestRun(text, '`') + 1));
-  return `${fence}${text}${fence}`;
+  const flat = text
+    .replace(/\r\n?|[\n\u2028\u2029]/g, ' ')
+    .replace(/`/g, "'");
+  return `\`${neutralizeCommentOpener(flat)}\``;
 }
 
 function toText(value: unknown): string {
@@ -259,8 +276,9 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
     for (const e of experts) {
       const name = toText(e.agent) || '—';
       const model = toText(e.model) || '—';
-      const status = e.success ? 'OK' : `FAIL${e.errorCode ? ` (${toText(String(e.errorCode))})` : ''}`;
-      lines.push(`<details><summary>Мнение: ${escapeHtml(name)} (${escapeHtml(model)}, ${escapeHtml(status)})</summary>`);
+      const errorCode = e.errorCode ? escapeMarkdownText(toText(String(e.errorCode))) : '';
+      const status = e.success ? 'OK' : `FAIL${errorCode ? ` (${errorCode})` : ''}`;
+      lines.push(`<details><summary>Мнение: ${escapeMarkdownText(name)} (${escapeMarkdownText(model)}, ${status})</summary>`);
       lines.push('');
       const text = typeof e.text === 'string' ? e.text : '';
       if (text.length > 0) {
@@ -294,7 +312,7 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
 
   const consensus = consensusOf(result);
   if (consensus) {
-    const agreement = typeof consensus.agreement === 'string' ? escapeHtml(consensus.agreement) : '—';
+    const agreement = typeof consensus.agreement === 'string' ? escapeMarkdownText(consensus.agreement) : '—';
     const avg = typeof consensus.averageSimilarity === 'number' && Number.isFinite(consensus.averageSimilarity)
       ? `${Math.round((consensus.averageSimilarity as number) * 100)}%`
       : '—';
@@ -302,8 +320,8 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
       .slice()
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, 3);
-    const shared = strArray(consensus.sharedTerms).slice(0, 10).map(escapeHtml);
-    lines.push(`Консенсус: ${agreement} (среднее ${avg})${pairs.length > 0 ? '; топ пар: ' + pairs.map(p => `${escapeHtml(p.left)}↔${escapeHtml(p.right)} ${Math.round(p.similarity * 100)}%`).join(', ') : ''}${shared.length > 0 ? `; общее: ${shared.join(', ')}` : ''}.`);
+    const shared = strArray(consensus.sharedTerms).slice(0, 10).map(escapeMarkdownText);
+    lines.push(`Консенсус: ${agreement} (среднее ${avg})${pairs.length > 0 ? '; топ пар: ' + pairs.map(p => `${escapeMarkdownText(p.left)}↔${escapeMarkdownText(p.right)} ${Math.round(p.similarity * 100)}%`).join(', ') : ''}${shared.length > 0 ? `; общее: ${shared.join(', ')}` : ''}.`);
     lines.push('');
   }
   lines.push(`Стоимость: ${cost === null ? '—' : money(cost)} · токены: вх. ${int(result.usage?.inputTokens)}, исх. ${int(result.usage?.outputTokens)}.`);

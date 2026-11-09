@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.2`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.4.3`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -104,14 +104,14 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 | `consilium_list_agents` | 专家、模型、主席、预设、配置路径 |
 | `consilium_free_models` | `limit`、`available_only`、`refresh` |
 | `consilium_doctor` | 环境/配置诊断 |
-| `consilium_init_free` | `apply`、`force`、`verify`；默认只给方案 |
+| `consilium_init_free` | `apply`、`force`、`confirm`、`verify`；默认只给方案 |
 
-`consilium_run` 支持 `progressToken`，响应含 `cost`、共识摘要和 `**Artifacts:**` 行。
+`consilium_run` 支持 `progressToken`，响应含 `cost`、共识摘要和 `**Artifacts:**` 行；`force` 需要同时传 `confirm: true`，写入前会生成 `.bak`。
 ## 面向 AI 代理
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -220,7 +220,11 @@ const top = selectCouncilModels(models, 5);
 ## 工作原理
 每个专家和主席都通过 `opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provider/model]` 启动；提示词经子进程 **stdin**（UTF-8）传入，任意文本都安全。NDJSON 事件增量解析（`text`、`step_finish` 的用量/成本、带 `type`/`status`/`retryAfterMs` 的 `error`）；模型始终以 `--model` 传递，Agent 缺失时用默认 Agent 加同一模型重试一次。
 ## 安全
-- 任务文本从不拼进 shell，一律经 stdin；Agent 名和模型 ID 使用前校验；`--auto` 默认**关闭**，`--standalone` 隔离端口。
+- 任务文本从不拼进 shell，一律经 stdin；Agent 名和模型 ID 使用前校验；`--standalone` 隔离端口。
+- **项目配置默认不可信**：仓库里的 `consilium.config.json` 可定义模型/专家/提示词/预设，但 `opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串 `output.file`/`reportFile`/`artifacts` 会被忽略并告警；只有用 `-c` 显式传入才信任。
+- **Windows**：`.cmd`/`.bat` 仅在每个参数通过严格白名单后才经 `cmd.exe` 启动；`.exe` 与 POSIX 直接启动。
+- **MCP**：`tools/call` 必须有 `id`，队列上限 16，`output_file`/产物路径限制在 workspace 内，`init_free` 写 `.bak` 且 `force` 需要 `confirm: true`。
+- `autoApprove` 默认**关闭**；产物会脱敏常见 token 并自动生成 `.consilium/.gitignore`。
 - 不打印或写入 API 密钥；`doctor` 只检查环境变量并告警，认证由 OpenCode 负责。
 ## 故障排查
 | 症状 | 处理 |
@@ -233,6 +237,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.4.3** — 安全加固：项目配置默认不可信（`opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串写入路径需用 `-c` 显式信任）；Windows `.cmd` 参数白名单；MCP 拒绝无 `id` 的调用、限制队列、限制产物路径，`init_free` 生成 `.bak` 且 `force` 需确认；diff fence 与报告转义防注入；产物脱敏并生成 `.gitignore`；246 个测试。
 - **1.4.2** — 内部分层重构（`shared`、`domain`、`application`、`infrastructure`、`interfaces`）与切片 barrel；API 与行为不变，22 个 subpath 的导出与 1.4.1 完全一致；全新 README、`llms.txt`、`docs/architecture.md`；ru/zh 同步；构建前清理 `dist`；224 个测试。
 - **1.4.1** — 包更名 `lv24-opencode-consilium`（`opencode-consilium@1.0.2` 保持 deprecated）；译文移到 `docs/`；GHCR 镜像；无功能变化。
 - **1.4.0** — `--report`/`--report-file`、`--variant`、`watch`、`hooks`、V2 插件、`--replay` 恢复模型与标志；新增 `report`、`reportFile`、`variant`、`debounceMs`；224 个测试。

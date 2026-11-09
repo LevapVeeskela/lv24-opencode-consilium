@@ -75,10 +75,10 @@ test('BOM в начале конфига не ломает загрузку', ()
 test('JSONC-строки с ,} и ,] не повреждаются', () => {
   const dir = mkdtempSync(join(tmpdir(), 'consilium-jsonc-'));
   const path = join(dir, 'consilium.json');
-  writeFileSync(path, '{ "chair": { "agent": "keep,}" }, // comment\n "experts": [{ "name": "x", }] }');
+  writeFileSync(path, '{ "chair": { "agent": "jsonc-chair" }, "session": "keep,}", // comment\n "experts": [{ "name": "x", }] }');
   try {
     const result = loadConfig(path);
-    assert.equal(result.config.chair.agent, 'keep,}');
+    assert.equal(result.config.session, 'keep,}');
     assert.equal(result.errors?.length ?? 0, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });

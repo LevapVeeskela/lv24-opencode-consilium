@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.2
+# consilium v1.4.3
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -232,9 +232,9 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 | `consilium_list_agents` | — | Настроенные эксперты, модели, председатель, пресеты, путь конфига |
 | `consilium_free_models` | `limit`, `available_only`, `refresh` | Таблица рейтинга бесплатных моделей |
 | `consilium_doctor` | — | Диагностика окружения и конфига |
-| `consilium_init_free` | `apply`, `force`, `verify` | План (по умолчанию) или запись `opencode.json` + `consilium.config.json` |
+| `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | План (по умолчанию) или запись `opencode.json` + `consilium.config.json` |
 
-`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы. `consilium_run` показывает прогресс в реальном времени, если клиент прислал `progressToken`, а его ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены.
+`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы; `force: true` дополнительно требует `"confirm": true` и создаёт `.bak`-копии. `consilium_run` показывает прогресс в реальном времени, если клиент прислал `progressToken`, а его ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены.
 
 ## Для ИИ-агентов
 
@@ -243,7 +243,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -495,8 +495,12 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 - Текст задачи никогда не подставляется в shell-команду — он передаётся через stdin.
 - Имена агентов и id моделей валидируются перед использованием.
-- `--auto` (авто-подтверждение разрешений) **выключен** по умолчанию.
+- **Конфиг проекта недоверенный по умолчанию.** `consilium.config.json` в репозитории может задавать модели, экспертов, промпты и пресеты, но process/path-ключи — `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath`, строковый `output.file`, `reportFile`, строковый `artifacts` — игнорируются с предупреждением. Чтобы доверять им, передайте файл явно через `-c`.
+- **Windows:** `.cmd`/`.bat`-шимы запускаются через `cmd.exe` только после строгой проверки каждого аргумента (без кавычек, `%`, `!`, `^`, `&`, `|`, `<`, `>`, пробелов); `.exe` и POSIX-бинарники запускаются напрямую.
+- **MCP:** `tools/call` требует `id`, очередь ограничена 16, `output_file` и пути артефактов удерживаются внутри workspace, а `consilium_init_free` делает `.bak` и требует `confirm: true` вместе с `force`.
+- `autoApprove` (авто-подтверждение разрешений) **выключен** по умолчанию; не включайте его для недоверенных промптов и инструментов.
 - `--standalone` изолирует дочерний сервер; порт не захватывается.
+- Артефакты редактируют частые паттерны токенов, а `.consilium/.gitignore` создаётся автоматически, чтобы запуски не коммитились случайно.
 - Consilium никогда не печатает и не записывает ключи API; `doctor` проверяет только наличие ожидаемых переменных окружения, авторизацией занимается OpenCode.
 - `doctor` предупреждает об отсутствующих ключах и рискованной конфигурации.
 
@@ -519,6 +523,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.4.3** — усиление безопасности. Конфиг проекта недоверенный по умолчанию: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` и строковые пути записи игнорируются, если файл не передан через `-c`. На Windows `.cmd` запускается только с проверенными аргументами, `.exe` — напрямую. MCP отклоняет `tools/call` без `id`, ограничивает очередь, удерживает output/артефакты внутри workspace, а `init_free` делает `.bak` и требует подтверждения для `force`. Динамические fence для diff и экранирование отчётов блокируют инъекции; артефакты редактируют токены и получают `.gitignore`. 246 тестов.
 
 **1.4.2** — внутренний рефакторинг по слоям (`shared`, `domain`, `application`, `infrastructure`, `interfaces`) с баррелями на срезах. API и поведение не менялись: публичная поверхность экспортов идентична 1.4.1 по всем 22 subpath. Новый продуктовый README, [`llms.txt`](../llms.txt) и [`docs/architecture.md`](architecture.md); переводы ru/zh синхронизированы; `dist` очищается перед каждой сборкой. 224 теста.
 

@@ -1,6 +1,6 @@
 // consilium_init_free tool handler.
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { copyFileSync, existsSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import {
   buildConsiliumConfigFromModels,
   buildCouncilAgents,
@@ -19,7 +19,6 @@ import type { ConsiliumConfig } from '../../../domain/types.js';
 import { writeFileAtomic } from '../../../shared/fs.js';
 import { cell } from '../format.js';
 import {
-  describeError,
   isRecord,
   optionalBoolean,
   toolError,
@@ -28,6 +27,12 @@ import {
 import type { McpToolResult } from './shared.js';
 
 type CouncilAgents = ReturnType<typeof buildCouncilAgents>;
+
+/** Создаёт .bak-копию существующего файла перед перезаписью */
+function backupFile(target: string): void {
+  if (!existsSync(target)) return;
+  copyFileSync(target, `${target}.bak`);
+}
 
 function applyFreeSetup(
   agents: CouncilAgents,
@@ -46,11 +51,9 @@ function applyFreeSetup(
     let parsed: unknown;
     try {
       parsed = readJsonFile(opencodePath);
-    } catch (error) {
+    } catch {
       return toolError(
-        `Cannot apply: opencode.json is not valid JSON (${describeError(
-          error
-        )}). No files were written.`
+        `Cannot apply: ${basename(opencodePath)} is not valid JSON. No files were written.`
       );
     }
     if (!isRecord(parsed)) {
@@ -83,7 +86,14 @@ function applyFreeSetup(
       ? upserted.config
       : { $schema: 'https://opencode.ai/config.json', ...upserted.config };
 
-  writeFileAtomic(opencodePath, `${JSON.stringify(nextConfig, null, 2)}\n`);
+  try {
+    backupFile(opencodePath);
+    writeFileAtomic(opencodePath, `${JSON.stringify(nextConfig, null, 2)}\n`);
+  } catch {
+    return toolError(
+      `Cannot apply: failed to write ${basename(opencodePath)}. No further files were written.`
+    );
+  }
 
   let consiliumWritten = false;
   const warnings: string[] = [...extraWarnings, ...upserted.warnings];
@@ -93,7 +103,14 @@ function applyFreeSetup(
     );
   }
   if (!existsSync(consiliumPath) || force) {
-    writeFileAtomic(consiliumPath, `${JSON.stringify(consiliumConfig, null, 2)}\n`);
+    try {
+      backupFile(consiliumPath);
+      writeFileAtomic(consiliumPath, `${JSON.stringify(consiliumConfig, null, 2)}\n`);
+    } catch {
+      return toolError(
+        'Cannot apply: failed to write consilium.config.json. opencode.json may already be updated.'
+      );
+    }
     consiliumWritten = true;
   } else {
     warnings.push(
@@ -129,7 +146,14 @@ function applyFreeSetup(
 export async function toolInitFree(args: Record<string, unknown>): Promise<McpToolResult> {
   const apply = optionalBoolean(args, 'apply') ?? false;
   const force = optionalBoolean(args, 'force') ?? false;
+  const confirm = optionalBoolean(args, 'confirm') ?? false;
   const verify = optionalBoolean(args, 'verify') ?? false;
+
+  if (force && !confirm) {
+    return toolError(
+      'Refusing to apply: "force": true requires "confirm": true. No files were written.'
+    );
+  }
 
   const fetched = await fetchFreeModels({ includeUnavailable: false });
   let pool = fetched.models;

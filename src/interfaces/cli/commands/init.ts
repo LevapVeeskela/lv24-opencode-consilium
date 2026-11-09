@@ -77,7 +77,7 @@ export async function commandInit(options: CLIOptions): Promise<number> {
 
   const agents = buildCouncilAgents(pool);
   const councilConfig = buildConsiliumConfigFromModels(pool);
-  const loadedForPath = loadConfig(options.config);
+  const loadedForPath = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
   const targetCwd = loadedForPath.config.cwd ?? process.cwd();
   const opencodePath =
     findOpenCodeConfigPath(loadedForPath.config.opencodeConfigPath, targetCwd) ??

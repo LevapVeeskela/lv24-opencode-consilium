@@ -3,12 +3,27 @@
  * @module lv24-opencode-consilium
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync
+} from 'node:fs';
 import * as path from 'node:path';
 import { writeFileAtomic } from '../../shared/fs.js';
+import {
+  PathContainmentError,
+  canonicalizePath,
+  resolveInside
+} from '../../shared/paths.js';
+import { redactSecrets } from '../../shared/redact.js';
 import { isRecord } from '../../shared/record.js';
 import { formatArtifact } from '../../domain/artifacts/artifacts/format.js';
 import { ID_PATTERN, type ArtifactRef, type ArtifactRun } from '../../domain/artifacts/artifacts/types.js';
+
+export { PathContainmentError };
 
 /** Дополняет число ведущим нулём */
 function pad2(value: number): string {
@@ -52,6 +67,61 @@ function sanitizeAgentName(name: string): string {
     return '_';
   }
   return clean;
+}
+
+/** Возвращает канонический (с разрешёнными симлинками) корень артефактов */
+function realArtifactRoot(root: string): string {
+  const resolved = path.resolve(root);
+  try {
+    return realpathSync.native(resolved);
+  } catch {
+    return canonicalizePath(resolved);
+  }
+}
+
+/** Проверяет, что путь артефакта не выходит из корня через симлинк */
+function assertArtifactPath(root: string, target: string, source: string): string {
+  try {
+    return resolveInside(root, target, 'Artifact path');
+  } catch (error) {
+    if (error instanceof PathContainmentError) {
+      throw new PathContainmentError(
+        `Путь вне каталога артефактов: "${source}"`,
+        error.base,
+        error.candidate
+      );
+    }
+    throw error;
+  }
+}
+
+/** Создаёт .consilium/.gitignore при первой записи артефакта */
+function ensureArtifactGitignore(root: string): void {
+  const parent = path.dirname(root);
+  const targetDir =
+    path.basename(root) === 'runs' && path.basename(parent) === '.consilium' ? parent : root;
+  const target = path.join(targetDir, '.gitignore');
+  if (existsSync(target)) return;
+  try {
+    writeFileAtomic(target, '*\n!.gitignore\n');
+  } catch {
+    // Артефакт важнее декоративного .gitignore: запись не должна ломаться.
+  }
+}
+
+/** Копия запуска с замаскированными секретами */
+function redactRun(run: ArtifactRun): ArtifactRun {
+  return {
+    ...run,
+    task: redactSecrets(run.task),
+    text: redactSecrets(run.text),
+    experts: run.experts.map(expert => ({
+      ...expert,
+      text: redactSecrets(expert.text),
+      errorMessage:
+        expert.errorMessage === undefined ? undefined : redactSecrets(expert.errorMessage)
+    }))
+  };
 }
 
 /** Проверяет и приводит сырой JSON к ArtifactRun */
@@ -103,30 +173,46 @@ export function saveArtifact(run: ArtifactRun, options: { root?: string }): Arti
     throw new Error(`Некорректный id артефакта: "${run.id}"`);
   }
 
+  mkdirSync(root, { recursive: true });
+  ensureArtifactGitignore(root);
+
+  // Каталог запуска создаётся атомарно: mkdir без recursive либо создаёт его,
+  // либо сообщает EEXIST, и тогда пробуем следующий суффикс.
   let finalId = run.id;
   let counter = 2;
-  while (existsSync(path.join(root, finalId))) {
-    finalId = `${run.id}-${counter}`;
-    counter += 1;
+  let dir: string;
+  for (;;) {
+    dir = path.join(root, finalId);
+    try {
+      mkdirSync(dir);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        finalId = `${run.id}-${counter}`;
+        counter += 1;
+        continue;
+      }
+      throw error;
+    }
   }
 
-  const stored: ArtifactRun = finalId === run.id ? run : { ...run, id: finalId };
-  const dir = path.join(root, finalId);
   const expertsDir = path.join(dir, 'experts');
   mkdirSync(expertsDir, { recursive: true });
 
+  const stored: ArtifactRun = redactRun(finalId === run.id ? run : { ...run, id: finalId });
   writeFileAtomic(path.join(dir, 'report.md'), formatArtifact(stored));
 
   const usedNames = new Set<string>();
   for (const expert of stored.experts) {
-    let base = sanitizeAgentName(expert.agent);
+    const base = sanitizeAgentName(expert.agent);
     let name = base;
     let dup = 2;
-    while (usedNames.has(name)) {
+    // Ключ в нижнем регистре: Arch и arch не должны перезаписать друг друга.
+    while (usedNames.has(name.toLowerCase())) {
       name = `${base}-${dup}`;
       dup += 1;
     }
-    usedNames.add(name);
+    usedNames.add(name.toLowerCase());
     const header =
       `# Эксперт: ${expert.agent}\n\n` +
       `- Модель: ${expert.model ?? '—'}\n` +
@@ -145,8 +231,12 @@ export function saveArtifact(run: ArtifactRun, options: { root?: string }): Arti
 }
 
 /** Проверяет запись каталога как артефакт (id + createdAt), ошибки гасит */
-function tryReadRef(dir: string): ArtifactRef | null {
-  const runFile = path.join(dir, 'run.json');
+function tryReadRef(
+  dir: string,
+  realRoot: string
+): { ref: ArtifactRef; createdAt: string } | null {
+  const safeDir = assertArtifactPath(realRoot, dir, path.basename(dir));
+  const runFile = assertArtifactPath(realRoot, path.join(safeDir, 'run.json'), path.basename(dir));
   if (!existsSync(runFile)) {
     return null;
   }
@@ -164,8 +254,7 @@ function tryReadRef(dir: string): ArtifactRef | null {
     if (typeof id !== 'string' || typeof createdAt !== 'string') {
       return null;
     }
-    void createdAt;
-    return { id, dir: path.resolve(dir) };
+    return { ref: { id, dir: path.resolve(safeDir) }, createdAt };
   } catch {
     return null;
   }
@@ -173,7 +262,8 @@ function tryReadRef(dir: string): ArtifactRef | null {
 
 /**
  * Перечисляет артефакты в корне (прямые подкаталоги с `run.json`).
- * Битые каталоги молча пропускаются. Сортировка — новые сверху.
+ * Битые каталоги молча пропускаются, симлинк-побег отклоняется.
+ * Сортировка — новые сверху.
  */
 export function listArtifacts(root: string): ArtifactRef[] {
   const resolved = path.resolve(root);
@@ -183,6 +273,7 @@ export function listArtifacts(root: string): ArtifactRef[] {
   } catch {
     return [];
   }
+  const realRoot = realArtifactRoot(resolved);
   const refs: Array<{ ref: ArtifactRef; createdAt: string }> = [];
   for (const entry of entries) {
     const dir = path.join(resolved, entry);
@@ -194,20 +285,11 @@ export function listArtifacts(root: string): ArtifactRef[] {
     } catch {
       continue;
     }
-    const ref = tryReadRef(dir);
+    const ref = tryReadRef(dir, realRoot);
     if (ref === null) {
       continue;
     }
-    let createdAt = '';
-    try {
-      const data: unknown = JSON.parse(readFileSync(path.join(dir, 'run.json'), 'utf8'));
-      if (isRecord(data) && typeof data['createdAt'] === 'string') {
-        createdAt = data['createdAt'];
-      }
-    } catch {
-      continue;
-    }
-    refs.push({ ref, createdAt });
+    refs.push(ref);
   }
   refs.sort((x, y) => (y.createdAt < x.createdAt ? -1 : y.createdAt > x.createdAt ? 1 : 0));
   return refs.map(item => item.ref);
@@ -229,6 +311,7 @@ function assertSafeId(id: string): void {
  */
 export function loadArtifact(idOrPath: string, root: string): ArtifactRun {
   const resolvedRoot = path.resolve(root);
+  const realRoot = realArtifactRoot(resolvedRoot);
   const looksLikePath =
     idOrPath.includes('/') ||
     idOrPath.includes('\\') ||
@@ -237,7 +320,8 @@ export function loadArtifact(idOrPath: string, root: string): ArtifactRun {
     idOrPath.endsWith('.json');
 
   if (!looksLikePath && ID_PATTERN.test(idOrPath) && idOrPath !== '..' && !idOrPath.includes('..')) {
-    const file = path.join(resolvedRoot, idOrPath, 'run.json');
+    const candidate = path.join(resolvedRoot, idOrPath, 'run.json');
+    const file = assertArtifactPath(realRoot, candidate, idOrPath);
     let raw: string;
     try {
       raw = readFileSync(file, 'utf8');
@@ -264,8 +348,7 @@ export function loadArtifact(idOrPath: string, root: string): ArtifactRun {
     candidate = existsSync(againstRoot) ? againstRoot : path.resolve(candidate);
   }
 
-  // Читать можно только внутри каталога артефактов: id-форма это уже гарантирует,
-  // а форма пути — нет.
+  // Лексическая проверка: читать можно только внутри каталога артефактов.
   const relative = path.relative(resolvedRoot, path.resolve(candidate));
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(
@@ -273,13 +356,16 @@ export function loadArtifact(idOrPath: string, root: string): ArtifactRun {
     );
   }
 
-  let file = candidate;
+  // После лексической проверки разрешаем симлинки и повторно требуем вложенность.
+  const safeCandidate = assertArtifactPath(realRoot, candidate, idOrPath);
+  let file = safeCandidate;
   try {
-    const st = statSync(candidate);
+    const st = statSync(safeCandidate);
     if (st.isDirectory()) {
-      file = path.join(candidate, 'run.json');
+      file = assertArtifactPath(realRoot, path.join(safeCandidate, 'run.json'), idOrPath);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof PathContainmentError) throw error;
     throw new Error(`Артефакт не найден: "${idOrPath}"`);
   }
   let raw: string;

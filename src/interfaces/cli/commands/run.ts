@@ -21,7 +21,7 @@ import {
 } from '../output.js';
 
 export async function commandRun(options: CLIOptions): Promise<number> {
-  const loaded = loadConfig(options.config);
+  const loaded = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
   if (options.config && (!loaded.configPath || (loaded.errors?.length ?? 0) > 0)) {
     throw new UsageError(
       loaded.errors?.[0] ?? `Файл конфигурации не найден: ${options.config}`

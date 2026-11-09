@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.2   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.4.2
+# consilium v1.4.3
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -236,9 +236,9 @@ Any MCP client with stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carr
 | `consilium_list_agents` | — | Configured experts, models, chair, presets, config path |
 | `consilium_free_models` | `limit`, `available_only`, `refresh` | Ranked free models table |
 | `consilium_doctor` | — | Environment/config diagnostics |
-| `consilium_init_free` | `apply`, `force`, `verify` | Proposal (default) or writes `opencode.json` + `consilium.config.json` |
+| `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | Proposal (default) or writes `opencode.json` + `consilium.config.json` |
 
-`consilium_init_free` is dry-run by default — pass `"apply": true` to write files. `consilium_run` reports live progress when the client sends a `progressToken`, and its response includes `cost`, a consensus summary and an `**Artifacts:**` line when artifacts are enabled.
+`consilium_init_free` is dry-run by default - pass `"apply": true` to write files; `force: true` also requires `"confirm": true` and creates `.bak` copies. `consilium_run` reports live progress when the client sends a `progressToken`, and its response includes `cost`, a consensus summary and an `**Artifacts:**` line when artifacts are enabled.
 
 ## For AI agents
 
@@ -247,7 +247,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -499,8 +499,12 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 - Task text is never interpolated into a shell command — it is passed via stdin.
 - Agent names and model IDs are validated before use.
-- `--auto` (auto-approve permissions) is **off** by default.
+- **Project config is untrusted by default.** A repo's `consilium.config.json` may define models, experts, prompts and presets, but process/path keys — `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath`, string `output.file`, `reportFile`, string `artifacts` — are ignored with a warning. Pass the file explicitly with `-c` to trust it.
+- **Windows:** `.cmd`/`.bat` shims run through `cmd.exe` only after every argument passes a strict allowlist (no quotes, `%`, `!`, `^`, `&`, `|`, `<`, `>`, whitespace); `.exe` and POSIX binaries are spawned directly.
+- **MCP:** `tools/call` requires an `id`, the queue is capped at 16, `output_file` and artifact paths are confined to the workspace, and `consilium_init_free` writes `.bak` files and requires `confirm: true` together with `force`.
+- `autoApprove` (auto-approve permissions) is **off** by default; never enable it for untrusted prompts or tools.
 - `--standalone` isolates the child server; no port takeover.
+- Artifacts redact common token patterns and `.consilium/.gitignore` is created automatically, so runs are not committed by accident.
 - API keys are never printed or written by Consilium; `doctor` only checks whether expected environment variables are present, and OpenCode handles auth.
 - `doctor` warns about missing keys and risky configuration.
 
@@ -524,6 +528,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.4.3** — security hardening. Project config is untrusted by default: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` and string write paths are ignored unless the file is passed with `-c`. Windows `.cmd` spawning validates every argument; `.exe` spawns directly. MCP rejects id-less tool calls, caps the queue, confines output/artifacts to the workspace, and `init_free` makes backups and requires confirmation for `force`. Dynamic diff fences and report escaping block prompt/markdown injection; artifacts redact tokens and get a `.gitignore`. 246 tests.
+
 **1.4.2** — internal refactor into layers (`shared`, `domain`, `application`, `infrastructure`, `interfaces`) with slice barrels. No API or behavior changes: the public export surface is identical to 1.4.1 across all 22 subpaths. Product README, [`llms.txt`](llms.txt) and [`docs/architecture.md`](docs/architecture.md); ru/zh docs synced; `dist` is cleaned before every build. 224 tests.
 
 **1.4.1** — npm package renamed to `lv24-opencode-consilium` (npm cannot rename in place; `opencode-consilium@1.0.2` stays deprecated). npm page shows this README; translations moved to `docs/`. Container image published to GHCR. No functional changes.
@@ -546,7 +552,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (224 tests)
+npm test            # build + node:test (246 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

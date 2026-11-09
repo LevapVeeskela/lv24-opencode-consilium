@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import {
@@ -12,6 +12,7 @@ import {
   resolveArtifactRoot,
   saveArtifact
 } from '../dist/artifacts.js';
+import { PathContainmentError } from '../dist/shared/paths.js';
 
 function makeRun(id, overrides = {}) {
   return {
@@ -218,6 +219,102 @@ test('loadArtifact отклоняет некорректный JSON shape', () =
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ id: 'x' }), 'utf8');
     assert.throws(() => loadArtifact('bad-shape', root), /Некорректный/);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('saveArtifact дедуплицирует имена экспертов без учёта регистра', () => {
+  const root = makeTemp();
+  try {
+    const run = makeRun('20260101-000000-case', {
+      experts: [
+        { agent: 'Arch', success: true, text: 'первый' },
+        { agent: 'arch', success: true, text: 'второй' }
+      ]
+    });
+    const ref = saveArtifact(run, { root });
+    const files = readdirSync(path.join(ref.dir, 'experts')).sort();
+    assert.deepEqual(files, ['Arch.md', 'arch-2.md']);
+    assert.equal(readFileSync(path.join(ref.dir, 'experts', 'Arch.md'), 'utf8').includes('первый'), true);
+    assert.equal(readFileSync(path.join(ref.dir, 'experts', 'arch-2.md'), 'utf8').includes('второй'), true);
+  } finally {
+    cleanup(root);
+  }
+});
+
+test('loadArtifact/listArtifacts отклоняют симлинк-побег из каталога артефактов', t => {
+  const root = makeTemp();
+  const outside = makeTemp();
+  const link = path.join(root, 'escaped-run');
+  try {
+    writeFileSync(path.join(outside, 'run.json'), JSON.stringify(makeRun('outside-id')), 'utf8');
+    try {
+      symlinkSync(outside, link, 'junction');
+    } catch (error) {
+      const code = error && error.code;
+      if (code === 'EPERM' || code === 'EACCES' || code === 'UNKNOWN') {
+        t.skip(`symlink creation is not permitted: ${code}`);
+        return;
+      }
+      throw error;
+    }
+
+    assert.throws(() => loadArtifact('escaped-run', root), PathContainmentError);
+    assert.throws(() => loadArtifact(link, root), PathContainmentError);
+    assert.throws(() => listArtifacts(root), PathContainmentError);
+  } finally {
+    cleanup(root);
+    cleanup(outside);
+  }
+});
+
+test('saveArtifact создаёт .consilium/.gitignore и не перезаписывает существующий', () => {
+  const cwd = makeTemp();
+  try {
+    const root = resolveArtifactRoot({ cwd });
+    saveArtifact(makeRun('20260101-000000-gi01'), { root });
+    const gitignore = path.join(cwd, '.consilium', '.gitignore');
+    assert.equal(existsSync(gitignore), true);
+    assert.equal(readFileSync(gitignore, 'utf8'), '*\n!.gitignore\n');
+
+    writeFileSync(gitignore, 'custom-rule\n', 'utf8');
+    saveArtifact(makeRun('20260101-000000-gi02'), { root });
+    assert.equal(readFileSync(gitignore, 'utf8'), 'custom-rule\n');
+  } finally {
+    cleanup(cwd);
+  }
+});
+
+test('saveArtifact маскирует секреты в task/text/error', () => {
+  const root = makeTemp();
+  try {
+    const run = makeRun('20260101-000000-sec1', {
+      task: 'используй sk-1234567890abcdef для запроса',
+      text: 'ответ с Bearer abcdefgh12345',
+      experts: [
+        {
+          agent: 'alpha',
+          success: false,
+          text: 'утечка ghp_abcdefgh12345',
+          errorMessage: 'token=supersecret'
+        }
+      ]
+    });
+    const ref = saveArtifact(run, { root });
+    const stored = readFileSync(path.join(ref.dir, 'run.json'), 'utf8');
+    const report = readFileSync(path.join(ref.dir, 'report.md'), 'utf8');
+
+    for (const text of [stored, report]) {
+      assert.equal(text.includes('sk-1234567890abcdef'), false);
+      assert.equal(text.includes('Bearer abcdefgh12345'), false);
+      assert.equal(text.includes('ghp_abcdefgh12345'), false);
+      assert.equal(text.includes('token=supersecret'), false);
+      assert.equal(text.includes('sk-***'), true);
+      assert.equal(text.includes('Bearer ***'), true);
+      assert.equal(text.includes('ghp_***'), true);
+      assert.equal(text.includes('token=***'), true);
+    }
   } finally {
     cleanup(root);
   }

@@ -34,10 +34,41 @@ export interface ConfigLoadResult {
 }
 
 /**
+ * Опции загрузки конфигурации
+ */
+export interface LoadConfigOptions {
+  /**
+   * Явно доверять конфигурации проекта (CLI `-c`).
+   * По умолчанию `false`: опасные ключи из файла игнорируются.
+   */
+  trustProjectConfig?: boolean;
+}
+
+/** Символ-метка конфигурации, которой явно доверяет вызывающий код */
+export const TRUSTED_PROJECT_CONFIG = Symbol.for('lv24-opencode-consilium.trustedProjectConfig');
+
+/** Проверяет, была ли конфигурация загружена с явным доверием */
+export function isTrustedProjectConfig(config: unknown): boolean {
+  return (
+    typeof config === 'object' &&
+    config !== null &&
+    (config as Record<PropertyKey, unknown>)[TRUSTED_PROJECT_CONFIG] === true
+  );
+}
+
+function markTrustedProjectConfig(config: ConsiliumConfig): void {
+  Object.defineProperty(config, TRUSTED_PROJECT_CONFIG, {
+    value: true,
+    enumerable: false,
+    configurable: true
+  });
+}
+
+/**
  * Глубокое клонирование конфигурации с сохранением функций
  */
 export function cloneConfig(config: ConsiliumConfig): ConsiliumConfig {
-  return {
+  const cloned: ConsiliumConfig = {
     ...config,
     experts: config.experts.map(expert => ({ ...expert })),
     chair: { ...config.chair },
@@ -49,6 +80,10 @@ export function cloneConfig(config: ConsiliumConfig): ConsiliumConfig {
     opencodeArgs: config.opencodeArgs ? [...config.opencodeArgs] : undefined,
     plugins: config.plugins ? [...config.plugins] : undefined
   };
+  if (isTrustedProjectConfig(config)) {
+    markTrustedProjectConfig(cloned);
+  }
+  return cloned;
 }
 
 /**
@@ -90,6 +125,9 @@ export function mergeWithDefaults(partial: Partial<ConsiliumConfig>): ConsiliumC
     }
   }
 
+  if (isTrustedProjectConfig(partial)) {
+    markTrustedProjectConfig(result);
+  }
   return result;
 }
 
@@ -271,10 +309,112 @@ function parsePromptConfig(
   return DEFAULT_EXPERT_PROMPTS.default ?? ((task: string) => task);
 }
 
+/** Допустимое имя агента из конфигурации проекта */
+const SAFE_AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/;
+
+function warnIgnoredProjectKey(warnings: string[], key: string): void {
+  warnings.push(
+    `Ключ "${key}" проигнорирован в целях безопасности (was ignored for safety): ` +
+      'конфигурация проекта не является доверенной. ' +
+      'Чтобы использовать его, передайте файл явно через explicit -c <path>.'
+  );
+}
+
+/**
+ * Удаляет опасные для запуска ключи из недоверенной конфигурации проекта.
+ * Безопасные значения (`artifacts: boolean`, `output.file: false`) сохраняются.
+ */
+function applyProjectConfigTrustPolicy(
+  userConfig: Partial<ConsiliumConfig>,
+  trustProjectConfig: boolean,
+  warnings: string[]
+): void {
+  if (trustProjectConfig) return;
+
+  const processKeys = ['opencodePath', 'opencodeArgs', 'autoApprove', 'cwd', 'opencodeConfigPath'] as const;
+  for (const key of processKeys) {
+    if (Object.prototype.hasOwnProperty.call(userConfig, key)) {
+      delete userConfig[key];
+      warnIgnoredProjectKey(warnings, key);
+    }
+  }
+
+  if (isRecord(userConfig.output) && typeof userConfig.output.file === 'string') {
+    delete (userConfig.output as { file?: string | false }).file;
+    warnIgnoredProjectKey(warnings, 'output.file');
+  }
+
+  if (Object.prototype.hasOwnProperty.call(userConfig, 'reportFile')) {
+    delete userConfig.reportFile;
+    warnIgnoredProjectKey(warnings, 'reportFile');
+  }
+
+  if (typeof userConfig.artifacts === 'string') {
+    delete userConfig.artifacts;
+    warnIgnoredProjectKey(warnings, 'artifacts');
+  }
+}
+
+/** Проверяет имя агента-председателя и откатывается к безопасному умолчанию */
+function sanitizeChairAgent(
+  userConfig: Partial<ConsiliumConfig>,
+  warnings: string[]
+): void {
+  if (!isRecord(userConfig.chair)) return;
+  const agent = userConfig.chair.agent;
+  if (typeof agent === 'string' && SAFE_AGENT_NAME_PATTERN.test(agent)) return;
+
+  if (agent !== undefined) {
+    warnings.push(
+      `Некорректное имя агента-председателя "${String(agent)}". ` +
+        `Используется ${DEFAULT_CONFIG.chair.agent}.`
+    );
+  }
+  userConfig.chair = {
+    ...userConfig.chair,
+    agent: DEFAULT_CONFIG.chair.agent
+  };
+}
+
+/** Удаляет экспертов с недопустимыми именами (включая найденных в opencode.json) */
+function sanitizeExpertNames(
+  userConfig: Partial<ConsiliumConfig>,
+  warnings: string[]
+): void {
+  if (!Array.isArray(userConfig.experts)) return;
+
+  const validExperts: ExpertConfig[] = [];
+  for (const expert of userConfig.experts) {
+    if (!isRecord(expert) || typeof expert.name !== 'string') continue;
+    if (!SAFE_AGENT_NAME_PATTERN.test(expert.name)) {
+      warnings.push(
+        `Некорректное имя эксперта "${expert.name}"; ` +
+          'эксперт удалён из конфигурации проекта.'
+      );
+      continue;
+    }
+    validExperts.push(expert);
+  }
+
+  if (validExperts.length === 0) {
+    warnings.push(
+      'Список экспертов пуст после проверки имён; используются эксперты по умолчанию.'
+    );
+    delete userConfig.experts;
+    return;
+  }
+
+  userConfig.experts = validExperts;
+}
+
 /**
  * Загружает конфигурацию из файла
  */
-export function loadConfig(explicitPath?: string): ConfigLoadResult {
+export function loadConfig(
+  explicitPath?: string,
+  options: LoadConfigOptions = {}
+): ConfigLoadResult {
+  const trustProjectConfig = options.trustProjectConfig === true;
   const warnings: string[] = [];
   const errors: string[] = [];
   const configPath = findConfigFile(explicitPath);
@@ -303,6 +443,11 @@ export function loadConfig(explicitPath?: string): ConfigLoadResult {
       errors.push(message);
     }
   }
+
+  // Политика доверия: опасные ключи проекта удаляются до merge/валидации и до
+  // автоопределения, чтобы они не влияли на пути запуска и рабочую директорию.
+  applyProjectConfigTrustPolicy(userConfig, trustProjectConfig, warnings);
+  sanitizeChairAgent(userConfig, warnings);
 
   if (Array.isArray(userConfig.experts)) {
     userConfig.experts = userConfig.experts
@@ -359,7 +504,16 @@ export function loadConfig(explicitPath?: string): ConfigLoadResult {
     }
   }
 
+  sanitizeExpertNames(userConfig, warnings);
+
   const mergedConfig = mergeWithDefaults(userConfig);
+  if (trustProjectConfig) {
+    markTrustedProjectConfig(mergedConfig);
+  } else if (mergedConfig.opencodeArgs === undefined) {
+    // mergeWithDefaults всегда создаёт поле opencodeArgs; для недоверенного
+    // конфига ключ не должен оставаться даже со значением undefined.
+    delete (mergedConfig as { opencodeArgs?: string[] }).opencodeArgs;
+  }
   warnings.push(...validateConfig(mergedConfig));
 
   return {

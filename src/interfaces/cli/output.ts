@@ -9,6 +9,13 @@ import type { CLIOptions, ConsiliumConfig, ConsiliumResult } from '../../domain/
 import { Consilium } from '../../application/consilium.js';
 import { listPresets } from '../../domain/council/presets.js';
 import { renderReport, type ReportFormat } from '../../domain/artifacts/report.js';
+import { writeFileAtomic } from '../../shared/fs.js';
+import { stripControlSequences } from '../../shared/redact.js';
+
+/** Убирает ANSI/OSC-последовательности из недоверенных терминальных полей */
+function safeText(value: string): string {
+  return stripControlSequences(value);
+}
 
 export function log(options: CLIOptions, message: string): void {
   if (!options.silent) console.error(message);
@@ -21,19 +28,23 @@ export function setupConsoleHooks(config: ConsiliumConfig, options: CLIOptions):
   config.hooks = {
     ...config.hooks,
     onExpertStart: (expert: string) => {
-      startTimes.set(expert, Date.now());
-      console.error(`⏳ [${expert}] Запуск...`);
+      const name = safeText(expert);
+      startTimes.set(name, Date.now());
+      console.error(`⏳ [${name}] Запуск...`);
     },
     onExpertEnd: (result) => {
-      const started = startTimes.get(result.agent) ?? Date.now();
+      const name = safeText(result.agent);
+      const started = startTimes.get(name) ?? Date.now();
       const duration = ((result.duration ?? (Date.now() - started)) / 1000).toFixed(1);
       if (result.success) {
-        const model = result.model ? ` · ${result.model}` : '';
-        console.error(`✅ [${result.agent}] Готово (${duration}с, ${result.text.length} симв.)${model}`);
+        const model = result.model ? ` · ${safeText(result.model)}` : '';
+        console.error(`✅ [${name}] Готово (${duration}с, ${result.text.length} симв.)${model}`);
       } else {
-        console.error(`❌ [${result.agent}] ${result.errorCode ?? 'ОШИБКА'}: ${result.errorMessage ?? 'нет ответа'} (${duration}с)`);
+        const code = safeText(result.errorCode ?? 'ОШИБКА');
+        const message = safeText(result.errorMessage ?? 'нет ответа');
+        console.error(`❌ [${name}] ${code}: ${message} (${duration}с)`);
       }
-      startTimes.delete(result.agent);
+      startTimes.delete(name);
     },
     onChairStart: () => {
       console.error('⏳ [chair] Синтез запущен...');
@@ -43,11 +54,12 @@ export function setupConsoleHooks(config: ConsiliumConfig, options: CLIOptions):
       if (result.success) {
         console.error(`✅ [chair] Синтез завершён (${duration}с, ${result.text.length} симв.)`);
       } else {
-        console.error(`❌ [chair] Ошибка синтеза: ${result.errorMessage ?? result.errorCode ?? 'нет ответа'}`);
+        const message = safeText(result.errorMessage ?? result.errorCode ?? 'нет ответа');
+        console.error(`❌ [chair] Ошибка синтеза: ${message}`);
       }
     },
     onLog: (level, message) => {
-      console.error(`[${level}] ${message}`);
+      console.error(`[${level}] ${safeText(message)}`);
     }
   };
 }
@@ -72,17 +84,17 @@ export function printSummary(result: ConsiliumResult, options: CLIOptions): void
     console.error('💰 Стоимость: $0 (бесплатные модели)');
   }
   if (typeof result.metadata?.savedFile === 'string') {
-    console.error(`💾 Сохранено: ${result.metadata.savedFile}`);
+    console.error(`💾 Сохранено: ${safeText(result.metadata.savedFile)}`);
   }
   if (typeof result.metadata?.saveError === 'string') {
-    console.error(`⚠️ Не сохранено: ${result.metadata.saveError}`);
+    console.error(`⚠️ Не сохранено: ${safeText(result.metadata.saveError)}`);
   }
 
   const artifacts = result.metadata?.artifacts;
   if (artifacts !== null && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
     const dir = (artifacts as { dir?: unknown }).dir;
     if (typeof dir === 'string') {
-      console.error(`📦 Артефакт: ${dir}`);
+      console.error(`📦 Артефакт: ${safeText(dir)}`);
     }
   }
 
@@ -118,11 +130,12 @@ export function printAgentList(config: ConsiliumConfig): void {
   console.log('Эксперты:');
   for (const expert of config.experts) {
     const status = expert.enabled === false ? ' (отключен)' : '';
-    const model = expert.model ? ` — ${expert.model}` : '';
-    console.log(`  • ${expert.name}${model}${status}`);
+    const model = expert.model ? ` — ${safeText(expert.model)}` : '';
+    console.log(`  • ${safeText(expert.name)}${model}${status}`);
   }
   console.log('\nПредседатель:');
-  console.log(`  • ${config.chair.agent}${config.chair.model ? ` — ${config.chair.model}` : ''}`);
+  const chairModel = config.chair.model ? ` — ${safeText(config.chair.model)}` : '';
+  console.log(`  • ${safeText(config.chair.agent)}${chairModel}`);
   console.log('\nПресеты:');
   for (const preset of listPresets()) {
     console.log(`  • ${preset.name} — ${preset.description}`);
@@ -135,7 +148,8 @@ export function printDryRun(task: string, config: ConsiliumConfig): void {
 
   console.log('\n🔍 DRY RUN — промпты без вызова агентов\n');
   for (const { agent, prompt, model } of info.expertPrompts) {
-    console.log(`\n[${agent.toUpperCase()}]${model ? ` (${model})` : ''}`);
+    const modelLabel = model ? ` (${safeText(model)})` : '';
+    console.log(`\n[${safeText(agent).toUpperCase()}]${modelLabel}`);
     console.log(prompt);
   }
   console.log('\n[ПРЕДСЕДАТЕЛЬ]');
@@ -165,7 +179,7 @@ export function writeRunReport(
   try {
     text = renderReport(result, format);
   } catch (error) {
-    console.error(`⚠️ Не удалось построить отчёт: ${(error as Error).message}`);
+    console.error(`⚠️ Не удалось построить отчёт: ${safeText((error as Error).message)}`);
     return false;
   }
 
@@ -180,14 +194,12 @@ export function writeRunReport(
 
   const target = resolve(config.cwd ?? process.cwd(), fileSetting);
   try {
-    const directory = dirname(target);
-    if (!existsSync(directory)) mkdirSync(directory, { recursive: true });
-    writeFileSync(target, text, 'utf-8');
+    writeFileAtomic(target, text);
   } catch (error) {
-    console.error(`⚠️ Не удалось сохранить отчёт: ${(error as Error).message}`);
+    console.error(`⚠️ Не удалось сохранить отчёт: ${safeText((error as Error).message)}`);
     return false;
   }
-  if (!options.silent) console.error(`📄 Отчёт: ${target}`);
+  if (!options.silent) console.error(`📄 Отчёт: ${safeText(target)}`);
   return false;
 }
 
