@@ -50,6 +50,10 @@ publish, and no OTP is needed.
    `.github/workflows/npm-publish.yml`, which builds, tests and publishes the
    version with provenance. Already-published versions are skipped.
 
+   > The release event runs the workflow from the tagged commit, so the workflow
+   > file must already exist at that tag. Tag releases created after the workflow
+   > was merged; for a tag that predates it, use the manual dispatch below.
+
 5. Manual fallback:
 
    ```bash
