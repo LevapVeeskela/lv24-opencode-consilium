@@ -21,6 +21,7 @@ export const COMMANDS = new Set([
   'eval',
   'history',
   'stats',
+  'presets',
   'help',
   'version'
 ]);
@@ -29,7 +30,7 @@ export const COMMANDS = new Set([
 const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline']);
 
 /** Команды, распознаваемые только в самом начале argv (не после флагов) */
-const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats']);
+const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats', 'presets']);
 
 /** Типизированные коды выхода CLI */
 export const EXIT_CODES = {
@@ -152,6 +153,9 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--chair-timeout':
         options.chairTimeout = parsePositiveInt(requireNumericValue(argv, ++i, arg), arg);
         break;
+      case '--deadline':
+        options.deadlineMs = parsePositiveInt(requireNumericValue(argv, ++i, arg), arg);
+        break;
       case '-o':
       case '--output':
         options.output = requireValue(argv, ++i, arg);
@@ -210,6 +214,15 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--available':
         options.available = true;
+        break;
+      case '--local':
+        options.local = true;
+        break;
+      case '--local-only':
+        options.localOnly = true;
+        break;
+      case '--probe-local':
+        options.probeLocal = true;
         break;
       case '--json':
         options.json = true;

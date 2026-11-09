@@ -15,8 +15,6 @@ const TOOL_DESCRIPTION =
   'Run a council of expert AI agents through the OpenCode CLI. ' +
   'Experts analyze the task in parallel and the chair synthesizes the final answer.';
 
-const PRESET_VALUES = ['fast', 'deep', 'security', 'review', 'free'] as const;
-
 /**
  * JSON Schema for the `consilium run` tool input. Kept as a plain object
  * (no Effect Schema needed — the tool API accepts JsonSchema).
@@ -71,8 +69,8 @@ export const CONSILIUM_TOOL_INPUT: Record<string, unknown> = {
     },
     preset: {
       type: 'string',
-      enum: [...PRESET_VALUES],
-      description: 'Configuration preset applied before the run.'
+      description:
+        'Configuration preset applied before the run: a built-in name (fast, deep, security, review, free) or a custom preset from consilium.config.json.'
     }
   },
   required: ['task']
@@ -189,12 +187,7 @@ function optionalBoolean(
 }
 
 function optionalPreset(args: Record<string, unknown>, key: string): string | undefined {
-  const value = optionalString(args, key);
-  if (value === undefined) return undefined;
-  if (!(PRESET_VALUES as readonly string[]).includes(value)) {
-    throw new Error(`"${key}" must be one of: ${PRESET_VALUES.join(', ')}`);
-  }
-  return value;
+  return optionalString(args, key);
 }
 
 function optionalArtifacts(

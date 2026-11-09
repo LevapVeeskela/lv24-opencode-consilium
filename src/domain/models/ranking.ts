@@ -47,6 +47,40 @@ const SOURCE_ORDER: Record<FreeModelSource, number> = {
   builtin: 2
 };
 
+/** Чистый предикат, определяющий локальную модель */
+export type LocalModelPredicate = (model: FreeModel) => boolean;
+
+/**
+ * Опции фильтрации по локальным провайдерам.
+ *
+ * Домен не знает список провайдеров и не выполняет I/O: решение принимает
+ * переданный предикат `local`. Без предиката фильтр не применяется.
+ */
+export interface LocalModelFilterOptions {
+  /** Включить локальный фильтр; `false` отключает даже переданный предикат */
+  localOnly?: boolean;
+  /** Предикат локальной модели; по умолчанию фильтр не применяется */
+  local?: LocalModelPredicate;
+}
+
+/** Опции ранжирования бесплатных моделей */
+export interface RankFreeModelsOptions extends LocalModelFilterOptions {
+  includeUnavailable?: boolean;
+  minContext?: number;
+  /** Надёжность моделей; без неё бонус не применяется */
+  reliability?: ReliabilityStore;
+}
+
+/** Применяет локальный фильтр, если он включён и задан предикат */
+function filterLocalModels(
+  models: FreeModel[],
+  opts: LocalModelFilterOptions
+): FreeModel[] {
+  if (opts.localOnly === false) return models;
+  const local = opts.local;
+  return local === undefined ? models : models.filter(model => local(model));
+}
+
 /** Теневые цены платных аналогов: ключ → приор качества */
 const shadowPrices = new Map<string, number>();
 /** Модели с alpha/preview-статусом: ключ → штраф */
@@ -186,19 +220,14 @@ export function sortRanked(models: FreeModel[], includeUnavailable: boolean): Fr
  */
 export function rankFreeModels(
   models: FreeModel[],
-  opts: {
-    includeUnavailable?: boolean;
-    minContext?: number;
-    /** Надёжность моделей; без неё бонус не применяется */
-    reliability?: ReliabilityStore;
-  } = {}
+  opts: RankFreeModelsOptions = {}
 ): FreeModel[] {
   const now = Date.now();
   const minContext =
     typeof opts.minContext === 'number' && Number.isFinite(opts.minContext) && opts.minContext > 0
       ? opts.minContext
       : 0;
-  const scored = models
+  const scored = filterLocalModels(models, opts)
     .filter(model => model.context >= minContext)
     .map(model => ({ ...model, score: computeScore(model, now, opts.reliability) }));
   return sortRanked(scored, opts.includeUnavailable ?? true);
@@ -217,13 +246,19 @@ function familyKey(model: FreeModel): string {
 }
 
 /**
- * Выбрать N моделей с разными семействами провайдеров
+ * Выбрать N моделей с разными семействами провайдеров.
+ * Опции позволяют ограничить выборку локальными провайдерами.
  */
-export function selectCouncilModels(models: FreeModel[], size = 5): FreeModel[] {
+export function selectCouncilModels(
+  models: FreeModel[],
+  size = 5,
+  opts: LocalModelFilterOptions = {}
+): FreeModel[] {
   const limit = Number.isFinite(size) ? Math.max(0, Math.floor(size)) : 5;
-  if (limit === 0 || models.length === 0) return [];
+  const candidates = filterLocalModels(models, opts);
+  if (limit === 0 || candidates.length === 0) return [];
 
-  const ranked = sortRanked(models, true);
+  const ranked = sortRanked(candidates, true);
   const available = ranked.filter(model => model.available);
   const pool = available.length > 0 ? available : ranked;
 

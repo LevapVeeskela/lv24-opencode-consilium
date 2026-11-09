@@ -6,6 +6,11 @@
 import type { CLIOptions } from '../../../domain/types.js';
 import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import {
+  filterLocalModels,
+  formatLocalProviders,
+  probeLocalProviders
+} from '../../../infrastructure/local-models.js';
+import {
   formatReliabilityTable,
   loadReliability,
   type ModelReliability,
@@ -48,7 +53,9 @@ export async function commandModels(
   });
 
   const limit = options.limit ?? 20;
-  const models = result.models.slice(0, limit);
+  // Каталог уже отсортирован по рейтингу; фильтр сохраняет порядок.
+  const catalog = options.local ? filterLocalModels(result.models) : result.models;
+  const models = catalog.slice(0, limit);
 
   let checks = new Map<string, { ok: boolean; error?: string }>();
   if (options.verify) {
@@ -63,11 +70,16 @@ export async function commandModels(
     ? (deps.loadReliabilityStore ?? loadReliability)(cwd)
     : undefined;
 
+  const localProviders = options.probeLocal ? await probeLocalProviders() : undefined;
+
   if (options.json) {
     const enriched = models.map(model => ({ ...model, verified: checks.get(model.id)?.ok }));
     const payload: Record<string, unknown> = { ...result, models: enriched };
     if (reliabilityStore !== undefined) {
       payload.reliability = reliabilityRows(reliabilityStore);
+    }
+    if (localProviders !== undefined) {
+      payload.localProviders = localProviders;
     }
     console.log(JSON.stringify(payload, null, 2));
     return 0;
@@ -79,7 +91,12 @@ export async function commandModels(
     }
   }
 
-  console.log(`Бесплатные модели (${result.fromCache ? 'кэш' : 'свежие данные'}, всего кандидатов: ${result.models.length}):\n`);
+  if (localProviders !== undefined) {
+    console.log(formatLocalProviders(localProviders));
+    console.log('');
+  }
+
+  console.log(`Бесплатные модели (${result.fromCache ? 'кэш' : 'свежие данные'}, всего кандидатов: ${catalog.length}):\n`);
   const header = ['#', 'model', 'ctx', 'tools', 'score', 'доступна', 'источник', 'проверка'];
   console.log(header.join('\t'));
   models.forEach((model, index) => {

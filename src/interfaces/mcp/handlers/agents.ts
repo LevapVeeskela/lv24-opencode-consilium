@@ -81,7 +81,7 @@ export async function toolListAgents(): Promise<McpToolResult> {
   const loaded = loadConfig();
   let presets: unknown = [];
   try {
-    presets = await listPresets();
+    presets = await listPresets(loaded.config.presets);
   } catch {
     presets = [];
   }

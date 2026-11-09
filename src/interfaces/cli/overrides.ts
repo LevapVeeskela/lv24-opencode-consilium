@@ -6,17 +6,18 @@
 import type { CLIOptions, ConsiliumConfig } from '../../domain/types.js';
 import { applyPreset, listPresets } from '../../domain/council/presets.js';
 import { isValidVariant, variantOf, withVariant } from '../../domain/council/variants.js';
+import { auditLocalOnly } from '../../infrastructure/local-models.js';
 import { UsageError } from './args.js';
 
 export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions): ConsiliumConfig {
   let result = config;
 
   if (options.preset) {
-    const known = listPresets().map(preset => preset.name);
+    const known = listPresets(result.presets).map(preset => preset.name);
     if (!known.includes(options.preset)) {
       throw new UsageError(`Неизвестный пресет: ${options.preset}. Доступны: ${known.join(', ')}`);
     }
-    result = applyPreset(result, options.preset);
+    result = applyPreset(result, options.preset, result.presets);
   }
 
   if (options.experts) {
@@ -91,6 +92,29 @@ export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions):
   if (options.reportFile !== undefined) result.reportFile = options.reportFile;
   if (options.debounceMs !== undefined) result.debounceMs = options.debounceMs;
   if (options.context !== undefined) result.context = options.context;
+  if (options.deadlineMs !== undefined) result.deadlineMs = options.deadlineMs;
+
+  // Локальный режим проверяется после пресета/фильтра экспертов и варианта:
+  // каждый агент обязан иметь явную локальную модель, иначе приватность не гарантируется.
+  if (options.localOnly === true || result.localOnly === true) {
+    const audit = auditLocalOnly([
+      ...result.experts.map(expert => ({ label: `эксперт ${expert.name}`, model: expert.model })),
+      { label: `председатель ${result.chair.agent}`, model: result.chair.model }
+    ]);
+    if (audit.missing.length > 0) {
+      throw new UsageError(
+        'Режим --local-only требует явную локальную модель для каждого агента. ' +
+          `Без модели: ${audit.missing.join(', ')}`
+      );
+    }
+    if (audit.nonLocal.length > 0) {
+      throw new UsageError(
+        'Режим --local-only требует только локальных провайдеров. ' +
+          `Нелокальные модели: ${audit.nonLocal.join(', ')}`
+      );
+    }
+    result.localOnly = true;
+  }
 
   return result;
 }

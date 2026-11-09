@@ -5,6 +5,7 @@
 
 import type { FindingsSummary } from './council/findings.js';
 import type { FailOnLevel } from './artifacts/baseline.js';
+import type { CouncilPreset } from './council/presets.js';
 
 /** Код ошибки агента */
 export type AgentErrorCode =
@@ -17,7 +18,8 @@ export type AgentErrorCode =
   | 'AGENT_NOT_FOUND'
   | 'MODEL_UNAVAILABLE'
   | 'RATE_LIMITED'
-  | 'COST_LIMIT';
+  | 'COST_LIMIT'
+  | 'DEADLINE';
 
 /** Расход токенов и стоимость одного вызова */
 export interface AgentUsage {
@@ -219,6 +221,15 @@ export interface ConsiliumConfig {
   smartExperts?: boolean;
   /** Лимит стоимости запуска в USD; при превышении председатель не запускается */
   maxCost?: number;
+  /** Использовать только локальные провайдеры моделей */
+  localOnly?: boolean;
+  /** Пользовательские пресеты: имя пресета → частичное описание */
+  presets?: Record<string, Partial<CouncilPreset>>;
+  /**
+   * Общий wall-clock дедлайн фазы экспертов, мс.
+   * Положительное целое, не больше 24 часов; 0/отрицательное игнорируется.
+   */
+  deadlineMs?: number;
   /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE (в порядке приоритета) */
   fallbackModels?: string[];
   /** Переиспользовать сессию OpenCode (`run --session`) между запусками */
@@ -275,6 +286,11 @@ export interface RunOptions {
   smartExperts?: boolean;
   /** Лимит стоимости запуска в USD */
   maxCost?: number;
+  /**
+   * Общий wall-clock дедлайн фазы экспертов, мс.
+   * Положительное целое, не больше 24 часов; 0/отрицательное игнорируется.
+   */
+  deadlineMs?: number;
   /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE */
   fallbackModels?: string[];
   /** Сессия OpenCode для продолжения контекста */
@@ -323,6 +339,7 @@ export interface CLIOptions {
     | 'eval'
     | 'history'
     | 'stats'
+    | 'presets'
     | 'help'
     | 'version';
   config?: string;
@@ -395,6 +412,14 @@ export interface CLIOptions {
   consensus?: boolean;
   /** Лимит стоимости запуска в USD */
   maxCost?: number;
+  /** Дедлайн экспертной фазы, мс */
+  deadlineMs?: number;
+  /** Разрешить только локальные модели */
+  localOnly?: boolean;
+  /** (models) Показать только локальные модели каталога */
+  local?: boolean;
+  /** (models) Проверить доступность Ollama и LM Studio */
+  probeLocal?: boolean;
   /** Запасные модели при RATE_LIMITED/MODEL_UNAVAILABLE */
   fallbackModels?: string[];
   /** Сессия OpenCode для продолжения контекста */

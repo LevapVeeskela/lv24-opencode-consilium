@@ -150,7 +150,7 @@ export function printAgentList(config: ConsiliumConfig): void {
   const chairModel = config.chair.model ? ` — ${safeText(config.chair.model)}` : '';
   console.log(`  • ${safeText(config.chair.agent)}${chairModel}`);
   console.log('\nПресеты:');
-  for (const preset of listPresets()) {
+  for (const preset of listPresets(config.presets)) {
     console.log(`  • ${preset.name} — ${preset.description}`);
   }
 }

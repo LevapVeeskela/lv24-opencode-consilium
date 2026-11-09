@@ -151,7 +151,7 @@ export async function runConsiliumTool(
 
   if (args.preset !== undefined) {
     // applyPreset throws on unknown preset names — surfaced to the caller.
-    config = applyPreset(config, args.preset);
+    config = applyPreset(config, args.preset, config.presets);
   }
   if (args.consensus !== undefined) config.consensus = args.consensus;
   if (args.smartExperts !== undefined) config.smartExperts = args.smartExperts;

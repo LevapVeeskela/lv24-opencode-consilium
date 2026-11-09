@@ -16,11 +16,13 @@ export {
 export {
   checkAutoApprove,
   checkConcurrency,
+  checkLocalProviders,
   checkModelsCache,
   checkNodeVersion,
   checkOpenCodeCli,
   checkStandalone
 } from './environment.js';
+export type { LocalProvidersProbe } from './environment.js';
 
 export {
   checkOpenCodeConfig,

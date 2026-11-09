@@ -13,10 +13,13 @@ import type {
   ConsiliumMetadata
 } from '../domain/types.js';
 import { analyzeConsensus, formatConsensusReport } from '../domain/council/consensus.js';
+import { appendFindingsInstruction, buildChairPrompt } from '../domain/council/prompts.js';
 import type { FindingsSummary } from '../domain/council/findings.js';
 import type { SmartExpertSelection } from '../domain/council/smart-experts.js';
 import type { CostReport } from '../domain/council/fallback.js';
 import type { ArtifactRun } from '../domain/artifacts/artifacts.js';
+import type { RunController } from '../infrastructure/opencode/controller.js';
+import { positiveInteger } from '../infrastructure/opencode/retry.js';
 import {
   createArtifactId,
   resolveArtifactRoot,
@@ -66,6 +69,158 @@ export function selectChairAgent(config: ConsiliumConfig, requested: string | un
     config.chair.agent = chairAgent;
   }
   return chairAgent;
+}
+
+/** Верхняя граница дедлайна экспертной фазы — 24 часа */
+export const MAX_DEADLINE_MS = 24 * 60 * 60 * 1000;
+
+/** Размер текста эксперта по умолчанию для промпта председателя */
+const DEFAULT_DEADLINE_CHAIR_TEXT = 3000;
+
+/**
+ * Нормализует дедлайн экспертной фазы: положительное целое не больше 24 часов.
+ * Ноль, отрицательные, NaN и Infinity игнорируются.
+ */
+export function sanitizeDeadlineMs(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  const ms = Math.floor(value);
+  if (ms <= 0) return undefined;
+  return Math.min(ms, MAX_DEADLINE_MS);
+}
+
+/** Итог экспертной фазы для метаданных и заметки председателю */
+export interface DeadlineSummary {
+  /** Всего экспертов в запуске */
+  total: number;
+  /** Сколько экспертов успешно завершилось */
+  completed: number;
+  /** Имена экспертов без успешного результата */
+  missing: string[];
+}
+
+/** Считает завершившихся и недостающих экспертов по результатам фазы */
+export function summarizeDeadline(experts: AgentResult[]): DeadlineSummary {
+  const missing = experts.filter(result => !result.success).map(result => result.agent);
+  return {
+    total: experts.length,
+    completed: experts.length - missing.length,
+    missing
+  };
+}
+
+/** Метаданные дедлайна в публичном результате */
+export interface DeadlineMetadata {
+  /** Заданный бюджет экспертной фазы, мс */
+  limitMs: number;
+  /** Сработал ли таймер */
+  hit: boolean;
+  /** Сколько экспертов успешно завершилось */
+  completed: number;
+  /** Имена экспертов без успешного результата */
+  missing: string[];
+}
+
+/** Собирает metadata.deadline по итогам экспертной фазы */
+export function buildDeadlineMetadata(
+  limitMs: number,
+  hit: boolean,
+  summary: DeadlineSummary
+): DeadlineMetadata {
+  return {
+    limitMs,
+    hit,
+    completed: summary.completed,
+    missing: [...summary.missing]
+  };
+}
+
+/** Короткая заметка председателю о неполном составе экспертов */
+export function buildDeadlineChairNote(summary: DeadlineSummary): string {
+  const missing = summary.missing.length > 0 ? summary.missing.join(', ') : 'none';
+  return (
+    `${summary.completed} of ${summary.total} experts finished before the deadline; ` +
+    `missing: ${missing}`
+  );
+}
+
+/**
+ * Возвращает копию конфигурации, чей промпт председателя дополнен заметкой
+ * о дедлайне. Пользовательский шаблон и инструкция findings сохраняются.
+ */
+export function withDeadlineChairNote(config: ConsiliumConfig, note: string): ConsiliumConfig {
+  const template = config.chair.promptTemplate;
+  const maxExpertTextLength =
+    positiveInteger(config.chair.maxExpertTextLength) ?? DEFAULT_DEADLINE_CHAIR_TEXT;
+  const consensus = config.consensus === true;
+  const findings = config.findings === true;
+
+  return {
+    ...config,
+    chair: {
+      ...config.chair,
+      promptTemplate: (task, experts) => {
+        let prompt = template
+          ? template(task, experts)
+          : buildChairPrompt(task, experts, maxExpertTextLength, consensus, findings);
+        if (findings) prompt = appendFindingsInstruction(prompt, 'chair');
+        return `${prompt}\n\n${note}`;
+      }
+    }
+  };
+}
+
+/**
+ * Выполняет экспертный этап с общим дедлайном. При срабатывании таймера
+ * отменяет контроллер (завершает дочерние процессы), сохраняя уже готовые
+ * результаты. Таймер снимается на любом пути.
+ */
+export async function runExpertPhaseWithDeadline<T>(
+  limitMs: number | undefined,
+  controller: RunController,
+  run: () => Promise<T>
+): Promise<{ value: T; hit: boolean }> {
+  if (limitMs === undefined) {
+    return { value: await run(), hit: false };
+  }
+
+  let hit = false;
+  const timer = setTimeout(() => {
+    hit = true;
+    controller.cancel();
+  }, limitMs);
+  // Не удерживаем event loop, если запуск завершится раньше таймера.
+  timer.unref();
+
+  try {
+    return { value: await run(), hit };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Формирует результат председателя, когда дедлайн не оставил ни одного эксперта */
+export function buildDeadlineFailureChair(
+  agent: string,
+  limitMs: number,
+  summary: DeadlineSummary
+): AgentResult {
+  const missing =
+    summary.missing.length > 0 ? `; не ответили: ${summary.missing.join(', ')}` : '';
+  return {
+    agent,
+    text:
+      `[Дедлайн экспертной фазы ${limitMs} мс: ни один из ${summary.total} экспертов ` +
+      `не завершил работу${missing}]`,
+    success: false,
+    attempt: 0,
+    exitCode: null,
+    errorCode: 'DEADLINE',
+    errorMessage:
+      `Дедлайн ${limitMs} мс: ни один эксперт не завершил работу; ` +
+      `председатель не запускался${missing}`
+  };
 }
 
 /** Формирует результат отменённого запуска */

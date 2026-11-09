@@ -5,6 +5,8 @@
 
 import type { ConsiliumConfig } from '../../../domain/types.js';
 import { parseOpenCodeVersion } from '../../../infrastructure/config/compat.js';
+import { probeLocalProviders } from '../../../infrastructure/local-models.js';
+import type { LocalProviderProbeResult } from '../../../infrastructure/local-models.js';
 import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import type { DoctorCheck } from '../types.js';
 import { errorMessage, isRecord } from '../types.js';
@@ -174,4 +176,63 @@ export async function checkModelsCache(): Promise<DoctorCheck> {
       hint: 'Проверьте сеть; на работу консилиума это не влияет'
     };
   }
+}
+
+/** Функция проверки локальных провайдеров (подменяется в тестах) */
+export type LocalProvidersProbe = () => Promise<readonly LocalProviderProbeResult[]>;
+
+/** Отображаемое имя локального провайдера */
+function localProviderLabel(provider: string): string {
+  if (provider === 'lmstudio') return 'LM Studio';
+  if (provider === 'ollama') return 'Ollama';
+  return provider;
+}
+
+/** Проверяет доступность Ollama и LM Studio, учитывая режим localOnly */
+export async function checkLocalProviders(
+  config: ConsiliumConfig,
+  probe: LocalProvidersProbe = probeLocalProviders
+): Promise<DoctorCheck> {
+  const id = 'local-providers';
+  const privacyMode = config.localOnly === true;
+
+  let results: readonly LocalProviderProbeResult[];
+  try {
+    results = await probe();
+  } catch (error) {
+    return {
+      id,
+      status: privacyMode ? 'fail' : 'warn',
+      message: `Не удалось проверить локальные провайдеры: ${errorMessage(error)}`,
+      hint: 'Запустите Ollama или LM Studio, либо отключите localOnly'
+    };
+  }
+
+  const available = results.filter(result => result.ok);
+  if (available.length > 0) {
+    const parts = results.map(result =>
+      result.ok
+        ? `${localProviderLabel(result.provider)}: ${result.models} моделей`
+        : `${localProviderLabel(result.provider)}: недоступен`
+    );
+    return {
+      id,
+      status: 'ok',
+      message: `Локальные провайдеры: ${parts.join(', ')}`
+    };
+  }
+
+  const failures = results
+    .filter(result => result.error !== undefined && result.error.length > 0)
+    .map(result => `${localProviderLabel(result.provider)}: ${result.error}`);
+  const details = failures.length > 0 ? ` (${failures.join('; ')})` : '';
+
+  return {
+    id,
+    status: privacyMode ? 'fail' : 'warn',
+    message: privacyMode
+      ? `localOnly включён, но локальные провайдеры недоступны${details}`
+      : `Локальные провайдеры недоступны${details}`,
+    hint: 'Запустите Ollama или LM Studio, либо отключите localOnly'
+  };
 }

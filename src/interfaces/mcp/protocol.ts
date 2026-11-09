@@ -2,7 +2,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { describeError } from './format.js';
 import { isRecord } from './validation.js';
 
-export const DEFAULT_VERSION = '1.6.0';
+export const DEFAULT_VERSION = '1.7.0';
 export const SERVER_NAME = 'lv24-opencode-consilium';
 export const MAX_LINE_BYTES = 4 * 1024 * 1024;
 export const FALLBACK_PROTOCOL_VERSION = '2025-06-18';

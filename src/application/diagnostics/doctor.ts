@@ -15,6 +15,7 @@ import {
   checkConfigFile,
   checkExperts,
   checkFeatures,
+  checkLocalProviders,
   checkModelsCache,
   checkModelsFormat,
   checkNodeVersion,
@@ -27,6 +28,8 @@ import {
 } from './checks.js';
 
 export type { DoctorCheck, DoctorOptions } from './types.js';
+export { checkLocalProviders } from './checks/environment.js';
+export type { LocalProvidersProbe } from './checks/environment.js';
 export { formatDoctorReport } from './report.js';
 
 /** Выполняет проверку, превращая исключения в fail */
@@ -68,6 +71,7 @@ export async function runDoctor(
   checks.push(await safeCheck('timeouts', () => checkTimeouts(config)));
   checks.push(await safeCheck('models-format', () => checkModelsFormat(config)));
   checks.push(await safeCheck('opencode-config', () => checkOpenCodeConfig(config, cwd)));
+  checks.push(await safeCheck('local-providers', () => checkLocalProviders(config)));
   checks.push(
     await safeCheck('opencode-v2-compat', () =>
       checkOpenCodeV2Compat(cwd, cliMajor, config.opencodeConfigPath)

@@ -11,7 +11,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium [опции] <задача>
   consilium <задача> -              задача читается из stdin
   consilium init [--free]
-  consilium models [--available] [--json] [--reliability]
+  consilium models [--available] [--local] [--probe-local] [--json] [--reliability]
+  consilium presets [--json]
   consilium doctor
   consilium mcp
   consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
@@ -34,10 +35,13 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   -c, --config <файл>     Путь к файлу конфигурации
   -e, --experts <список>  Эксперты через запятую (arch,ux,ba,sec)
   --chair <агент>         Агент-председатель
-  --preset <имя>          Пресет: fast, deep, security, review, free
+  --preset <имя>          Пресет: fast, deep, security, review, free или свой из presets
 
   --expert-timeout <мс>   Таймаут экспертов (по умолчанию: 300000)
   --chair-timeout <мс>    Таймаут председателя (по умолчанию: 600000)
+  --deadline <мс>         Общий дедлайн экспертной фазы (не больше 24 часов)
+  --local-only            Только локальные модели (ollama/lmstudio/vllm/…);
+                          завершиться с кодом 2, если модель внешняя
   -r, --retries <число>   Повторные попытки
 
   -o, --output <файл>     Сохранить результат в файл
@@ -82,8 +86,12 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   init [--free] [--force] [--dry-run] [--native-v2]
                           Создать конфиг; --free — подобрать и проверить сильнейшие бесплатные модели
   models [--available] [--verify] [--limit N] [--refresh] [--json] [--reliability]
+         [--local] [--probe-local]
                           Рейтинг бесплатных моделей (models.dev + OpenRouter)
+                          --local — только локальные провайдеры
+                          --probe-local — проверить Ollama и LM Studio
                           --reliability — статистика .consilium/reliability.json
+  presets [--json]        Встроенные и пользовательские пресеты из конфигурации
   doctor                  Проверить окружение, конфиг, агентов и модели
   mcp [--install] [--global]
                           Запустить MCP-сервер (stdio) или зарегистрировать его в opencode.json
@@ -134,6 +142,8 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium stats
   consilium stats --html stats.html
   consilium models --available
+  consilium models --local --probe-local
+  consilium presets --json
   consilium models --reliability
   consilium eval --fail-under 80
   consilium doctor

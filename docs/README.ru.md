@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.7.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.6.0
+# consilium v1.7.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -208,6 +208,18 @@ consilium models --json          # машинный формат
 
 Исходы вызовов запоминаются в `.consilium/reliability.json` (успехи, rate limits, таймауты, латентность по каждой модели). `consilium models --reliability` печатает таблицу; рейтинг принимает опциональный бонус за надёжность, когда у модели набралось хотя бы 3 попытки. Файл локальный, его можно безопасно удалить.
 
+## Локальный режим и приватность
+
+Запуск только на локальных провайдерах (Ollama, LM Studio, llama.cpp, vLLM):
+
+```bash
+consilium models --local              # только локальные модели в рейтинге
+consilium models --probe-local        # запущены ли Ollama / LM Studio?
+consilium --local-only "Сделай ревью изменений"
+```
+
+`--local-only` — жёсткая гарантия: у каждого эксперта и председателя должна быть явная модель, провайдер которой локальный, иначе запуск отклоняется до старта (выход 2, ошибка MCP-инструмента или ошибка библиотеки). Отсутствующая модель — это ошибка, а не неявный откат в облако. `doctor` добавляет проверку `local-providers`, которая падает, когда `localOnly` включён и ни один локальный провайдер недоступен.
+
 ## Использование из любого харнесса (MCP)
 
 ```bash
@@ -240,9 +252,9 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 
 | Инструмент | Аргументы | Результат |
 | --- | --- | --- |
-| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки) |
+| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `deadline_ms`, `local_only`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки, дедлайн) |
 | `consilium_list_agents` | — | Настроенные эксперты, модели, председатель, пресеты, путь конфига |
-| `consilium_free_models` | `limit`, `available_only`, `refresh` | Таблица рейтинга бесплатных моделей |
+| `consilium_free_models` | `limit`, `available_only`, `refresh`, `local_only`, `probe_local` | Таблица рейтинга бесплатных моделей + проверка локальных провайдеров |
 | `consilium_doctor` | — | Диагностика окружения и конфига |
 | `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | План (по умолчанию) или запись `opencode.json` + `consilium.config.json` |
 
@@ -255,7 +267,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -305,6 +317,7 @@ consilium baseline prune [--older-than <days>] [--all --yes]
 consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
+consilium presets [--json]
 ```
 
 **Ядро**
@@ -314,7 +327,9 @@ consilium stats [--json] [--html <file>]
 | `-c, --config <file>` | Файл конфигурации (иначе автоопределение) |
 | `-e, --experts a,b` | Подмножество экспертов |
 | `--chair <agent>` | Имя агента-председателя |
-| `--preset <name>` | `fast`, `deep`, `security`, `review`, `free` |
+| `--preset <name>` | `fast`, `deep`, `security`, `review`, `free` или свой пресет из конфига |
+| `--deadline <ms>` | Бюджет времени фазы экспертов; отставшие отменяются, председатель синтезирует частичные результаты (максимум 24 ч) |
+| `--local-only` | Требовать явную локальную модель для каждого агента; отклонять нелокальных провайдеров до запуска |
 | `--expert-timeout`, `--chair-timeout` | Таймауты в мс (на попытку) |
 | `-r, --retries <n>` | Число повторов (0 = одна попытка) |
 | `-o, --output <file>` | Сохранить результат (text/markdown/json по `-f`) |
@@ -362,6 +377,8 @@ consilium stats [--json] [--html <file>]
 | `--reliability` | `models`: печатать успешность и латентность по моделям из `.consilium/reliability.json` |
 | `history [--limit N]` | Последние запуски из `.consilium/runs` |
 | `stats [--html <file>]` | Агрегированные успешность, задержка, стоимость, находки и ошибки по моделям |
+| `presets [--json]` | Список встроенных и своих пресетов |
+| `models --local` / `--probe-local` | Рейтинг только локальных моделей и проверка Ollama/LM Studio |
 
 Коды выхода: `0` успех, `1` запуск неуспешен, `2` ошибка использования, `3` провал policy gate.
 
@@ -461,6 +478,16 @@ consilium --findings --fail-on high --diff "Сделай ревью текущи
 
 `--fail-on` гейтит по **новым** находкам: отпечатки из `.consilium/baseline.json` игнорируются. Код выхода `3` означает, что гейт не пройден. `--fail-on` без `--findings` — ошибка использования. Baseline-файл проектный, и его можно коммитить, чтобы делить принятые находки с командой.
 
+## Дедлайны и частичный синтез
+
+Долгие запуски на бесплатных моделях не должны подвешивать CI или pre-commit hook:
+
+```bash
+consilium --deadline 180000 --diff "Сделай ревью текущих изменений"
+```
+
+`--deadline <ms>` ограничивает фазу экспертов (максимум 24 ч; `deadlineMs` в конфиге). Когда он срабатывает, работающие эксперты отменяются, завершённые ответы сохраняются, а председатель синтезирует их с явной пометкой: сколько экспертов успело и каких ролей не хватает. `metadata.deadline` = `{ limitMs, hit, completed, missing }`. Если не завершился ни один эксперт, председатель пропускается, а запуск падает с `errorCode: DEADLINE` (выход 1); частичный запуск хотя бы с одним экспертом считается успешным.
+
 ## Eval-харнесс (`consilium eval`)
 
 Докажите, что совет ловит больше, чем одна модель, — детерминированно:
@@ -520,7 +547,7 @@ consilium stats --html stats.html  # самодостаточный статич
 Композитный action ревьюит diff пул-реквеста и публикует или обновляет ровно один комментарий с маркером `<!-- consilium:report -->`:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.6.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.7.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -537,6 +564,18 @@ consilium stats --html stats.html  # самодостаточный статич
 | `security` | sec, arch, ba | ревью с фокусом на безопасность |
 | `review` | arch, sec, ux | ревью кода |
 | `free` | все четыре | под bootstrap бесплатных моделей |
+
+Свои пресеты задаются в `consilium.config.json` и сливаются поверх встроенных:
+
+```json
+{
+  "presets": {
+    "docs": { "description": "Ревью документации", "experts": ["arch", "ba"] }
+  }
+}
+```
+
+`consilium presets` перечисляет объединённый набор (`--json` для скриптов); `--preset docs` работает в CLI, MCP `consilium_run` и плагине V2. Свой пресет может переопределить встроенное имя — его поля заменяют встроенные.
 
 ## Конфигурация
 
@@ -566,7 +605,7 @@ consilium stats --html stats.html  # самодостаточный статич
 | `retry.maxConcurrency` | 3 | 1–8 параллельных агентов |
 | `output.file` | `false` | `false` отключает сохранение; строка включает |
 | `standalone` | `true` | Приватный сервер; не конфликтует с уже запущенным OpenCode |
-| `autoApprove` | `false` | `--auto`; включайте только если доверяете агентам/инструментам |
+| `autoApprove` | `false` | Только через конфиг; авто-подтверждает разрешения. Игнорируется из проектного конфига без `-c` |
 | `autoDiscoverAgents` | `true` | Переиспользовать агентов из `opencode.json` |
 | `artifacts` | `false` | `true` → `.consilium/runs/<id>/`; строка задаёт свой каталог |
 | `consensus` | `false` | Лексический анализ согласия экспертов |
@@ -580,6 +619,9 @@ consilium stats --html stats.html  # самодостаточный статич
 | `debounceMs` | 400 | Задержка watch-режима, мс |
 | `findings` | `false` | Структурированный блок находок в ответах экспертов и председателя |
 | `context` | `off` | `auto` добавляет изменённые файлы, правила проекта, связанные тесты и коммиты в задачу |
+| `deadlineMs` | — | Бюджет фазы экспертов в мс (максимум 24 ч); частичный синтез по таймауту |
+| `localOnly` | `false` | Требовать явную локальную модель для каждого агента |
+| `presets` | — | Свои пресеты, сливаются поверх встроенных |
 | `opencodePath` | `opencode` | Свой путь к CLI (игнорируется из проектного конфига без `-c`) |
 | `cwd` | текущая | Рабочая директория для OpenCode (игнорируется из проектного конфига без `-c`) |
 
@@ -651,6 +693,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
+**1.7.0** — дедлайны и приватность. `--deadline <ms>` ограничивает фазу экспертов: отставшие отменяются, председатель синтезирует завершённых экспертов с пометкой о недостающих ролях, а запуск без единого завершённого эксперта падает с `DEADLINE`. `--local-only` требует явную локальную модель (Ollama, LM Studio, llama.cpp, vLLM) для каждого агента; `models --local` фильтрует каталог, `models --probe-local` сообщает, запущены ли локальные провайдеры; `doctor` добавляет проверку `local-providers`. Свои пресеты в `consilium.config.json` сливаются поверх встроенных и работают в CLI, MCP и плагине (`consilium presets` перечисляет их). Маркер доверенного конфига теперь переживает spread-объекты. 446 тестов.
+
 **1.6.0** — eval-харнесс, context pack, память надёжности и GitHub Action. `consilium eval` прогоняет фикстуры с посаженными багами и детерминированным сопоставлением `claim`, показывая catch/FP/p50 latency/cost (`--fail-under` завершается кодом `3`). `--context auto` добавляет изменённые файлы, ближайший `AGENTS.md`, связанные тесты и недавние коммиты в пределах лимита символов. Исходы и латентность моделей сохраняются в `.consilium/reliability.json` (`models --reliability`). Композитный GitHub Action делает ревью diff PR и публикует или обновляет один комментарий. Нечёткое слияние по `claim` дедуплицирует перефразированные находки. `consilium history` и `consilium stats` сводят данные о запусках, задержке и надёжности. 381 тест.
 
 **1.5.0** — структурированные находки и policy gate. `--findings` заставляет экспертов и председателя возвращать провалидированный JSON-блок `findings[]` (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); находки дедуплицируются по стабильному отпечатку, сливаются по ролям, помечаются `contested`, если председатель их отклонил, и попадают в `metadata.findings`. HTML- и PR-отчёты рисуют таблицу находок и реестр разногласий. `--fail-on <severity>` гейтит по **новым** находкам с кодом выхода `3`; `consilium baseline accept|prune` управляет `.consilium/baseline.json`. Также: исправления корректности P1 (приоритет конфигов V1/V2, предупреждения о битом конфиге, fallback/`minContext`/дедупликация кэша моделей, телеметрия стоимости, эскалация SIGKILL, префикс сессий `ses_`, разбор `argv[0]` в CLI, перезапуск/сигналы watch, крайние случаи preset/consensus/smart-experts) и слэш-команда `/council`. 317 тестов.
@@ -679,7 +723,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (381 тест)
+npm test            # build + node:test (446 тестов)
 npm run typecheck   # tsc --noEmit
 ```
 

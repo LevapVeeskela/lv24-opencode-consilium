@@ -59,7 +59,8 @@ test('schema documents all run properties', () => {
   ]) {
     assert.ok(properties[key], `missing schema property: ${key}`);
   }
-  assert.deepEqual(properties.preset.enum, ['fast', 'deep', 'security', 'review', 'free']);
+  assert.equal(properties.preset.type, 'string');
+  assert.equal(properties.preset.enum, undefined);
 });
 
 test('execute with empty task throws a tool error without spawning', async () => {

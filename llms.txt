@@ -2,13 +2,13 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.6.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.7.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.7.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -24,6 +24,9 @@ Version: 1.6.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium baseline accept|prune` — manage `.consilium/baseline.json`.
 - `consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]` — deterministic planted-bug suite.
 - `consilium history [--limit N] [--json]` / `consilium stats [--json] [--html <file>]` — recent runs, success rate, p50/p95, cost, per-model errors.
+- `consilium presets [--json]` — built-in and custom presets.
+- `--deadline <ms>` — cap the expert phase; partial synthesis with `metadata.deadline`.
+- `--local-only` — require explicit local models; `models --local` / `--probe-local`.
 - `--context <off|auto>` — add changed files, rules, tests and commits to the task.
 - `consilium models --reliability` — per-model success/latency table.
 
@@ -44,6 +47,8 @@ Version: 1.6.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - Cost cap: `--max-cost <usd>`; when exceeded before the chair, a partial result with `errorCode: COST_LIMIT` is returned.
 - Sessions: `--session <id>`; each agent gets `ses_<base>-<agent>`, the chair continues the base session.
 - State: files under `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); no daemon, no database.
+- Deadline: `--deadline <ms>` → `metadata.deadline = { limitMs, hit, completed, missing }`; zero completed experts → `errorCode: DEADLINE`.
+- Privacy: `--local-only` requires an explicit local provider (`ollama`, `lmstudio`, `llamacpp`, `vllm`) for every agent; otherwise the run is rejected before spawning.
 
 ## MCP
 

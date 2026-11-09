@@ -58,6 +58,12 @@
     "artifacts": { "type": ["string", "boolean"] },
     "consensus": { "type": "boolean" },
     "findings": { "type": "boolean", "default": false },
+    "localOnly": { "type": "boolean", "default": false },
+    "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+    "presets": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/preset" }
+    },
     "smartExperts": { "type": "boolean" },
     "maxCost": { "type": "number", "minimum": 0 },
     "fallbackModels": { "type": "array", "items": { "type": "string" } },
@@ -94,6 +100,24 @@
         "model": { "$ref": "#/definitions/model" },
         "timeout": { "type": "integer", "minimum": 1000 },
         "maxExpertTextLength": { "type": "integer", "minimum": 500 }
+      },
+      "additionalProperties": false
+    },
+    "preset": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "experts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "chair": { "type": "string", "minLength": 1 },
+        "retries": { "type": "integer", "minimum": 0 },
+        "expertTimeout": { "type": "integer", "minimum": 1 },
+        "chairTimeout": { "type": "integer", "minimum": 1 },
+        "focus": { "type": "string" },
+        "prompt": { "type": "string" }
       },
       "additionalProperties": false
     }

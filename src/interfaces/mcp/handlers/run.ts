@@ -2,8 +2,9 @@
 import { canonicalizePath, resolveInside } from '../../../shared/paths.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
 import { selectExperts } from '../../../application/run.js';
-import { applyPreset } from '../../../domain/council/presets.js';
+import { applyPreset, listPresets } from '../../../domain/council/presets.js';
 import { selectSmartExperts } from '../../../domain/council/smart-experts.js';
+import { auditLocalOnly } from '../../../infrastructure/local-models.js';
 import type {
   ConsiliumConfig,
   ConsiliumResult,
@@ -13,14 +14,15 @@ import type {
 import { truncateText } from '../format.js';
 import { emitNotification } from '../protocol.js';
 import type { ProgressToken, RequestId } from '../protocol.js';
-import { OUTPUT_FORMATS, PRESET_NAMES } from '../tools.js';
-import type { OutputFormat, PresetName } from '../tools.js';
+import { OUTPUT_FORMATS } from '../tools.js';
+import type { OutputFormat } from '../tools.js';
 import {
   ToolInputError,
   clearActiveConsilium,
   describeError,
   optionalBoolean,
   optionalEnum,
+  optionalInteger,
   optionalPositiveNumber,
   optionalString,
   optionalStringArray,
@@ -30,7 +32,7 @@ import {
 } from './shared.js';
 import type { McpToolResult } from './shared.js';
 
-function formatConsiliumResult(result: ConsiliumResult): string {
+export function formatConsiliumResult(result: ConsiliumResult, config: ConsiliumConfig): string {
   const sections: string[] = [result.text, '---', '## Мнения экспертов'];
 
   for (const expert of result.experts) {
@@ -45,6 +47,8 @@ function formatConsiliumResult(result: ConsiliumResult): string {
     parallelTime: result.parallelTime,
     usage: result.usage,
     cost: result.metadata?.cost,
+    deadlineMs: config.deadlineMs ?? null,
+    localOnly: config.localOnly === true,
     consensus:
       result.metadata?.consensus !== null && typeof result.metadata?.consensus === 'object'
         ? (() => {
@@ -110,8 +114,8 @@ function resolveOutputFile(
   }
 }
 
-function applyPresetFor(config: ConsiliumConfig, name: PresetName): ConsiliumConfig {
-  return applyPreset(config, name as Parameters<typeof applyPreset>[1]);
+function applyPresetFor(config: ConsiliumConfig, name: string): ConsiliumConfig {
+  return applyPreset(config, name, config.presets);
 }
 
 /**
@@ -145,9 +149,11 @@ export async function toolConsiliumRun(
   const experts = optionalStringArray(args, 'experts');
   const chair = optionalString(args, 'chair');
   const timeoutMs = optionalPositiveNumber(args, 'timeout_ms');
+  const deadlineMs = optionalInteger(args, 'deadline_ms', 1, Number.MAX_SAFE_INTEGER);
+  const localOnly = optionalBoolean(args, 'local_only');
   const outputFile = optionalString(args, 'output_file');
   const format: OutputFormat | undefined = optionalEnum(args, 'format', OUTPUT_FORMATS);
-  const preset: PresetName | undefined = optionalEnum(args, 'preset', PRESET_NAMES);
+  const preset = optionalString(args, 'preset');
   const consensus = optionalBoolean(args, 'consensus');
   const findings = optionalBoolean(args, 'findings');
   const smartExperts = optionalBoolean(args, 'smart_experts');
@@ -184,6 +190,10 @@ export async function toolConsiliumRun(
   const loaded = loadConfig();
   let config = loaded.config;
   if (preset !== undefined) {
+    const known = listPresets(config.presets).map(item => item.name);
+    if (!known.includes(preset)) {
+      return toolError(`Unknown preset: ${preset}. Available: ${known.join(', ')}`);
+    }
     config = applyPresetFor(config, preset);
   }
   if (format !== undefined) {
@@ -196,8 +206,29 @@ export async function toolConsiliumRun(
   if (fallbackModels !== undefined) config.fallbackModels = fallbackModels;
   if (session !== undefined) config.session = session;
   if (artifacts !== undefined) config.artifacts = artifacts;
+  if (deadlineMs !== undefined) config.deadlineMs = deadlineMs;
+  if (localOnly !== undefined) config.localOnly = localOnly;
   if (outputPath.value !== undefined) {
     config.output.file = outputPath.value;
+  }
+
+  if (config.localOnly === true) {
+    const audit = auditLocalOnly([
+      ...config.experts.map(expert => ({ label: expert.name, model: expert.model })),
+      { label: config.chair.agent, model: config.chair.model }
+    ]);
+    if (audit.missing.length > 0) {
+      return toolError(
+        'Local-only mode requires an explicit local model for every agent. ' +
+          `Missing: ${audit.missing.join(', ')}`
+      );
+    }
+    if (audit.nonLocal.length > 0) {
+      return toolError(
+        'Local-only mode requires local providers. ' +
+          `Non-local models: ${audit.nonLocal.join(', ')}`
+      );
+    }
   }
 
   const runOptions: RunOptions = {};
@@ -245,7 +276,7 @@ export async function toolConsiliumRun(
   setActiveConsilium(consilium, requestId);
   try {
     const result = await consilium.run(task, runOptions);
-    let text = formatConsiliumResult(result);
+    let text = formatConsiliumResult(result, config);
     if (loaded.warnings.length > 0) {
       text += `\n\n---\n\n**Config warnings**\n${loaded.warnings.map(w => `- ${w}`).join('\n')}`;
     }

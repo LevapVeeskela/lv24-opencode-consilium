@@ -1,5 +1,11 @@
 // consilium_free_models tool handler.
 import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
+import {
+  filterLocalModels,
+  formatLocalProviders,
+  probeLocalProviders
+} from '../../../infrastructure/local-models.js';
+import type { LocalProviderProbeResult } from '../../../infrastructure/local-models.js';
 import type { FreeModel } from '../../../domain/models/models.js';
 import { cell, formatTimestamp } from '../format.js';
 import { safeJson } from '../protocol.js';
@@ -96,15 +102,30 @@ export async function toolFreeModels(args: Record<string, unknown>): Promise<Mcp
   const limit = optionalInteger(args, 'limit', 1, 50) ?? 15;
   const availableOnly = optionalBoolean(args, 'available_only') ?? false;
   const refresh = optionalBoolean(args, 'refresh') ?? false;
+  const localOnly = optionalBoolean(args, 'local_only') ?? false;
+  const probeLocal = optionalBoolean(args, 'probe_local') ?? false;
+  const jsonOutput = args['format'] === 'json' || args['json'] === true;
 
   const fetched = await fetchFreeModels({
     forceRefresh: refresh,
     includeUnavailable: !availableOnly
   });
-  const filtered = availableOnly
+  const available = availableOnly
     ? fetched.models.filter((model) => readModelFlag(model, MODEL_AVAILABLE_KEYS) === true)
     : fetched.models;
+  const filtered = localOnly ? filterLocalModels(available) : available;
   const visible = filtered.slice(0, limit);
+
+  let localProviders: LocalProviderProbeResult[] | undefined;
+  if (probeLocal) {
+    localProviders = await probeLocalProviders({ timeoutMs: 2000 });
+  }
+
+  if (jsonOutput) {
+    const payload: Record<string, unknown> = { ...fetched, models: visible };
+    if (localProviders !== undefined) payload['localProviders'] = localProviders;
+    return toolText(JSON.stringify(payload, null, 2));
+  }
 
   const lines: string[] = [];
   lines.push('## Free OpenCode models');
@@ -147,5 +168,13 @@ export async function toolFreeModels(args: Record<string, unknown>): Promise<Mcp
       );
     });
   }
+
+  if (localProviders !== undefined) {
+    lines.push('');
+    lines.push('### Local providers');
+    lines.push('');
+    lines.push(formatLocalProviders(localProviders));
+  }
+
   return toolText(lines.join('\n'));
 }

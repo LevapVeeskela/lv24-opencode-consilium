@@ -10,6 +10,13 @@ import type {
   ExpertConfig
 } from '../../domain/types.js';
 import {
+  mergePresets,
+  PRESET_NAME_PATTERN,
+  type CouncilPreset,
+  type CustomPresetConfig
+} from '../../domain/council/presets.js';
+import { MAX_DEADLINE_MS, sanitizeDeadlineMs } from '../../application/run.js';
+import {
   DEFAULT_CONFIG,
   DEFAULT_EXPERT_PROMPTS,
   CONFIG_FILE_NAMES,
@@ -59,9 +66,24 @@ export function isTrustedProjectConfig(config: unknown): boolean {
 function markTrustedProjectConfig(config: ConsiliumConfig): void {
   Object.defineProperty(config, TRUSTED_PROJECT_CONFIG, {
     value: true,
-    enumerable: false,
+    // Enumerable symbols survive object spread (`{ ...config }`), which is how
+    // presets, deadline prompts and CLI overrides build derived configs. JSON
+    // serialization ignores symbol keys, so this never leaks into files.
+    enumerable: true,
     configurable: true
   });
+}
+
+/** Копирует пользовательские пресеты, не деля массивы `experts` с исходником */
+function clonePresets(presets?: CustomPresetConfig): CustomPresetConfig | undefined {
+  if (presets === undefined) return undefined;
+  const cloned: CustomPresetConfig = {};
+  for (const [name, preset] of Object.entries(presets)) {
+    const copy: Partial<CouncilPreset> = { ...preset };
+    if (preset.experts !== undefined) copy.experts = [...preset.experts];
+    cloned[name] = copy;
+  }
+  return Object.keys(cloned).length > 0 ? cloned : undefined;
 }
 
 /**
@@ -80,7 +102,8 @@ export function cloneConfig(config: ConsiliumConfig): ConsiliumConfig {
     output: { ...config.output },
     hooks: config.hooks ? { ...config.hooks } : undefined,
     opencodeArgs: config.opencodeArgs ? [...config.opencodeArgs] : undefined,
-    plugins: config.plugins ? [...config.plugins] : undefined
+    plugins: config.plugins ? [...config.plugins] : undefined,
+    presets: clonePresets(config.presets)
   };
   if (isTrustedProjectConfig(config)) {
     markTrustedProjectConfig(cloned);
@@ -106,7 +129,15 @@ export function mergeWithDefaults(partial: Partial<ConsiliumConfig>): ConsiliumC
     output: { ...base.output, ...partial.output },
     hooks: partial.hooks ?? base.hooks,
     opencodeArgs: partial.opencodeArgs ? [...partial.opencodeArgs] : base.opencodeArgs,
-    plugins: partial.plugins ? [...partial.plugins] : base.plugins
+    plugins: partial.plugins ? [...partial.plugins] : base.plugins,
+    // Валидные пресеты клонируются; некорректное значение сохраняется, чтобы
+    // validateConfig мог сообщить о нём (loadConfig отбрасывает его раньше).
+    presets:
+      partial.presets === undefined
+        ? clonePresets(base.presets)
+        : isRecord(partial.presets)
+          ? clonePresets(partial.presets as CustomPresetConfig)
+          : partial.presets
   };
 
   // Вариант модели — общий дефолт для моделей без собственного #variant.
@@ -147,6 +178,35 @@ export function isValidModelId(model: string): boolean {
  */
 export function validateConfig(config: ConsiliumConfig): string[] {
   const warnings: string[] = [];
+
+  if (config.localOnly !== undefined && typeof config.localOnly !== 'boolean') {
+    warnings.push('Поле localOnly должно быть boolean.');
+  }
+
+  if (config.presets !== undefined) {
+    if (config.presets === null) {
+      warnings.push('Поле presets должно быть объектом; значение проигнорировано.');
+    } else {
+      warnings.push(...mergePresets(config.presets).warnings);
+    }
+  }
+
+  if (config.deadlineMs !== undefined) {
+    const value = config.deadlineMs;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+      warnings.push(
+        'deadlineMs должен быть положительным целым числом (мс); значение проигнорировано.'
+      );
+      delete config.deadlineMs;
+    } else if (value > MAX_DEADLINE_MS) {
+      warnings.push(
+        `deadlineMs не может превышать 24 часа; значение ограничено ${MAX_DEADLINE_MS} мс.`
+      );
+      config.deadlineMs = sanitizeDeadlineMs(value);
+    } else {
+      config.deadlineMs = sanitizeDeadlineMs(value);
+    }
+  }
 
   if (!Array.isArray(config.experts)) {
     warnings.push('Поле experts должно быть массивом. Используются эксперты по умолчанию.');
@@ -406,6 +466,60 @@ function sanitizeExcludedAgents(
   }
 }
 
+/** Проверяет localOnly: не boolean — предупреждение, значение игнорируется */
+function sanitizeLocalOnly(
+  userConfig: Partial<ConsiliumConfig>,
+  warnings: string[]
+): void {
+  if (userConfig.localOnly === undefined) return;
+  if (typeof userConfig.localOnly !== 'boolean') {
+    warnings.push('Поле localOnly должно быть boolean; значение проигнорировано.');
+    delete userConfig.localOnly;
+  }
+}
+
+/**
+ * Проверяет пользовательские пресеты через mergePresets и оставляет в
+ * конфигурации только нормализованные пользовательские записи.
+ */
+function sanitizePresets(
+  userConfig: Partial<ConsiliumConfig>,
+  warnings: string[]
+): void {
+  if (userConfig.presets === undefined) return;
+
+  const raw: unknown = userConfig.presets;
+  const merged = mergePresets(raw as CustomPresetConfig);
+  warnings.push(...merged.warnings);
+
+  if (raw === null) {
+    warnings.push('Поле presets должно быть объектом; значение проигнорировано.');
+    delete userConfig.presets;
+    return;
+  }
+  if (!isRecord(raw)) {
+    delete userConfig.presets;
+    return;
+  }
+
+  const custom: CustomPresetConfig = {};
+  for (const [name, entry] of Object.entries(raw)) {
+    if (!PRESET_NAME_PATTERN.test(name) || !isRecord(entry)) continue;
+    const preset = merged.presets[name];
+    if (preset === undefined) continue;
+    const partial: Partial<CouncilPreset> = { ...preset };
+    delete partial.name;
+    if (partial.experts !== undefined) partial.experts = [...partial.experts];
+    custom[name] = partial;
+  }
+
+  if (Object.keys(custom).length > 0) {
+    userConfig.presets = custom;
+  } else {
+    delete userConfig.presets;
+  }
+}
+
 /** Удаляет экспертов с недопустимыми именами (включая найденных в opencode.json) */
 function sanitizeExpertNames(
   userConfig: Partial<ConsiliumConfig>,
@@ -478,6 +592,8 @@ export function loadConfig(
   // автоопределения, чтобы они не влияли на пути запуска и рабочую директорию.
   applyProjectConfigTrustPolicy(userConfig, trustProjectConfig, warnings);
   sanitizeChairAgent(userConfig, warnings);
+  sanitizeLocalOnly(userConfig, warnings);
+  sanitizePresets(userConfig, warnings);
 
   if (Array.isArray(userConfig.experts)) {
     userConfig.experts = userConfig.experts

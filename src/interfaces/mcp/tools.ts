@@ -41,6 +41,15 @@ export const MCP_TOOLS: McpToolDef[] = [
           exclusiveMinimum: 0,
           description: 'Timeout per expert in milliseconds.'
         },
+        deadline_ms: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Overall wall-clock deadline for the expert phase in milliseconds.'
+        },
+        local_only: {
+          type: 'boolean',
+          description: 'Allow only local model providers (Ollama, LM Studio, vLLM, llama.cpp, ...).'
+        },
         output_file: {
           type: 'string',
           description: 'Optional path for saving the result (must stay inside the workspace).'
@@ -52,8 +61,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         preset: {
           type: 'string',
-          enum: [...PRESET_NAMES],
-          description: 'Configuration preset applied before the run.'
+          description:
+            'Configuration preset applied before the run: a built-in name (fast, deep, security, review, free) or a custom preset from consilium.config.json.'
         },
         consensus: {
           type: 'boolean',
@@ -123,6 +132,22 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: 'boolean',
           default: false,
           description: 'Ignore the cache and refresh the model catalog.'
+        },
+        local_only: {
+          type: 'boolean',
+          default: false,
+          description: 'Show only models from local providers (Ollama, LM Studio, vLLM, llama.cpp, ...).'
+        },
+        probe_local: {
+          type: 'boolean',
+          default: false,
+          description: 'Probe local Ollama and LM Studio endpoints (2s timeout) and include their status.'
+        },
+        format: {
+          type: 'string',
+          enum: ['text', 'json'],
+          default: 'text',
+          description: 'Response format: a text table or a JSON payload.'
         }
       },
       required: []

@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.7.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.6.0
+# consilium v1.7.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -212,6 +212,18 @@ Ranking (0–1.2) is deterministic: context window 30%, tool calling 20%, struct
 
 Call outcomes are remembered in `.consilium/reliability.json` (successes, rate limits, timeouts, latency per model). `consilium models --reliability` prints the table; the ranking accepts an optional reliability bonus once a model has at least 3 attempts. The file is local and safe to delete.
 
+## Local and privacy mode
+
+Run only on local providers (Ollama, LM Studio, llama.cpp, vLLM):
+
+```bash
+consilium models --local              # only local models in the ranked catalog
+consilium models --probe-local        # are Ollama / LM Studio running?
+consilium --local-only "Review the changes"
+```
+
+`--local-only` is a hard guarantee: every expert and the chair must have an explicit model whose provider is local, otherwise the run is rejected before spawning (exit 2, MCP tool error, or a library error). A missing model is an error, not an implicit cloud fallback. `doctor` adds a `local-providers` check that fails when `localOnly` is on and no local provider is reachable.
+
 ## Use it from any harness (MCP)
 
 ```bash
@@ -244,9 +256,9 @@ Any MCP client with stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carr
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Chair synthesis + expert opinions + JSON metadata (time, usage, cost, models, findings) |
+| `consilium_run` | `task` (required), `experts`, `chair`, `timeout_ms`, `deadline_ms`, `local_only`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Chair synthesis + expert opinions + JSON metadata (time, usage, cost, models, findings, deadline) |
 | `consilium_list_agents` | — | Configured experts, models, chair, presets, config path |
-| `consilium_free_models` | `limit`, `available_only`, `refresh` | Ranked free models table |
+| `consilium_free_models` | `limit`, `available_only`, `refresh`, `local_only`, `probe_local` | Ranked free models table + local provider probe |
 | `consilium_doctor` | — | Environment/config diagnostics |
 | `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | Proposal (default) or writes `opencode.json` + `consilium.config.json` |
 
@@ -259,7 +271,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -309,6 +321,7 @@ consilium baseline prune [--older-than <days>] [--all --yes]
 consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
+consilium presets [--json]
 ```
 
 **Core**
@@ -318,7 +331,9 @@ consilium stats [--json] [--html <file>]
 | `-c, --config <file>` | Config file (otherwise auto-discovers) |
 | `-e, --experts a,b` | Subset of experts |
 | `--chair <agent>` | Chair agent name |
-| `--preset <name>` | `fast`, `deep`, `security`, `review`, `free` |
+| `--preset <name>` | `fast`, `deep`, `security`, `review`, `free`, or a custom preset from config |
+| `--deadline <ms>` | Expert-phase wall-clock budget; stragglers are cancelled and the chair synthesizes partial results (max 24 h) |
+| `--local-only` | Require an explicit local model for every agent; reject non-local providers before running |
 | `--expert-timeout`, `--chair-timeout` | Timeouts in ms (per attempt) |
 | `-r, --retries <n>` | Retry count (0 = single attempt) |
 | `-o, --output <file>` | Save the result (text/markdown/json by `-f`) |
@@ -366,6 +381,8 @@ consilium stats [--json] [--html <file>]
 | `--reliability` | `models`: print per-model success/latency from `.consilium/reliability.json` |
 | `history [--limit N]` | Recent runs from `.consilium/runs` |
 | `stats [--html <file>]` | Aggregate success/latency/cost/findings/per-model errors |
+| `presets [--json]` | List built-in and custom presets |
+| `models --local` / `--probe-local` | Local-only ranking and Ollama/LM Studio probe |
 
 Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy gate failed.
 
@@ -465,6 +482,16 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 `--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
 
+## Deadlines and partial synthesis
+
+Long free-model runs should not stall CI or a pre-commit hook:
+
+```bash
+consilium --deadline 180000 --diff "Review the current changes"
+```
+
+`--deadline <ms>` caps the expert phase (max 24 h; `deadlineMs` in config). When it fires, in-flight experts are cancelled, finished answers are kept, and the chair synthesizes them with an explicit note: how many experts finished and which roles are missing. `metadata.deadline` = `{ limitMs, hit, completed, missing }`. If no expert finished, the chair is skipped and the run fails with `errorCode: DEADLINE` (exit 1); a partial run with at least one expert succeeds.
+
 ## Evaluation harness (`consilium eval`)
 
 Prove the council catches more than a single model, deterministically:
@@ -521,7 +548,7 @@ V1 note: OpenCode V1 reads the singular `command/` directory (`.opencode/command
 A composite action reviews a pull request diff and posts or updates exactly one comment with the `<!-- consilium:report -->` marker:
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.6.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.7.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -538,6 +565,18 @@ It runs `consilium --diff --base origin/<base> --report pr --report-file consili
 | `security` | sec, arch, ba | security-focused review |
 | `review` | arch, sec, ux | code review |
 | `free` | all four | for a free-model bootstrap |
+
+Custom presets live in `consilium.config.json` and merge over the built-ins:
+
+```json
+{
+  "presets": {
+    "docs": { "description": "Documentation review", "experts": ["arch", "ba"] }
+  }
+}
+```
+
+`consilium presets` lists the merged set (`--json` for scripts); `--preset docs` works in the CLI, MCP `consilium_run` and the V2 plugin. A custom preset can override a built-in name; its fields replace the built-in ones.
 
 ## Configuration
 
@@ -567,7 +606,7 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `retry.maxConcurrency` | 3 | 1–8 parallel agents |
 | `output.file` | `false` | `false` disables saving; a string enables it |
 | `standalone` | `true` | Private server; avoids port conflicts when OpenCode is already running |
-| `autoApprove` | `false` | `--auto`; only enable if you trust the agents/tools |
+| `autoApprove` | `false` | Config-only; auto-approves permissions. Ignored from project config unless `-c` |
 | `autoDiscoverAgents` | `true` | Reuse agents from `opencode.json` |
 | `artifacts` | `false` | `true` → `.consilium/runs/<id>/`; a string sets a custom directory |
 | `consensus` | `false` | Lexical expert-agreement analysis |
@@ -581,6 +620,9 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `debounceMs` | 400 | Watch-mode delay, ms |
 | `findings` | `false` | Structured findings block in expert/chair answers |
 | `context` | `off` | `auto` adds changed files, project rules, related tests and commits to the task |
+| `deadlineMs` | — | Expert-phase budget in ms (max 24 h); partial synthesis on timeout |
+| `localOnly` | `false` | Require an explicit local model for every agent |
+| `presets` | — | Custom presets merged over the built-in set |
 | `opencodePath` | `opencode` | Custom CLI path (ignored from project config unless `-c`) |
 | `cwd` | current | Working directory for OpenCode (ignored from project config unless `-c`) |
 
@@ -652,6 +694,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.7.0** — deadlines and privacy. `--deadline <ms>` caps the expert phase: stragglers are cancelled, the chair synthesizes the finished experts with a missing-roles note, and a run with zero completed experts fails with `DEADLINE`. `--local-only` requires an explicit local model (Ollama, LM Studio, llama.cpp, vLLM) for every agent; `models --local` filters the catalog and `models --probe-local` reports whether local providers are running; `doctor` adds a `local-providers` check. Custom presets in `consilium.config.json` merge over built-ins and work in CLI, MCP and the plugin (`consilium presets` lists them). The trusted-config marker now survives object spreads. 446 tests.
+
 **1.6.0** — evaluation harness, context pack, reliability memory and a GitHub Action. `consilium eval` runs planted-bug fixtures with deterministic claim matching and reports catch/FP/p50 latency/cost (`--fail-under` exits `3`). `--context auto` adds changed files, the nearest `AGENTS.md`, related tests and recent commits under a char budget. Model outcomes and latency are stored in `.consilium/reliability.json` (`models --reliability`). A composite GitHub Action runs a PR diff review and posts/updates one comment. Fuzzy claim merging deduplicates paraphrased findings. `consilium history` and `consilium stats` summarize runs, latency and per-model reliability. 381 tests.
 
 **1.5.0** — structured findings and a policy gate. `--findings` makes experts and the chair return a validated `findings[]` JSON block (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); findings are deduplicated by a stable fingerprint, merged across roles, marked `contested` when the chair rejects them, and stored in `metadata.findings`. HTML and PR reports render the findings table and the dissent ledger. `--fail-on <severity>` gates on **new** findings with exit code `3`; `consilium baseline accept|prune` manages `.consilium/baseline.json`. Also: P1 correctness fixes (config V1/V2 precedence, malformed-config warnings, model cache fallback/`minContext`/dedupe, cost telemetry, SIGKILL escalation, `ses_` session prefix, CLI `argv[0]` parsing, watch rerun/signals, preset/consensus/smart-experts edge cases) and the `/council` slash command. 317 tests.
@@ -680,7 +724,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (381 tests)
+npm test            # build + node:test (446 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

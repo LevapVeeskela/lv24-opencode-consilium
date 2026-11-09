@@ -23,6 +23,7 @@ import {
 } from '../infrastructure/opencode/agents.js';
 import { DEFAULT_CONFIG, DEFAULT_CHAIR_PROMPT_TEMPLATE } from '../domain/defaults.js';
 import { applyPreset } from '../domain/council/presets.js';
+import { auditLocalOnly } from '../infrastructure/local-models.js';
 import { selectSmartExperts } from '../domain/council/smart-experts.js';
 import { createCostTracker } from '../domain/council/fallback.js';
 import { appendFindingsInstruction, buildExpertPrompt } from '../domain/council/prompts.js';
@@ -31,11 +32,18 @@ import {
   applyCostTelemetryWarning,
   buildCancelledMetadata,
   buildCompletedResult,
+  buildDeadlineChairNote,
+  buildDeadlineFailureChair,
+  buildDeadlineMetadata,
   createCancelledResult,
+  runExpertPhaseWithDeadline,
+  sanitizeDeadlineMs,
   saveArtifactRun,
   saveResult,
   selectChairAgent,
-  selectExperts
+  selectExperts,
+  summarizeDeadline,
+  withDeadlineChairNote
 } from './run.js';
 
 /**
@@ -49,6 +57,8 @@ export class Consilium {
   private warnings: string[] = [];
   private controller: RunController | null = null;
   private startTime = 0;
+  /** Отмена запрошена пользователем (не дедлайном) */
+  private cancelRequested = false;
 
   constructor(config?: Partial<ConsiliumConfig> | string) {
     if (typeof config === 'string') {
@@ -114,6 +124,7 @@ export class Consilium {
    * Отменить текущий запуск
    */
   cancel(): void {
+    this.cancelRequested = true;
     this.controller?.cancel();
   }
 
@@ -134,6 +145,7 @@ export class Consilium {
     this.controller = controller;
     this.status = 'running_experts';
     this.startTime = Date.now();
+    this.cancelRequested = false;
 
     let hooks: ConsiliumConfig['hooks'] | undefined;
 
@@ -148,7 +160,7 @@ export class Consilium {
     }
 
     if (options.preset) {
-      runConfig = applyPreset(runConfig, options.preset);
+      runConfig = applyPreset(runConfig, options.preset, runConfig.presets);
     }
 
     if (options.timeout !== undefined && Number.isFinite(options.timeout) && options.timeout > 0) {
@@ -164,6 +176,7 @@ export class Consilium {
     const maxCost = options.maxCost ?? runConfig.maxCost;
     const fallbackModels = options.fallbackModels ?? runConfig.fallbackModels ?? [];
     const session = options.session ?? runConfig.session;
+    const deadlineMs = sanitizeDeadlineMs(options.deadlineMs ?? runConfig.deadlineMs);
 
     runConfig.consensus = consensusEnabled;
     if (options.findings !== undefined) {
@@ -172,6 +185,35 @@ export class Consilium {
     runConfig.fallbackModels = fallbackModels;
     runConfig.session = session;
     if (maxCost !== undefined) runConfig.maxCost = maxCost;
+    if (deadlineMs !== undefined) {
+      runConfig.deadlineMs = deadlineMs;
+    } else {
+      delete runConfig.deadlineMs;
+    }
+
+    // Гарантия приватности на уровне library/plugin/MCP, а не только CLI:
+    // в localOnly каждый агент обязан иметь явную локальную модель.
+    if (runConfig.localOnly === true) {
+      const audit = auditLocalOnly([
+        ...runConfig.experts.map(expert => ({
+          label: `эксперт ${expert.name}`,
+          model: expert.model
+        })),
+        { label: `председатель ${runConfig.chair.agent}`, model: runConfig.chair.model }
+      ]);
+      if (audit.missing.length > 0) {
+        throw new Error(
+          'localOnly требует явную локальную модель для каждого агента. ' +
+            `Без модели: ${audit.missing.join(', ')}`
+        );
+      }
+      if (audit.nonLocal.length > 0) {
+        throw new Error(
+          'localOnly требует только локальных провайдеров. ' +
+            `Нелокальные модели: ${audit.nonLocal.join(', ')}`
+        );
+      }
+    }
 
     const baseHooks = runConfig.hooks ?? {};
     runConfig.hooks = {
@@ -246,8 +288,28 @@ export class Consilium {
 
       const costTracker = createCostTracker(maxCost);
       const parallelStarted = Date.now();
-      const expertResults = await callExpertsParallel(councilExperts, task, runConfig, { controller });
+      const expertPhase = await runExpertPhaseWithDeadline(
+        deadlineMs,
+        controller,
+        () => callExpertsParallel(councilExperts, task, runConfig, { controller })
+      );
+      const expertResults = expertPhase.value;
+      const deadlineHit = expertPhase.hit;
       const parallelTime = Date.now() - parallelStarted;
+
+      const deadlineSummary =
+        deadlineMs !== undefined ? summarizeDeadline(expertResults) : undefined;
+      const deadlineMetadata =
+        deadlineMs !== undefined && deadlineSummary !== undefined
+          ? buildDeadlineMetadata(deadlineMs, deadlineHit, deadlineSummary)
+          : undefined;
+
+      // Дедлайн отменяет общий контроллер, чтобы завершить дочерние процессы,
+      // но председатель должен получить шанс синтезировать частичный результат.
+      // Пользовательскую отмену не сбрасываем.
+      if (deadlineHit && !this.cancelRequested) {
+        controller.reset();
+      }
 
       for (const result of expertResults) {
         costTracker.add(result.agent, result.usage);
@@ -261,7 +323,7 @@ export class Consilium {
         );
       }
 
-      if (controller.isCancelled()) {
+      if (this.cancelRequested || controller.isCancelled()) {
         const result = createCancelledResult(
           expertResults,
           undefined,
@@ -278,7 +340,8 @@ export class Consilium {
             costTracker.report(),
             session,
             findingsEnabled ? collectFindings(expertResults) : undefined
-          )
+          ),
+          ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
         this.status = 'cancelled';
         saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
@@ -290,7 +353,15 @@ export class Consilium {
       const chairAgent = selectChairAgent(runConfig, options.chair);
 
       let chairResult: AgentResult;
-      if (costTracker.exceeded()) {
+      if (
+        deadlineHit &&
+        deadlineMs !== undefined &&
+        deadlineSummary !== undefined &&
+        deadlineSummary.completed === 0
+      ) {
+        // Дедлайн не оставил ни одного успешного эксперта: синтезировать нечего.
+        chairResult = buildDeadlineFailureChair(chairAgent, deadlineMs, deadlineSummary);
+      } else if (costTracker.exceeded()) {
         costExceeded = true;
         const spent = costTracker.report().spent;
         chairResult = {
@@ -305,8 +376,16 @@ export class Consilium {
             'председатель не запускался'
         };
       } else {
+        const successfulResults =
+          deadlineHit && deadlineSummary !== undefined
+            ? expertResults.filter(result => result.success)
+            : expertResults;
+        const chairConfig =
+          deadlineHit && deadlineSummary !== undefined
+            ? withDeadlineChairNote(runConfig, buildDeadlineChairNote(deadlineSummary))
+            : runConfig;
         try {
-          chairResult = await callChair(expertResults, task, runConfig, { controller });
+          chairResult = await callChair(successfulResults, task, chairConfig, { controller });
           costTracker.add(chairResult.agent, chairResult.usage);
           costExceeded = costTracker.exceeded();
         } catch (error) {
@@ -328,7 +407,7 @@ export class Consilium {
         ? collectFindings(expertResults, chairResult)
         : undefined;
 
-      if (controller.isCancelled()) {
+      if (this.cancelRequested || controller.isCancelled()) {
         const result = createCancelledResult(
           expertResults,
           chairResult,
@@ -345,7 +424,8 @@ export class Consilium {
             costTracker.report(),
             session,
             findingsSummary
-          )
+          ),
+          ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
         this.status = 'cancelled';
         saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
@@ -369,6 +449,23 @@ export class Consilium {
         session,
         fallbackModels
       });
+
+      if (deadlineMetadata !== undefined) {
+        result.metadata = { ...result.metadata, deadline: deadlineMetadata };
+        if (
+          deadlineHit &&
+          deadlineSummary !== undefined &&
+          deadlineSummary.completed > 0 &&
+          deadlineSummary.missing.length > 0
+        ) {
+          // Недостающие роли должны быть видны и в тексте, не только в JSON.
+          const note =
+            `Дедлайн экспертной фазы: ${deadlineSummary.completed} из ` +
+            `${deadlineSummary.total} экспертов завершили работу; не ответили: ` +
+            deadlineSummary.missing.join(', ');
+          result.text = result.text.length > 0 ? `${result.text}\n\n[${note}]` : `[${note}]`;
+        }
+      }
 
       applyCostTelemetryWarning(result, maxCost, hooks);
 
