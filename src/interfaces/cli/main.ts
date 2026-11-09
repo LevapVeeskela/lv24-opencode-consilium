@@ -23,6 +23,7 @@ import { commandBaseline } from './commands/baseline.js';
 import { commandEval } from './commands/eval.js';
 import { commandHistory, commandStats } from './commands/history.js';
 import { commandPresets } from './commands/presets.js';
+import { commandAudit } from './commands/audit.js';
 
 export { applyCliOverrides } from './overrides.js';
 
@@ -86,6 +87,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         return await commandStats(options);
       case 'presets':
         return await commandPresets(options);
+      case 'audit':
+        return await commandAudit(options);
       case 'run':
         return await commandRun(options);
       default:

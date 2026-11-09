@@ -10,7 +10,7 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
 ИСПОЛЬЗОВАНИЕ:
   consilium [опции] <задача>
   consilium <задача> -              задача читается из stdin
-  consilium init [--free]
+  consilium init [--free | --local]
   consilium models [--available] [--local] [--probe-local] [--json] [--reliability]
   consilium presets [--json]
   consilium doctor
@@ -20,6 +20,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
   consilium history [--limit N] [--json]
   consilium stats [--json] [--html <файл>]
+  consilium audit --since <ref> [--dry-run] [--json] [--findings|--no-findings]
+                   [--fail-on <уровень>] [--max-cost <usd>]
 
 КОДЫ ВЫХОДА:
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
@@ -40,6 +42,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --expert-timeout <мс>   Таймаут экспертов (по умолчанию: 300000)
   --chair-timeout <мс>    Таймаут председателя (по умолчанию: 600000)
   --deadline <мс>         Общий дедлайн экспертной фазы (не больше 24 часов)
+  --rounds <1|2>          Раундов дебатов: 1 — обычный, 2 — анонимное peer-review
+                          экспертов перед председателем
   --local-only            Только локальные модели (ollama/lmstudio/vllm/…);
                           завершиться с кодом 2, если модель внешняя
   -r, --retries <число>   Повторные попытки
@@ -83,8 +87,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   hooks install|uninstall Установить/удалить git pre-commit hook
 
 КОМАНДЫ:
-  init [--free] [--force] [--dry-run] [--native-v2]
-                          Создать конфиг; --free — подобрать и проверить сильнейшие бесплатные модели
+  init [--free | --local] [--force] [--dry-run] [--native-v2]
+                          Создать конфиг; --free — подобрать и проверить сильнейшие бесплатные модели;
+                          --local — собрать консилиум из моделей Ollama/LM Studio
+                          (--free и --local взаимоисключающие)
   models [--available] [--verify] [--limit N] [--refresh] [--json] [--reliability]
          [--local] [--probe-local]
                           Рейтинг бесплатных моделей (models.dev + OpenRouter)
@@ -106,6 +112,11 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
                           История запусков из .consilium/runs
   stats [--json] [--html <файл>]
                           Сводная статистика запусков; --html — автономный HTML-отчёт
+  audit --since <ref> [--dry-run] [--json] [--findings|--no-findings]
+        [--fail-on <уровень>] [--max-cost <usd>] [-c <файл>] [-s] [--artifacts]
+                          Аудит изменений с git ref: ревью diff, баги, безопасность и тесты;
+                          --dry-run — показать запрос без вызова моделей
+                          --fail-on автоматически включает находки
 
 СОВМЕСТИМОСТЬ:
   Работает с OpenCode V1 и V2. Формат opencode.json определяется автоматически:
@@ -146,6 +157,9 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium presets --json
   consilium models --reliability
   consilium eval --fail-under 80
+  consilium init --local --dry-run
+  consilium audit --since HEAD~1 --fail-on high
+  consilium --rounds 2 "Оценить архитектуру проекта"
   consilium doctor
 
 ДОКУМЕНТАЦИЯ:

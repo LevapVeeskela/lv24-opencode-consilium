@@ -44,6 +44,8 @@ export interface LocalProviderProbeResult {
   ok: boolean;
   /** Количество моделей (0 при ошибке) */
   models: number;
+  /** Идентификаторы моделей без префикса провайдера (не больше 200) */
+  modelIds: string[];
   /** Текст ошибки, если проверка не удалась */
   error?: string;
 }
@@ -60,6 +62,8 @@ interface ProbeTarget {
 }
 
 const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
+/** Максимум идентификаторов моделей в одном результате проверки */
+const MAX_PROBE_MODEL_IDS = 200;
 const PROBE_TARGETS: readonly ProbeTarget[] = [
   { provider: 'ollama', url: 'http://127.0.0.1:11434/api/tags' },
   { provider: 'lmstudio', url: 'http://127.0.0.1:1234/v1/models' }
@@ -171,13 +175,36 @@ function describeError(error: unknown, timeoutMs: number): string {
   return 'unknown error';
 }
 
+/** Извлекает массив моделей из ответа Ollama (`models`) или LM Studio (`data`) */
+function modelEntries(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return [];
+  if (Array.isArray(payload['models'])) return payload['models'];
+  if (Array.isArray(payload['data'])) return payload['data'];
+  return [];
+}
+
 /** Считает модели в ответе Ollama (`models`) или LM Studio (`data`) */
 function countModels(payload: unknown): number {
-  if (Array.isArray(payload)) return payload.length;
-  if (!isRecord(payload)) return 0;
-  if (Array.isArray(payload['models'])) return payload['models'].length;
-  if (Array.isArray(payload['data'])) return payload['data'].length;
-  return 0;
+  return modelEntries(payload).length;
+}
+
+/**
+ * Извлекает идентификаторы моделей из ответа провайдера.
+ * Некорректные элементы пропускаются; список ограничен MAX_PROBE_MODEL_IDS.
+ */
+function extractModelIds(payload: unknown, provider: LocalProbeProvider): string[] {
+  const field = provider === 'ollama' ? 'name' : 'id';
+  const ids: string[] = [];
+  for (const entry of modelEntries(payload)) {
+    if (ids.length >= MAX_PROBE_MODEL_IDS) break;
+    if (!isRecord(entry)) continue;
+    const value = entry[field];
+    if (typeof value !== 'string') continue;
+    const id = value.trim();
+    if (id.length > 0) ids.push(id);
+  }
+  return ids;
 }
 
 /** Проверяет один провайдер; любые ошибки превращаются в результат */
@@ -201,6 +228,7 @@ async function probeOne(
         url: target.url,
         ok: false,
         models: 0,
+        modelIds: [],
         error: statusText.length > 0 ? `${label} ${statusText}` : label
       };
     }
@@ -210,7 +238,8 @@ async function probeOne(
       provider: target.provider,
       url: target.url,
       ok: true,
-      models: countModels(payload)
+      models: countModels(payload),
+      modelIds: extractModelIds(payload, target.provider)
     };
   } catch (error) {
     return {
@@ -218,6 +247,7 @@ async function probeOne(
       url: target.url,
       ok: false,
       models: 0,
+      modelIds: [],
       error: describeError(error, timeoutMs)
     };
   }

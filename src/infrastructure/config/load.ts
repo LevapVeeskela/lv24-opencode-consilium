@@ -339,6 +339,13 @@ export function validateConfig(config: ConsiliumConfig): string[] {
     warnings.push(`context должен быть "off" или "auto", получено: ${String(config.context)}`);
   }
 
+  if (config.rounds !== undefined) {
+    if (config.rounds !== 1 && config.rounds !== 2) {
+      warnings.push('rounds должен быть 1 или 2; используется 1.');
+      config.rounds = 1;
+    }
+  }
+
   return warnings;
 }
 

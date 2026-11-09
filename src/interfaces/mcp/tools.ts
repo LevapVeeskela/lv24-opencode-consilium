@@ -77,6 +77,14 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: 'boolean',
           description: 'Pick 2-3 relevant experts for the task instead of running all enabled experts.'
         },
+        rounds: {
+          type: 'integer',
+          enum: [1, 2],
+          minimum: 1,
+          maximum: 2,
+          description:
+            'Debate rounds: 1 (default, single expert round) or 2 (anonymous peer review before the chair).'
+        },
         max_cost: {
           type: 'number',
           minimum: 0,

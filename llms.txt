@@ -2,13 +2,13 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.7.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.8.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.7.0`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -27,6 +27,9 @@ Version: 1.7.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium presets [--json]` — built-in and custom presets.
 - `--deadline <ms>` — cap the expert phase; partial synthesis with `metadata.deadline`.
 - `--local-only` — require explicit local models; `models --local` / `--probe-local`.
+- `consilium init --local [--dry-run] [--force]` — probe Ollama/LM Studio and write a `localOnly` config.
+- `--rounds <1|2>` — second anonymized peer-review round; `metadata.debate`.
+- `consilium audit --since <ref> [--dry-run] [--fail-on <severity>]` — review `<ref>...HEAD` end-to-end.
 - `--context <off|auto>` — add changed files, rules, tests and commits to the task.
 - `consilium models --reliability` — per-model success/latency table.
 
@@ -49,6 +52,7 @@ Version: 1.7.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - State: files under `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); no daemon, no database.
 - Deadline: `--deadline <ms>` → `metadata.deadline = { limitMs, hit, completed, missing }`; zero completed experts → `errorCode: DEADLINE`.
 - Privacy: `--local-only` requires an explicit local provider (`ollama`, `lmstudio`, `llamacpp`, `vllm`) for every agent; otherwise the run is rejected before spawning.
+- Debate: `--rounds 2` → `metadata.debate = { rounds, participants, changed }`; round 2 doubles model calls and is skipped on low expert count, deadline or cost limit.
 
 ## MCP
 

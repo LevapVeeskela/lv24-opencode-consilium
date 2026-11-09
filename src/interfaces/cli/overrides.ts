@@ -93,6 +93,7 @@ export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions):
   if (options.debounceMs !== undefined) result.debounceMs = options.debounceMs;
   if (options.context !== undefined) result.context = options.context;
   if (options.deadlineMs !== undefined) result.deadlineMs = options.deadlineMs;
+  if (options.rounds !== undefined) result.rounds = options.rounds;
 
   // Локальный режим проверяется после пресета/фильтра экспертов и варианта:
   // каждый агент обязан иметь явную локальную модель, иначе приватность не гарантируется.

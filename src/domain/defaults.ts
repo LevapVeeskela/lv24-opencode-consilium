@@ -79,7 +79,7 @@ export const EXCLUDED_AGENTS = [
  * Конфигурация по умолчанию
  */
 export const DEFAULT_CONFIG: ConsiliumConfig = {
-  version: '1.7.0',
+  version: '1.8.0',
   experts: DEFAULT_EXPERTS,
   chair: DEFAULT_CHAIR,
   excludedAgents: EXCLUDED_AGENTS,

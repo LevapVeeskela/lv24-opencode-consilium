@@ -157,6 +157,7 @@ export async function toolConsiliumRun(
   const consensus = optionalBoolean(args, 'consensus');
   const findings = optionalBoolean(args, 'findings');
   const smartExperts = optionalBoolean(args, 'smart_experts');
+  const rounds = optionalInteger(args, 'rounds', 1, 2);
   const maxCostRaw = args['max_cost'];
   if (
     maxCostRaw !== undefined &&
@@ -207,6 +208,7 @@ export async function toolConsiliumRun(
   if (session !== undefined) config.session = session;
   if (artifacts !== undefined) config.artifacts = artifacts;
   if (deadlineMs !== undefined) config.deadlineMs = deadlineMs;
+  if (rounds !== undefined) config.rounds = rounds;
   if (localOnly !== undefined) config.localOnly = localOnly;
   if (outputPath.value !== undefined) {
     config.output.file = outputPath.value;

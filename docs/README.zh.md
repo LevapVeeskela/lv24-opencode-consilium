@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.7.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.7.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.8.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.8.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -98,8 +98,12 @@ consilium --context auto --diff "Review the current changes"
 ```bash
 consilium models --local              # 排名目录中只保留本地模型
 consilium models --probe-local        # Ollama / LM Studio 是否在运行？
+consilium init --local                # 探测并写入 localOnly 配置
+consilium init --local --dry-run      # 只预览模型分配，不写文件
 consilium --local-only "Review the changes"
 ```
+
+`init --local` 向 Ollama（`/api/tags`）和 LM Studio（`/v1/models`）查询模型列表，将模型轮流（round-robin）分配给 `arch`、`ux`、`ba`、`sec` 和主席，并写入含 `localOnly: true` 的 `consilium.config.json`（不加 `--force` 不覆盖现有文件）。支持 `--dry-run` 与 `--json`。
 
 `--local-only` 是硬性保证：每位专家和主席都必须有明确的本地提供商模型，否则在启动前直接拒绝运行（退出码 2、MCP 工具错误或库错误）。缺少模型就是错误，不会隐式回退到云端。`doctor` 新增 `local-providers` 检查：当 `localOnly` 开启且没有任何本地提供商可达时，该检查失败。
 ## 在任意宿主中使用（MCP）
@@ -120,7 +124,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 
 | 工具 | 参数 / 结果 |
 | --- | --- |
-| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`deadline_ms`、`local_only`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`findings` → 方案 + 意见 + 元数据（含截止时间） |
+| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`deadline_ms`、`local_only`、`rounds`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`findings` → 方案 + 意见 + 元数据（含截止时间与辩论信息） |
 | `consilium_list_agents` | 专家、模型、主席、预设、配置路径 |
 | `consilium_free_models` | `limit`、`available_only`、`refresh`、`local_only`、`probe_local` |
 | `consilium_doctor` | 环境/配置诊断 |
@@ -131,7 +135,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -153,7 +157,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```text
 consilium [options] <task>
 consilium <task> -                  # read the task from stdin
-consilium init [--free] [--dry-run] [--force] [--no-verify] [--native-v2]
+consilium init [--free|--local] [--dry-run] [--force] [--no-verify] [--native-v2]
 consilium models [--available] [--verify] [--limit N] [--refresh] [--json]
 consilium doctor
 consilium mcp [--install] [--global]
@@ -165,6 +169,7 @@ consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd
 consilium history [--limit N] [--json]
 consilium stats [--json] [--html <file>]
 consilium presets [--json]
+consilium audit --since <ref> [--dry-run] [--fail-on <severity>] [--json]
 ```
 
 | 选项 | 说明 |
@@ -172,6 +177,7 @@ consilium presets [--json]
 | `-c, --config <file>` / `-e, --experts a,b` / `--chair <agent>` | 配置文件 / 专家子集 / 主席 |
 | `--preset <name>` | `fast`、`deep`、`security`、`review`、`free` 或配置中的自定义预设 |
 | `--deadline <ms>` / `--local-only` | 专家阶段时限（最多 24 小时，超时后部分综合）/ 每个 Agent 必须显式使用本地模型，启动前拒绝非本地提供商 |
+| `--rounds <1\|2>` | `2` 增加匿名化同伴评审轮次，模型调用翻倍（默认 1） |
 | `--expert-timeout`、`--chair-timeout`、`-r, --retries <n>` | 每次尝试超时（ms）、重试（0 = 一次） |
 | `-o, --output <file>` / `--no-save` / `-f, --format <fmt>` | 保存 / 不保存 / `text`、`markdown`、`json` |
 | `--task-file <file>` / `-s, --silent` / `-V, --verbose` / `-v, --version` / `-h, --help` | 文件或 stdin 读任务 / 只出结果 / 原始事件 / 版本 / 帮助 |
@@ -186,6 +192,8 @@ consilium presets [--json]
 | `history [--limit N]` | 最近运行：成功、成本、发现、一致性（`.consilium/runs`；`--json` 可用） |
 | `stats [--html <file>]` | 成功率、p50/p95 延迟、成本、发现与按模型错误（`--json`；`--html` 写静态报告） |
 | `presets [--json]` / `models --local` / `--probe-local` | 列出内置与自定义预设 / 仅本地模型排名 / 探测 Ollama、LM Studio |
+| `init --local` | 探测 Ollama/LM Studio，将本地模型轮流分配给各角色与主席，写入 `localOnly: true` 配置；`--dry-run` 不写文件，`--json` 输出机器可读结果 |
+| `audit --since <ref>` | 端到端评审 `<ref>...HEAD`；`--dry-run` 只构建 diff，不调用模型 |
 
 退出码：`0` 成功，`1` 运行失败，`2` 用法错误，`3` 策略门禁失败。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
 ## 运行产物/报告/watch/git hooks
@@ -228,6 +236,15 @@ consilium --deadline 180000 --diff "Review the current changes"
 
 `--deadline <ms>` 限制专家阶段（最多 24 小时；配置中为 `deadlineMs`）。触发时，仍在运行的专家会被取消，已完成的回答保留，主席据此综合，并明确注明有多少专家完成、哪些角色缺失。`metadata.deadline` = `{ limitMs, hit, completed, missing }`。若没有任何专家完成，主席被跳过，运行以 `errorCode: DEADLINE` 失败（退出码 1）；只要至少有一位专家完成，部分运行即为成功。
 
+## 辩论轮次
+`--rounds 2` 增加第二轮：每位专家看到匿名化的同伴回答（A/B/C），指出错误与遗漏并给出最终立场；主席收到最终立场以及哪些专家改变了立场，`metadata.debate = { rounds, participants, changed }`。
+
+```bash
+consilium --rounds 2 --preset deep "Design the migration plan"
+```
+
+第二轮使模型调用翻倍，因此为可选项：成功专家少于两位、触发截止时间或已超过 `--max-cost` 时跳过。第二轮延续每位专家的会话，发现从最终回答中收集；第一轮回答会包含在该专家自己的第二轮提示中，同伴回答匿名化并标记为数据。
+
 ## 评估工具（`consilium eval`）
 确定性地证明议会比单个模型发现更多：
 
@@ -252,6 +269,14 @@ consilium stats --html stats.html  # 自包含静态报告
 - `stats --html` 写出经过转义、无脚本的静态页面。
 - 两个命令都只读数据，不需要守护进程。
 
+## 审计提交范围
+```bash
+consilium audit --since v1.7.0 --fail-on high
+consilium audit --since HEAD~5 --dry-run
+```
+
+`audit` 为 `<ref>...HEAD` 构建不可信 diff，运行议会，并复用报告、产物与策略门禁。`--dry-run` 只打印 ref、文件数和截断标记，不调用模型；`--since` 为必填项并会校验（不允许 shell 元字符）。用 cron、任务计划程序或 CI 定期调度——没有内置守护进程。
+
 ## OpenCode V2 插件
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
@@ -263,7 +288,7 @@ consilium stats --html stats.html  # 自包含静态报告
 复合 Action 会评审 PR diff，并发布或更新恰好一条带 `<!-- consilium:report -->` 标记的评论：
 
 ```yaml
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.7.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.8.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -313,7 +338,7 @@ consilium stats --html stats.html  # 自包含静态报告
 | `standalone` / `autoApprove` / `autoDiscoverAgents` | `true` / `false` / `true` | 私有服务器 / 仅配置，自动批准权限（项目配置中除非 `-c` 否则忽略）/ 复用 Agent |
 | `artifacts` / `consensus` / `smartExperts` / `findings` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色；结构化发现 |
 | `context` | `off` | `auto` 将改动文件、项目规则、相关测试和提交加入任务 |
-| `deadlineMs` / `localOnly` / `presets` | — / `false` / — | 专家阶段时限（ms，最多 24 小时，超时后部分综合）/ 每个 Agent 必须显式使用本地模型 / 自定义预设合并覆盖内置预设 |
+| `deadlineMs` / `rounds` / `localOnly` / `presets` | — / `1` / `false` / — | 专家阶段时限（ms，最多 24 小时，超时后部分综合）/ `2` 为匿名化同伴评审轮次，模型调用翻倍 / 每个 Agent 必须显式使用本地模型 / 自定义预设合并覆盖内置预设 |
 | `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式 / 报告文件 / variant / watch 防抖 |
 | `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录；项目配置中除非用 `-c` 否则忽略 |
 
@@ -352,6 +377,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.8.0** — 辩论轮次、本地引导与提交范围审计：`--rounds 2` 增加匿名化同伴评审，每位专家点评他人并给出最终立场，主席看到最终立场及哪些专家改变立场，`metadata.debate` 记录参与者与变化；`consilium init --local` 探测 Ollama/LM Studio，将本地模型轮流分配给各角色和主席，并写入 `localOnly` 配置；`consilium audit --since <ref>` 端到端评审提交范围，复用报告、产物与 `--fail-on`，`--dry-run` 不调用模型即可打印请求；491 个测试。
 - **1.7.0** — 截止时间与隐私：`--deadline <ms>` 限制专家阶段，超时后取消落后专家、保留已完成的回答，主席带缺失角色说明进行部分综合；没有任何专家完成时以 `DEADLINE` 失败。`--local-only` 要求每位专家和主席都显式使用本地模型（Ollama、LM Studio、llama.cpp、vLLM）；`models --local` 过滤目录，`models --probe-local` 检查本地提供商是否运行；`doctor` 新增 `local-providers` 检查。`consilium.config.json` 中的自定义预设合并覆盖内置预设，并可在 CLI、MCP 和插件中使用（`consilium presets` 列出）。受信任配置标记现在能跨对象展开保留。446 个测试。
 - **1.6.0** — 评估工具、上下文包、可靠性记忆与 GitHub Action：`consilium eval` 用埋入 bug 的 fixture 和确定性 claim 匹配报告 catch/FP/p50 延迟/成本（`--fail-under` 低于阈值退出 `3`）；`--context auto` 在字符预算内补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交；模型结果与延迟写入 `.consilium/reliability.json`（`models --reliability`）；复合 GitHub Action 评审 PR diff 并发布或更新一条评论；模糊 claim 合并去重同义发现；`consilium history` 与 `consilium stats` 汇总运行、延迟与可靠性；381 个测试。
 - **1.5.0** — 结构化发现与策略门禁：`--findings` 让专家和主席返回经过校验的 `findings[]` JSON（`severity`、`category`、`file`、`line`、`claim`、`evidence`、`confidence`），按稳定指纹去重合并，主席拒绝的条目记为 `contested`，并写入 `metadata.findings`；HTML/PR 报告渲染发现表与异议账本；`--fail-on <severity>` 只对**新**发现生效并以退出码 `3` 阻断，`consilium baseline accept|prune` 管理 `.consilium/baseline.json`。同时包含 P1 正确性修复（V1/V2 配置优先级、损坏配置告警、模型缓存回退/`minContext`/去重、成本遥测、SIGKILL 升级、`ses_` 会话前缀、CLI `argv[0]` 解析、watch 重跑/信号、preset/consensus/smart-experts 边界情况）以及 `/council` 斜杠命令；317 个测试。
@@ -364,6 +390,6 @@ const top = selectCouncilModels(models, 5);
 ## 路线图
 - TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，446 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，491 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
 ## 许可证
 [MIT](../LICENSE)

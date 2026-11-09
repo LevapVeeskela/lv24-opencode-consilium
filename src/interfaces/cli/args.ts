@@ -22,15 +22,16 @@ export const COMMANDS = new Set([
   'history',
   'stats',
   'presets',
+  'audit',
   'help',
   'version'
 ]);
 
 /** Команды, у которых есть собственные позиционные аргументы (задача/действие) */
-const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline']);
+const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline', 'audit']);
 
 /** Команды, распознаваемые только в самом начале argv (не после флагов) */
-const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats', 'presets']);
+const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats', 'presets', 'audit']);
 
 /** Типизированные коды выхода CLI */
 export const EXIT_CODES = {
@@ -156,6 +157,14 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--deadline':
         options.deadlineMs = parsePositiveInt(requireNumericValue(argv, ++i, arg), arg);
         break;
+      case '--rounds': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== '1' && value !== '2') {
+          throw new UsageError(`Флаг --rounds ожидает 1 или 2, получено: ${value}`);
+        }
+        options.rounds = value === '2' ? 2 : 1;
+        break;
+      }
       case '-o':
       case '--output':
         options.output = requireValue(argv, ++i, arg);
@@ -196,6 +205,9 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--base':
         options.diffBase = requireValue(argv, ++i, arg);
+        break;
+      case '--since':
+        options.since = requireValue(argv, ++i, arg);
         break;
       case '--list-agents':
         options.listAgents = true;
@@ -413,5 +425,8 @@ export function parseArgs(argv: string[]): CLIOptions {
   if (options.help) options.command = 'help';
   if (options.version) options.command = 'version';
   if (options.init && options.command === undefined) options.command = 'init';
+  if (options.command === 'init' && options.free === true && options.local === true) {
+    throw new UsageError('Флаги --free и --local взаимоисключающие: выберите один.');
+  }
   return options;
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "./schema/config.schema.json",
-  "version": "1.7.0",
+  "version": "1.8.0",
 
   "experts": [
     {
@@ -84,6 +84,7 @@
   "smartExperts": false,
   "localOnly": false,
   "deadlineMs": 900000,
+  "rounds": 1,
   "presets": {
     "docs": {
       "description": "Документация: архитектор и бизнес-аналитик",

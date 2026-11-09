@@ -60,6 +60,7 @@
     "findings": { "type": "boolean", "default": false },
     "localOnly": { "type": "boolean", "default": false },
     "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+    "rounds": { "type": "integer", "enum": [1, 2], "default": 1 },
     "presets": {
       "type": "object",
       "additionalProperties": { "$ref": "#/definitions/preset" }

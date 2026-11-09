@@ -230,6 +230,11 @@ export interface ConsiliumConfig {
    * Положительное целое, не больше 24 часов; 0/отрицательное игнорируется.
    */
   deadlineMs?: number;
+  /**
+   * Число раундов дебатов: 1 (по умолчанию) или 2.
+   * Значения, отличные от 2, трактуются как 1.
+   */
+  rounds?: number;
   /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE (в порядке приоритета) */
   fallbackModels?: string[];
   /** Переиспользовать сессию OpenCode (`run --session`) между запусками */
@@ -291,6 +296,11 @@ export interface RunOptions {
    * Положительное целое, не больше 24 часов; 0/отрицательное игнорируется.
    */
   deadlineMs?: number;
+  /**
+   * Число раундов дебатов: 1 (по умолчанию) или 2.
+   * Значения, отличные от 2, трактуются как 1.
+   */
+  rounds?: number;
   /** Запасные модели для RATE_LIMITED/MODEL_UNAVAILABLE */
   fallbackModels?: string[];
   /** Сессия OpenCode для продолжения контекста */
@@ -340,6 +350,7 @@ export interface CLIOptions {
     | 'history'
     | 'stats'
     | 'presets'
+    | 'audit'
     | 'help'
     | 'version';
   config?: string;
@@ -414,6 +425,10 @@ export interface CLIOptions {
   maxCost?: number;
   /** Дедлайн экспертной фазы, мс */
   deadlineMs?: number;
+  /** Число раундов дебатов: 1 или 2 */
+  rounds?: 1 | 2;
+  /** Git ref, с которого начинается аудит изменений */
+  since?: string;
   /** Разрешить только локальные модели */
   localOnly?: boolean;
   /** (models) Показать только локальные модели каталога */

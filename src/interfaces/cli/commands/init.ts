@@ -5,21 +5,110 @@
 
 import { existsSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import type { CLIOptions } from '../../../domain/types.js';
+import type { CLIOptions, ConsiliumConfig } from '../../../domain/types.js';
 import { loadConfig, generateExampleConfig, mergeWithDefaults } from '../../../application/consilium.js';
+import {
+  buildLocalBootstrap,
+  buildLocalConfig,
+  formatLocalBootstrap
+} from '../../../application/local-bootstrap.js';
 import { buildCouncilAgents, buildConsiliumConfigFromModels, selectCouncilModels } from '../../../domain/models/models.js';
 import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
 import { verifyModels } from '../../../application/models/verify.js';
+import {
+  formatLocalProviders,
+  probeLocalProviders
+} from '../../../infrastructure/local-models.js';
+import { isRecord } from '../../../shared/record.js';
+import { writeFileAtomic } from '../../../shared/fs.js';
 import { findOpenCodeConfigPath, readJsonFile } from '../../../infrastructure/config/config.js';
 import {
   readAgentDefinition,
   readAgentSection,
   upsertAgents
 } from '../../../infrastructure/config/compat.js';
+import { UsageError } from '../args.js';
 import { log, writeJsonAtomic } from '../output.js';
+
+/** Читает существующий конфиг для безопасного слияния (пустой объект при ошибке) */
+function readExistingConfig(configPath: string): Partial<ConsiliumConfig> {
+  if (!existsSync(configPath)) return {};
+  try {
+    const parsed = readJsonFile(configPath);
+    return isRecord(parsed) ? (parsed as Partial<ConsiliumConfig>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * init --local: собрать консилиум из моделей Ollama/LM Studio.
+ * Пробует провайдеров, строит конфиг и пишет его (или только печатает при --dry-run).
+ */
+async function commandInitLocal(
+  options: CLIOptions,
+  configPath: string
+): Promise<number> {
+  log(options, '🔎 Проверяю локальные провайдеры (Ollama, LM Studio)...');
+  const providers = await probeLocalProviders();
+  const result = buildLocalBootstrap({ providers });
+
+  if (!result.ok) {
+    throw new UsageError(
+      'Не удалось собрать локальный консилиум: доступные локальные модели не найдены.\n' +
+        `${formatLocalBootstrap(result)}\n` +
+        `${formatLocalProviders(providers)}\n` +
+        'Подсказка: запустите Ollama (ollama serve) или LM Studio и повторите init --local. ' +
+        'Hint: start Ollama or LM Studio, then rerun consilium init --local.'
+    );
+  }
+
+  const existing = readExistingConfig(configPath);
+  const config = buildLocalConfig(result, existing);
+  // buildLocalConfig заменяет председателя; сохраняем его пользовательские
+  // настройки (timeout, maxExpertTextLength), подставляя только agent/model.
+  const existingChair = isRecord(existing.chair) ? existing.chair : {};
+  config.chair = {
+    ...existingChair,
+    ...(config.chair ?? result.chair)
+  };
+
+  if (options.dryRun) {
+    if (options.json) {
+      console.log(JSON.stringify(config, null, 2));
+    } else {
+      console.log(formatLocalBootstrap(result));
+    }
+    return 0;
+  }
+
+  if (existsSync(configPath) && !options.force) {
+    console.error(
+      `❌ Файл ${configPath} уже существует. Используйте --force, чтобы перезаписать.`
+    );
+    return 1;
+  }
+
+  writeFileAtomic(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  console.log(`✅ Создан ${configPath}`);
+  for (const warning of result.warnings) {
+    log(options, `⚠️ ${warning}`);
+  }
+  console.log('   Следующий шаг: consilium doctor');
+  console.log('   Запуск только на локальных моделях: consilium --local-only "ваша задача"');
+  return 0;
+}
 
 export async function commandInit(options: CLIOptions): Promise<number> {
   const configPath = resolve(process.cwd(), 'consilium.config.json');
+
+  if (options.free === true && options.local === true) {
+    throw new UsageError('Флаги --free и --local взаимоисключающие: выберите один.');
+  }
+
+  if (options.local === true) {
+    return commandInitLocal(options, configPath);
+  }
 
   if (!options.free) {
     if (options.nativeV2 === true) {

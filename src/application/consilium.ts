@@ -29,6 +29,12 @@ import { createCostTracker } from '../domain/council/fallback.js';
 import { appendFindingsInstruction, buildExpertPrompt } from '../domain/council/prompts.js';
 import { collectFindings } from './findings.js';
 import {
+  normalizeDebateRounds,
+  runDebateRound,
+  withDebateChairNote,
+  type DebateOutcome
+} from './debate.js';
+import {
   applyCostTelemetryWarning,
   buildCancelledMetadata,
   buildCompletedResult,
@@ -177,6 +183,8 @@ export class Consilium {
     const fallbackModels = options.fallbackModels ?? runConfig.fallbackModels ?? [];
     const session = options.session ?? runConfig.session;
     const deadlineMs = sanitizeDeadlineMs(options.deadlineMs ?? runConfig.deadlineMs);
+    const requestedRounds = options.rounds ?? runConfig.rounds;
+    const rounds = normalizeDebateRounds(requestedRounds);
 
     runConfig.consensus = consensusEnabled;
     if (options.findings !== undefined) {
@@ -262,6 +270,14 @@ export class Consilium {
     };
     hooks = runConfig.hooks;
 
+    if (requestedRounds !== undefined && requestedRounds !== rounds) {
+      hooks.onLog?.(
+        'warn',
+        `rounds=${String(requestedRounds)} не поддерживается: допустимо 1 или 2; ` +
+          'выполняется 1 раунд'
+      );
+    }
+
       if (!(await checkOpenCodeAvailable(runConfig))) {
         throw new Error(
           'OpenCode CLI не найден. Установите: npm install -g opencode-ai (или укажите opencodePath в конфиге)'
@@ -288,13 +304,65 @@ export class Consilium {
 
       const costTracker = createCostTracker(maxCost);
       const parallelStarted = Date.now();
-      const expertPhase = await runExpertPhaseWithDeadline(
-        deadlineMs,
-        controller,
-        () => callExpertsParallel(councilExperts, task, runConfig, { controller })
-      );
-      const expertResults = expertPhase.value;
-      const deadlineHit = expertPhase.hit;
+      let expertResults: AgentResult[];
+      let debate: DebateOutcome | undefined;
+      let deadlineHit: boolean;
+      // В режиме дебатов стоимость первого раунда учитывается до проверки лимита
+      // перед вторым раундом, поэтому отдельный цикл ниже уже не нужен.
+      let expertCostsAdded = false;
+
+      if (rounds === 2) {
+        const debatePhase = await runExpertPhaseWithDeadline(
+          deadlineMs,
+          controller,
+          async () => {
+            const firstRound = await callExpertsParallel(councilExperts, task, runConfig, {
+              controller
+            });
+            for (const result of firstRound) {
+              costTracker.add(result.agent, result.usage);
+            }
+
+            const successful = firstRound.filter(result => result.success);
+            if (successful.length < 2 || controller.isCancelled()) {
+              return { results: firstRound, debate: undefined };
+            }
+            if (costTracker.exceeded()) {
+              hooks?.onLog?.(
+                'warn',
+                `Лимит стоимости превышен после первого раунда: ` +
+                  `$${costTracker.report().spent.toFixed(4)} из $${maxCost ?? 0}; ` +
+                  'второй раунд дебатов пропущен'
+              );
+              return { results: firstRound, debate: undefined };
+            }
+
+            const outcome = await runDebateRound(firstRound, task, runConfig, {
+              rounds,
+              controller,
+              costTracker
+            });
+            return {
+              results: outcome?.results ?? firstRound,
+              debate: outcome
+            };
+          }
+        );
+
+        expertResults = debatePhase.value.results;
+        debate = debatePhase.value.debate;
+        deadlineHit = debatePhase.hit;
+        expertCostsAdded = true;
+      } else {
+        const expertPhase = await runExpertPhaseWithDeadline(
+          deadlineMs,
+          controller,
+          () => callExpertsParallel(councilExperts, task, runConfig, { controller })
+        );
+        expertResults = expertPhase.value;
+        deadlineHit = expertPhase.hit;
+      }
+
       const parallelTime = Date.now() - parallelStarted;
 
       const deadlineSummary =
@@ -311,8 +379,10 @@ export class Consilium {
         controller.reset();
       }
 
-      for (const result of expertResults) {
-        costTracker.add(result.agent, result.usage);
+      if (!expertCostsAdded) {
+        for (const result of expertResults) {
+          costTracker.add(result.agent, result.usage);
+        }
       }
       let costExceeded = costTracker.exceeded();
       if (costExceeded) {
@@ -341,6 +411,7 @@ export class Consilium {
             session,
             findingsEnabled ? collectFindings(expertResults) : undefined
           ),
+          ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
         this.status = 'cancelled';
@@ -380,10 +451,14 @@ export class Consilium {
           deadlineHit && deadlineSummary !== undefined
             ? expertResults.filter(result => result.success)
             : expertResults;
-        const chairConfig =
-          deadlineHit && deadlineSummary !== undefined
-            ? withDeadlineChairNote(runConfig, buildDeadlineChairNote(deadlineSummary))
-            : runConfig;
+        let chairConfig =
+          debate !== undefined ? withDebateChairNote(runConfig, debate.note) : runConfig;
+        if (deadlineHit && deadlineSummary !== undefined) {
+          chairConfig = withDeadlineChairNote(
+            chairConfig,
+            buildDeadlineChairNote(deadlineSummary)
+          );
+        }
         try {
           chairResult = await callChair(successfulResults, task, chairConfig, { controller });
           costTracker.add(chairResult.agent, chairResult.usage);
@@ -425,6 +500,7 @@ export class Consilium {
             session,
             findingsSummary
           ),
+          ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
         this.status = 'cancelled';
@@ -440,7 +516,10 @@ export class Consilium {
         chair: chairResult,
         parallelTime,
         startTime: this.startTime,
-        metadata: options.metadata,
+        metadata:
+          debate !== undefined
+            ? { ...options.metadata, debate: debate.metadata }
+            : options.metadata,
         cost: costTracker.report(),
         costExceeded,
         consensusEnabled,
