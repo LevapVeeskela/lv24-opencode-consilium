@@ -60,18 +60,59 @@ test('дифф тоже участвует в скоринге', () => {
   assert.ok(result.experts.some(expert => expert.name === 'sec'), 'sec должен найтись через diff');
 });
 
-test('все нули — держим первые min (по умолчанию 2)', () => {
+test('все нули — берём первых max и сообщаем об отсутствии сигнала', (t) => {
+  const warnings = [];
+  t.mock.method(console, 'warn', message => {
+    warnings.push(String(message));
+  });
   const result = selectSmartExperts(BASE, 'Обсуди погоду и котиков');
-  assert.deepEqual(result.experts.map(expert => expert.name), ['arch', 'ux']);
-  assert.deepEqual(result.dropped, ['ba', 'sec']);
+  assert.deepEqual(result.experts.map(expert => expert.name), ['arch', 'ux', 'ba']);
+  assert.deepEqual(result.dropped, ['sec']);
   assert.deepEqual(Object.keys(result.reasons), []);
+  assert.equal(result.noSignal, true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /не совпала|сигнал/i);
 });
 
-test('max ограничивает размер совета', () => {
+test('кастомные роли не теряются, когда эвристика без сигнала', (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const result = selectSmartExperts(
+    [{ name: 'custom-guru' }, { name: 'another-role' }, { name: 'arch' }],
+    'Обсуди погоду и котиков',
+  );
+  assert.deepEqual(
+    result.experts.map(expert => expert.name),
+    ['custom-guru', 'another-role', 'arch'],
+  );
+  assert.deepEqual(result.dropped, []);
+  assert.equal(result.noSignal, true);
+});
+
+test('max ограничивает размер совета при положительном сигнале', () => {
   const experts = [...BASE, { name: 'extra-a' }, { name: 'extra-b' }];
-  const result = selectSmartExperts(experts, 'Обсуди погоду и котиков', { max: 2, min: 2 });
+  const result = selectSmartExperts(
+    experts,
+    'Найди уязвимости, проблемы безопасности и проверь auth',
+    { max: 2, min: 2 },
+  );
   assert.equal(result.experts.length, 2);
   assert.equal(result.dropped.length, experts.length - 2);
+  assert.equal(result.noSignal, false);
+});
+
+test('onLog получает предупреждение без сигнала вместо console.warn', (t) => {
+  let consoleWarnings = 0;
+  t.mock.method(console, 'warn', () => {
+    consoleWarnings += 1;
+  });
+  const messages = [];
+  const result = selectSmartExperts(BASE, 'Обсуди погоду и котиков', {
+    onLog: (level, message) => messages.push(`${level}:${message}`)
+  });
+  assert.equal(result.noSignal, true);
+  assert.equal(consoleWarnings, 0);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /^warn:/);
 });
 
 test('позитивные совпадения не роняются при малом min', () => {

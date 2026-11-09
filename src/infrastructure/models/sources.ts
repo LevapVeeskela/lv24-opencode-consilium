@@ -420,9 +420,12 @@ export async function fetchFreeModels(
       : DEFAULT_MIN_CONTEXT;
   const includeUnavailable = opts.includeUnavailable === true;
   const cachePath = resolveCachePath();
-  const cached = opts.forceRefresh === true ? null : readCache(cachePath);
+  const forceRefresh = opts.forceRefresh === true;
+  // Кэш читаем всегда: при тотальном сбое сети он остаётся запасным
+  // источником даже для forceRefresh.
+  const cached = readCache(cachePath);
 
-  if (cached) {
+  if (cached && !forceRefresh) {
     const age = now - cached.fetchedAt;
     if (ttl > 0 && age >= 0 && age < ttl) {
       const models = prepare(cached.models, minContext, includeUnavailable);
@@ -455,6 +458,20 @@ export async function fetchFreeModels(
     networkModels.push(...openRouterSettled.value.models);
   }
 
+  // Сначала пробуем уцелевший кэш и только потом добавляем встроенный набор:
+  // иначе ветка с кэшем недостижима, а хорошие данные затираются builtins.
+  if (networkModels.length === 0 && cached) {
+    const fallbackModels = prepare(cached.models, minContext, includeUnavailable);
+    if (fallbackModels.length > 0) {
+      return {
+        models: fallbackModels,
+        sources,
+        fromCache: true,
+        fetchedAt: cached.fetchedAt
+      };
+    }
+  }
+
   // Курируемый офлайн-набор дополняет каталог: бесплатные модели часто
   // ротируются и исчезают из models.dev, хотя остаются доступными в OpenCode.
   const seenIds = new Set(networkModels.map(model => model.id.toLowerCase()));
@@ -464,30 +481,13 @@ export async function fetchFreeModels(
     }
   }
 
-  if (networkModels.length === 0) {
-    if (cached) {
-      const fallbackModels = prepare(cached.models, minContext, includeUnavailable);
-      if (fallbackModels.length > 0) {
-        return {
-          models: fallbackModels,
-          sources,
-          fromCache: true,
-          fetchedAt: cached.fetchedAt
-        };
-      }
-    }
-    return {
-      models: prepare(BUILTIN_FREE_MODELS, minContext, includeUnavailable),
-      sources,
-      fromCache: false,
-      fetchedAt: now
-    };
+  const fullRanked = rankFreeModels(networkModels, { includeUnavailable: true });
+  // Не затираем рабочий кэш встроенным набором, если оба источника недоступны.
+  if (sources.some(source => source.ok)) {
+    writeCache(cachePath, { fetchedAt: now, models: fullRanked, sources });
   }
 
-  const fullRanked = rankFreeModels(networkModels, { includeUnavailable: true });
-  writeCache(cachePath, { fetchedAt: now, models: fullRanked, sources });
-
-  const models = rankFreeModels(networkModels, { includeUnavailable });
+  const models = rankFreeModels(networkModels, { includeUnavailable, minContext });
   if (models.length === 0) {
     return {
       models: prepare(BUILTIN_FREE_MODELS, minContext, includeUnavailable),

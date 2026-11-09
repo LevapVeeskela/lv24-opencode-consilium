@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -112,4 +112,108 @@ test('validateConfig проверяет report, variant и debounceMs', () => {
     debounceMs: 250
   });
   assert.deepEqual(validateConfig(valid), []);
+});
+
+test('loadConfig: явный chair.model не перекрывается моделью из opencode.json', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-chair-model-'));
+  const previous = process.cwd();
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = join(root, 'xdg');
+  try {
+    writeFileSync(
+      join(root, 'consilium.config.json'),
+      JSON.stringify({ chair: { agent: 'consilium', model: 'user/chair-model' } }),
+      'utf-8'
+    );
+    writeFileSync(
+      join(root, 'opencode.json'),
+      JSON.stringify({
+        agents: {
+          arch: { mode: 'primary', model: 'opencode/arch-model', system: 's' },
+          consilium: { mode: 'primary', model: 'opencode/discovered-chair', system: 's' }
+        }
+      }),
+      'utf-8'
+    );
+
+    process.chdir(root);
+    const loaded = loadConfig();
+    assert.equal(loaded.config.chair.model, 'user/chair-model');
+  } finally {
+    process.chdir(previous);
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig: невалидный excludedAgents предупреждает и игнорируется', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-excluded-'));
+  const previous = process.cwd();
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = join(root, 'xdg');
+  try {
+    writeFileSync(
+      join(root, 'consilium.config.json'),
+      JSON.stringify({ excludedAgents: {} }),
+      'utf-8'
+    );
+    writeFileSync(
+      join(root, 'opencode.json'),
+      JSON.stringify({
+        agents: { arch: { mode: 'primary', model: 'opencode/arch-model', system: 's' } }
+      }),
+      'utf-8'
+    );
+
+    process.chdir(root);
+    const loaded = loadConfig();
+    assert.ok(
+      loaded.warnings.some(warning => warning.includes('excludedAgents')),
+      `warnings: ${loaded.warnings.join(' | ')}`
+    );
+    assert.deepEqual(loaded.config.experts.map(expert => expert.name), ['arch']);
+  } finally {
+    process.chdir(previous);
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadConfig предупреждает о битом проектном opencode.json и продолжает', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-broken-opencode-'));
+  const previous = process.cwd();
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const xdg = join(root, 'xdg');
+  const globalPath = join(xdg, 'opencode', 'opencode.json');
+  const projectPath = join(root, 'opencode.json');
+  process.env.XDG_CONFIG_HOME = xdg;
+  try {
+    mkdirSync(join(xdg, 'opencode'), { recursive: true });
+    writeFileSync(
+      globalPath,
+      JSON.stringify({
+        agents: { arch: { mode: 'primary', model: 'global/arch-model', system: 's' } }
+      }),
+      'utf-8'
+    );
+    writeFileSync(projectPath, '{ "agent": { "arch": ', 'utf-8');
+
+    process.chdir(root);
+    const loaded = loadConfig();
+    assert.ok(
+      loaded.warnings.some(warning => warning.includes(projectPath)),
+      `warnings: ${loaded.warnings.join(' | ')}`
+    );
+    assert.equal(
+      loaded.config.experts.find(expert => expert.name === 'arch')?.model,
+      'global/arch-model'
+    );
+  } finally {
+    process.chdir(previous);
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
 });

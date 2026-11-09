@@ -97,6 +97,8 @@ test('readAgentSection объединяет agent и agents, нативный V2
   assert.equal(section.key, 'agents');
   assert.deepEqual(section.duplicated, ['same']);
   assert.equal(readAgentDefinition(section.entries.same).model, 'v2/model');
+  assert.equal(section.entries.same.prompt, 'v1');
+  assert.equal(section.entries.same.system, 'v2');
   assert.equal(readAgentDefinition(section.entries.onlyV1).model, 'v1/only');
   assert.equal(readAgentDefinition(section.entries.onlyV2).model, 'v2/only');
 });
@@ -453,6 +455,102 @@ test('resolveOpenCodeAgentModel находит модель агента', () =>
       'opencode/glm-5.3-flash-free'
     );
     assert.equal(resolveOpenCodeAgentModel('missing', { cwd: root }), undefined);
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadOpenCodeAgents: проектный agent перекрывает глобальный agents по имени', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-cross-layer-'));
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const xdg = join(root, 'xdg');
+  process.env.XDG_CONFIG_HOME = xdg;
+  try {
+    mkdirSync(join(xdg, 'opencode'), { recursive: true });
+    writeFileSync(
+      join(xdg, 'opencode', 'opencode.json'),
+      JSON.stringify({
+        agents: {
+          arch: { mode: 'primary', model: 'global/agents-model', system: 'global' }
+        }
+      }),
+      'utf-8'
+    );
+    writeFileSync(
+      join(root, 'opencode.json'),
+      JSON.stringify({
+        agent: { arch: { model: 'project/agent-model', prompt: 'project' } }
+      }),
+      'utf-8'
+    );
+
+    const snapshot = loadOpenCodeAgents({ cwd: root });
+    assert.equal(snapshot.section.entries.arch.model, 'project/agent-model');
+    assert.equal(snapshot.section.entries.arch.prompt, 'project');
+    // mode из глобального слоя сохраняется: поля сливаются, модель побеждает по слою.
+    assert.equal(snapshot.section.entries.arch.mode, 'primary');
+    // Ключи из разных файлов — не дубликаты.
+    assert.deepEqual(snapshot.section.duplicated, []);
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadOpenCodeAgents: в одном файле agents побеждает agent, поля сливаются', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-same-layer-'));
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = join(root, 'xdg');
+  try {
+    writeFileSync(
+      join(root, 'opencode.json'),
+      JSON.stringify({
+        agent: {
+          arch: { mode: 'primary', model: 'v1/model', prompt: 'v1' }
+        },
+        agents: {
+          arch: { model: 'v2/model', system: 'v2' }
+        }
+      }),
+      'utf-8'
+    );
+
+    const snapshot = loadOpenCodeAgents({ cwd: root });
+    assert.equal(snapshot.section.entries.arch.model, 'v2/model');
+    assert.equal(snapshot.section.entries.arch.mode, 'primary');
+    assert.equal(snapshot.section.entries.arch.system, 'v2');
+    assert.deepEqual(snapshot.section.duplicated, ['arch']);
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('loadOpenCodeAgents возвращает ошибки отдельных файлов и продолжает со слоями', () => {
+  const root = mkdtempSync(join(tmpdir(), 'consilium-layer-error-'));
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const xdg = join(root, 'xdg');
+  const projectPath = join(root, 'opencode.json');
+  process.env.XDG_CONFIG_HOME = xdg;
+  try {
+    mkdirSync(join(xdg, 'opencode'), { recursive: true });
+    writeFileSync(
+      join(xdg, 'opencode', 'opencode.json'),
+      JSON.stringify({
+        agents: { arch: { mode: 'primary', model: 'global/model', system: 's' } }
+      }),
+      'utf-8'
+    );
+    writeFileSync(projectPath, '{ "agent": { "arch": ', 'utf-8');
+
+    const snapshot = loadOpenCodeAgents({ cwd: root });
+    assert.equal(snapshot.section.entries.arch.model, 'global/model');
+    assert.ok(snapshot.errors.some(error => error.includes(projectPath)));
+    assert.equal(snapshot.config.agents.arch.model, 'global/model');
   } finally {
     if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = previousXdg;

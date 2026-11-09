@@ -39,6 +39,10 @@ Version: 1.4.3 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - Tools: `consilium_run`, `consilium_list_agents`, `consilium_free_models`, `consilium_doctor`, `consilium_init_free`.
 - `consilium_init_free` is dry-run unless `"apply": true`; `consilium_run` streams progress with a `progressToken`.
 
+## OpenCode slash command
+
+- `/council <task>` — `.opencode/commands/council.md`; asks the agent to call the V2 plugin tool `consilium.run` (falling back to MCP `consilium_run`). Requires the plugin or MCP server to be registered.
+
 ## Configuration
 
 - Discovery order: `consilium.config.json`, `consilium.json`, `.consiliumrc`, `.consiliumrc.json`.

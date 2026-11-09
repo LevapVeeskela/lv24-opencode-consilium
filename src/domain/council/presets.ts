@@ -77,9 +77,12 @@ export function applyPreset(config: ConsiliumConfig, name: string): ConsiliumCon
 
   if (preset.experts) {
     const order = new Map(preset.experts.map((expertName, index) => [expertName, index] as const));
-    filtered = experts
+    const matched = experts
       .filter(expert => order.has(expert.name))
       .sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+    // Пресет не должен обнулять совет: если в конфиге только кастомные
+    // эксперты (или имена не совпали), оставляем настроенный состав.
+    filtered = matched.length > 0 ? matched : experts;
   }
 
   const timeouts = { ...config.timeouts };

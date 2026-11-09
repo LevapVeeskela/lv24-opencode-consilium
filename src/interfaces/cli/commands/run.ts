@@ -33,6 +33,9 @@ export async function commandRun(options: CLIOptions): Promise<number> {
     }
   }
 
+  // Запоминаем настроенный каталог артефактов до применения --no-artifacts:
+  // чтение --replay/--diff-runs не должно зависеть от флага сохранения.
+  const configuredArtifacts = loaded.config.artifacts;
   const config = applyCliOverrides(loaded.config, options);
   if (config.output.logLevel === 'silent') {
     options.silent = true;
@@ -46,9 +49,14 @@ export async function commandRun(options: CLIOptions): Promise<number> {
   const artifactsSetting = options.noArtifacts
     ? false
     : options.artifacts ?? config.artifacts;
+  const lookupArtifacts =
+    typeof options.artifacts === 'string'
+      ? options.artifacts
+      : typeof configuredArtifacts === 'string'
+        ? configuredArtifacts
+        : undefined;
   const artifactsRoot = resolveArtifactRoot({
-    artifacts:
-      artifactsSetting !== undefined && artifactsSetting !== false ? artifactsSetting : true,
+    artifacts: lookupArtifacts ?? true,
     cwd: config.cwd
   });
 

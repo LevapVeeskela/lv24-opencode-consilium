@@ -26,3 +26,11 @@ test('applyPreset не мутирует исходный конфиг', () => {
 test('applyPreset на неизвестном имени бросает ошибку', () => {
   assert.throws(() => applyPreset(mergeWithDefaults({}), 'nope'), /Неизвестный пресет/);
 });
+
+test('applyPreset не обнуляет совет из кастомных экспертов', () => {
+  const config = mergeWithDefaults({
+    experts: [{ name: 'custom-a' }, { name: 'custom-b' }]
+  });
+  const applied = applyPreset(config, 'fast');
+  assert.deepEqual(applied.experts.map(expert => expert.name), ['custom-a', 'custom-b']);
+});

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleMcpRequest, getMcpTools } from '../dist/mcp.js';
+import { mergeWithDefaults } from '../dist/config.js';
+import { computeProgressTotal } from '../dist/interfaces/mcp/handlers/run.js';
 
 test('getMcpTools содержит все пять инструментов', () => {
   const names = getMcpTools().map(tool => tool.name).sort();
@@ -86,4 +88,41 @@ test('consilium_run не пишет артефакты вне workspace', async 
 
   assert.equal(response.result.isError, true);
   assert.match(response.result.content[0].text, /inside the workspace/);
+});
+
+test('прогресс считает только выбранных экспертов, а не всех enabled', () => {
+  const config = mergeWithDefaults({
+    experts: [
+      { name: 'arch' },
+      { name: 'ux' },
+      { name: 'ba' },
+      { name: 'sec' }
+    ]
+  });
+
+  // Явный список из двух экспертов: 2 + председатель.
+  assert.equal(computeProgressTotal(config, ['arch', 'sec'], 'любая задача'), 3);
+
+  // Отключённый эксперт не попадает в счёт.
+  const withDisabled = mergeWithDefaults({
+    experts: [{ name: 'arch' }, { name: 'sec', enabled: false }, { name: 'ux' }]
+  });
+  assert.equal(computeProgressTotal(withDisabled, ['arch', 'sec'], 'любая задача'), 2);
+
+  // Smart-выбор сужает совет: security-задача даёт меньше, чем все 4.
+  const smart = mergeWithDefaults({
+    experts: [
+      { name: 'arch' },
+      { name: 'ux' },
+      { name: 'ba' },
+      { name: 'sec' }
+    ],
+    smartExperts: true
+  });
+  const smartTotal = computeProgressTotal(
+    smart,
+    undefined,
+    'Найди уязвимости и проблемы безопасности, проверь auth'
+  );
+  assert.ok(smartTotal >= 2 && smartTotal < 5, `smart total: ${smartTotal}`);
 });

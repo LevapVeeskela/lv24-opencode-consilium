@@ -81,15 +81,59 @@ export function findOpenCodeConfigPath(configuredPath?: string, cwd?: string): s
   return paths.length > 0 ? paths[paths.length - 1] ?? null : null;
 }
 
-/** Сливает конфигурации OpenCode: агенты и MCP объединяются по именам */
-function mergeOpenCodeConfigs(layers: JsonRecord[]): JsonRecord {
+/** Результат слияния слоёв конфигурации OpenCode */
+export interface OpenCodeConfigMergeResult {
+  /** Слитая конфигурация; агенты нормализованы в ключ старшего формата */
+  config: JsonRecord;
+  /** Имена, заданные и в `agent`, и в `agents` в одном и том же слое */
+  duplicated: string[];
+}
+
+/**
+ * Сливает конфигурации OpenCode: агенты и MCP объединяются по именам.
+ *
+ * Агенты сливаются по имени в порядке слоёв: более поздний слой перекрывает
+ * поля более раннего независимо от того, задан агент в `agent` или `agents`.
+ * Внутри одного слоя нативный V2 (`agents`) перекрывает V1 (`agent`), а поля
+ * записи объединяются. `duplicated` содержит только имена, заданные в обоих
+ * ключах одного файла, — совпадение имён между слоями дубликатом не считается.
+ */
+export function mergeOpenCodeConfigs(layers: JsonRecord[]): OpenCodeConfigMergeResult {
   const merged: JsonRecord = {};
+  const agentEntries: JsonRecord = {};
+  const duplicated: string[] = [];
+  let sawAgentKey = false;
+  let sawAgentsKey = false;
 
   for (const layer of layers) {
+    if ('agent' in layer) sawAgentKey = true;
+    if ('agents' in layer) sawAgentsKey = true;
+
+    const v1 = recordOf(layer.agent);
+    const v2 = recordOf(layer.agents);
+
+    for (const name of Object.keys(v1)) {
+      if (
+        isRecord(v1[name]) &&
+        isRecord(v2[name]) &&
+        !duplicated.includes(name)
+      ) {
+        duplicated.push(name);
+      }
+    }
+
+    for (const [name, entry] of Object.entries(v1)) {
+      const base = recordOf(agentEntries[name]);
+      agentEntries[name] = isRecord(entry) ? { ...base, ...entry } : entry;
+    }
+    for (const [name, entry] of Object.entries(v2)) {
+      const base = recordOf(agentEntries[name]);
+      agentEntries[name] = isRecord(entry) ? { ...base, ...entry } : entry;
+    }
+
     for (const [key, value] of Object.entries(layer)) {
-      if (key === 'agent' || key === 'agents') {
-        merged[key] = { ...recordOf(merged[key]), ...recordOf(value) };
-      } else if (key === 'mcp') {
+      if (key === 'agent' || key === 'agents') continue;
+      if (key === 'mcp') {
         const base = recordOf(merged.mcp);
         const next = recordOf(value);
         const mcp: JsonRecord = { ...base, ...next };
@@ -103,7 +147,14 @@ function mergeOpenCodeConfigs(layers: JsonRecord[]): JsonRecord {
     }
   }
 
-  return merged;
+  // Нормализуем объединённые записи в тот ключ, который задаёт формат конфига.
+  if (sawAgentsKey) {
+    merged.agents = agentEntries;
+  } else if (sawAgentKey) {
+    merged.agent = agentEntries;
+  }
+
+  return { config: merged, duplicated };
 }
 
 /** Снимок агентов из конфигурации OpenCode */
@@ -115,6 +166,8 @@ export interface OpenCodeAgentSnapshot {
   section: AgentSectionView | null;
   /** Все прочитанные файлы в порядке возрастания приоритета */
   files: string[];
+  /** Ошибки чтения/разбора отдельных файлов; такие слои пропускаются */
+  errors: string[];
   /** Причина, по которой конфигурация не прочитана */
   error?: string;
   /** Некритичное предупреждение (например, заданный путь не найден) */
@@ -150,12 +203,13 @@ export function loadOpenCodeAgents(
     files = listOpenCodeConfigPaths(start);
   }
 
+  const errors: string[] = [];
+
   if (files.length === 0) {
-    return { path: null, config: null, section: null, files, warning };
+    return { path: null, config: null, section: null, files, errors, warning };
   }
 
   const layers: JsonRecord[] = [];
-  const errors: string[] = [];
   for (const file of files) {
     try {
       const config = readJsonFile(file);
@@ -176,13 +230,17 @@ export function loadOpenCodeAgents(
       config: null,
       section: null,
       files,
+      errors,
       error: errors.join('; ') || 'конфигурация не прочитана',
       warning
     };
   }
 
   const merged = mergeOpenCodeConfigs(layers);
-  return { path, config: merged, section: readAgentSection(merged), files, warning };
+  const section = readAgentSection(merged.config);
+  // Дубликаты считаются только внутри одного файла, а не между слоями.
+  section.duplicated = merged.duplicated;
+  return { path, config: merged.config, section, files, errors, warning };
 }
 
 /** Встроенные агенты OpenCode, которые доступны без записи в opencode.json */

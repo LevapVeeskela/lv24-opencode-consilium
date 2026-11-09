@@ -170,6 +170,9 @@ consilium hooks uninstall                   # 只删托管块
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
 配置 `{ "plugins": [{ "package": "lv24-opencode-consilium" }] }`。导出 `./server`（`dist/plugin.js`），无运行时依赖；`consilium.run` 接受 `task`、`experts`、`chair`、`timeout_ms`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`preset`。
+
+斜杠命令：`.opencode/commands/council.md`（或全局 `~/.config/opencode/commands/`），用法 `/council <task>`；需要先注册 V2 插件或 MCP 服务器。
+
 ## 预设
 | 预设 | 专家 | 行为 |
 | --- | --- | --- |

@@ -46,8 +46,14 @@ interface AgentAttemptOptions {
   config: ConsiliumConfig;
 }
 
-/** Суммирует usage двух вызовов (токены и стоимость) */
-function sumUsagePair(a?: AgentUsage, b?: AgentUsage): AgentUsage | undefined {
+/** Известная (конечная) стоимость usage, если провайдер её сообщил */
+function knownCost(usage?: AgentUsage): number | undefined {
+  const cost = usage?.cost;
+  return typeof cost === 'number' && Number.isFinite(cost) ? cost : undefined;
+}
+
+/** Суммирует usage двух вызовов (токены и известную стоимость) */
+export function sumUsagePair(a?: AgentUsage, b?: AgentUsage): AgentUsage | undefined {
   if (a === undefined && b === undefined) return undefined;
 
   const usage: AgentUsage = {};
@@ -62,7 +68,13 @@ function sumUsagePair(a?: AgentUsage, b?: AgentUsage): AgentUsage | undefined {
     const total = (a?.[field] ?? 0) + (b?.[field] ?? 0);
     if (total > 0) usage[field] = total;
   }
-  usage.cost = (a?.cost ?? 0) + (b?.cost ?? 0);
+  // Неизвестная стоимость — не ноль: иначе --max-cost видит 0 и не может
+  // отличить отсутствие телеметрии от реально бесплатного запуска.
+  const costA = knownCost(a);
+  const costB = knownCost(b);
+  if (costA !== undefined || costB !== undefined) {
+    usage.cost = (costA ?? 0) + (costB ?? 0);
+  }
   return usage;
 }
 
@@ -70,6 +82,19 @@ function sumUsagePair(a?: AgentUsage, b?: AgentUsage): AgentUsage | undefined {
 function mergeAttemptUsage(previous: AgentResult, next: AgentResult): AgentResult {
   const usage = sumUsagePair(previous.usage, next.usage);
   return usage === undefined ? next : { ...next, usage };
+}
+
+/** Разумный верхний предел цепочки запасных моделей */
+const MAX_FALLBACK_MODELS = 10;
+
+/** Строит цепочку по всему настроенному списку, но не больше разумного предела */
+export function buildConfiguredFallbackChain(
+  primary: string | undefined,
+  fallbackModels: string[]
+): string[] {
+  return buildFallbackChain(primary, fallbackModels, {
+    max: Math.min(fallbackModels.length, MAX_FALLBACK_MODELS)
+  });
 }
 
 /** Одна попытка вызова агента: fallback по моделям и при отсутствии агента */
@@ -172,7 +197,7 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
   }
 
   // Запасные модели: включаются только для RATE_LIMITED/MODEL_UNAVAILABLE/EMPTY_RESPONSE.
-  const chain = buildFallbackChain(model, options.fallbackModels ?? [], { max: 2 });
+  const chain = buildConfiguredFallbackChain(model, options.fallbackModels ?? []);
   for (const candidate of chain) {
     if (result.success || !shouldFallback(result.errorCode)) break;
     if (options.controller.isCancelled()) break;
@@ -206,6 +231,10 @@ function finalizeResult(
   const usage: AgentUsage = { ...(mergedUsage ?? result.usage ?? {}) };
   if (hasCost) {
     usage.cost = totalCost;
+  } else {
+    // Провайдер не сообщил стоимость: оставляем поле неопределённым,
+    // а не подменяем его нулём.
+    delete usage.cost;
   }
   return {
     ...result,
@@ -335,8 +364,8 @@ export async function callAgent(
       config
     });
 
-    const cost = result.usage?.cost;
-    if (typeof cost === 'number' && Number.isFinite(cost)) {
+    const cost = knownCost(result.usage);
+    if (cost !== undefined) {
       totalCost += cost;
       hasCost = true;
     }
@@ -350,7 +379,7 @@ export async function callAgent(
 
     await invokeErrorHook(config, isChair, result);
 
-    if (!isRetryable(result.errorCode, result.retryAfterMs)) {
+    if (!isRetryable(result.errorCode, result.retryAfterMs, delayMs)) {
       return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
     }
   }

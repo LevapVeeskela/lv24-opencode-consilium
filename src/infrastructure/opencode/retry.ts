@@ -20,6 +20,9 @@ export const MAX_RETRIES = 10;
 /** Максимальная задержка rate limit, которую имеет смысл ждать внутри запуска */
 export const RATE_LIMIT_RETRY_WINDOW_MS = 30_000;
 
+/** Максимальная задержка setTimeout: большие значения Node.js зажимает до 1 мс */
+export const MAX_TIMEOUT_MS = 2_147_483_647;
+
 /** Приводит значение к конечному числу либо undefined */
 export function toFiniteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -48,7 +51,7 @@ export function sanitizeTimeout(value: unknown, fallback: number): number {
   const toTimeout = (candidate: unknown): number | undefined => {
     const numeric = toFiniteNumber(candidate);
     if (numeric === undefined || numeric <= 0) return undefined;
-    return Math.max(1, Math.round(numeric));
+    return Math.min(MAX_TIMEOUT_MS, Math.max(1, Math.round(numeric)));
   };
   return toTimeout(value) ?? toTimeout(fallback) ?? DEFAULT_TIMEOUT;
 }
@@ -72,16 +75,22 @@ export function calculateRetryDelay(
   return Math.max(0, Math.round(base * (0.5 + Math.random() * 0.5)));
 }
 
-/** Проверяет, имеет ли смысл повторять попытку */
-export function isRetryable(code: AgentErrorCode | undefined, retryAfterMs?: number): boolean {
+/**
+ * Проверяет, имеет ли смысл повторять попытку.
+ * Если провайдер сообщил 429/rate limit без точной задержки, используем
+ * настроенную базовую задержку повтора (`fallbackDelayMs`).
+ */
+export function isRetryable(
+  code: AgentErrorCode | undefined,
+  retryAfterMs?: number,
+  fallbackDelayMs: number = DEFAULT_RETRY_DELAY
+): boolean {
   if (code === undefined) return true;
   if (code === 'RATE_LIMITED') {
     // Короткий лимит (секунды) пережидаем; длинный — сразу отдаём ошибку.
-    return (
-      retryAfterMs !== undefined &&
-      retryAfterMs > 0 &&
-      retryAfterMs <= RATE_LIMIT_RETRY_WINDOW_MS
-    );
+    const delay =
+      retryAfterMs !== undefined && retryAfterMs > 0 ? retryAfterMs : fallbackDelayMs;
+    return Number.isFinite(delay) && delay >= 0 && delay <= RATE_LIMIT_RETRY_WINDOW_MS;
   }
   return (
     code !== 'CANCELLED' &&

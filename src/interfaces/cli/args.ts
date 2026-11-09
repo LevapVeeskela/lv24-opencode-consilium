@@ -7,6 +7,9 @@ import type { CLIOptions } from '../../domain/types.js';
 
 export const COMMANDS = new Set(['run', 'init', 'models', 'doctor', 'mcp', 'watch', 'hooks', 'help', 'version']);
 
+/** Команды, у которых есть собственные позиционные аргументы (задача/действие) */
+const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks']);
+
 export class UsageError extends Error {}
 
 export function requireValue(argv: string[], index: number, flag: string): string {
@@ -257,6 +260,8 @@ export function parseArgs(argv: string[]): CLIOptions {
         if (arg === '-') {
           options.taskFile = '-';
         } else if (!arg.startsWith('-')) {
+          // Команда распознаётся только до первого слова задачи; флаги перед
+          // ней не считаются частью задачи.
           if (options.command === undefined && taskParts.length === 0 && COMMANDS.has(arg)) {
             options.command = arg as CLIOptions['command'];
           } else {
@@ -270,6 +275,17 @@ export function parseArgs(argv: string[]): CLIOptions {
   }
 
   options.task = taskParts.join(' ').trim();
+  // Если первое слово совпало с командой без позиционных аргументов, но после
+  // него идёт текст задачи, это задача, а не команда: "models should be cached".
+  if (
+    options.command !== undefined &&
+    !COMMANDS_WITH_POSITIONAL_ARGS.has(options.command) &&
+    options.task.length > 0
+  ) {
+    taskParts.unshift(options.command);
+    options.command = undefined;
+    options.task = taskParts.join(' ').trim();
+  }
   if (options.command === 'hooks') {
     const action = options.task.trim();
     if (action === 'install' || action === 'uninstall') {

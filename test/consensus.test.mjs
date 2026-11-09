@@ -77,27 +77,36 @@ test('tokenize убирает дубликаты с сохранением по�
   assert.deepEqual(tokenize('Postgres docker postgres Docker'), ['postgres', 'docker']);
 });
 
-test('один эксперт: среднее 1, high, без пар', () => {
+test('один эксперт: нет данных вместо 100% и high', () => {
   const report = analyzeConsensus([{ agent: 'solo', text: 'postgres kubernetes docker' }]);
   assert.equal(report.experts, 1);
-  assert.equal(report.averageSimilarity, 1);
-  assert.equal(report.agreement, 'high');
+  assert.equal(report.averageSimilarity, null);
+  assert.equal(report.agreement, 'insufficient');
   assert.deepEqual(report.pairs, []);
-  assert.match(report.summary, /solo|Один эксперт/);
+  assert.match(report.summary, /нет данных/i);
+  assert.doesNotMatch(report.summary, /100|высокое/);
+  const text = formatConsensusReport(report);
+  assert.match(text, /нет данных/);
+  assert.doesNotMatch(text, /NaN|100%/);
+  assert.match(buildConsensusPromptSection(report), /нет данных/);
 });
 
 test('ноль экспертов: пустой отчёт с пометкой нет данных', () => {
   const empty = analyzeConsensus([]);
   assert.equal(empty.experts, 0);
-  assert.equal(empty.agreement, 'low');
+  assert.equal(empty.averageSimilarity, null);
+  assert.equal(empty.agreement, 'none');
   assert.match(empty.summary, /нет данных/);
+  assert.doesNotMatch(formatConsensusReport(empty), /NaN|0%/);
+  assert.match(buildConsensusPromptSection(empty), /нет данных/);
 
   const failed = analyzeConsensus([
     { agent: 'x', text: 'postgres docker', success: false },
     { agent: 'y', text: '   ' }
   ]);
   assert.equal(failed.experts, 0);
-  assert.equal(failed.agreement, 'low');
+  assert.equal(failed.averageSimilarity, null);
+  assert.equal(failed.agreement, 'none');
   assert.match(failed.summary, /нет данных/);
 });
 

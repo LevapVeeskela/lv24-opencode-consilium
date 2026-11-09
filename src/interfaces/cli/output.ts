@@ -102,8 +102,15 @@ export function printSummary(result: ConsiliumResult, options: CLIOptions): void
   if (consensus !== null && typeof consensus === 'object' && !Array.isArray(consensus)) {
     const agreement = (consensus as { agreement?: unknown }).agreement;
     const average = (consensus as { averageSimilarity?: unknown }).averageSimilarity;
-    if (typeof agreement === 'string') {
-      const value = typeof average === 'number' ? `, ${average.toFixed(2)}` : '';
+    const experts = (consensus as { experts?: unknown }).experts;
+    if (agreement === 'none' || agreement === 'insufficient') {
+      const count = typeof experts === 'number' ? ` (экспертов: ${experts})` : '';
+      console.error(`🤝 Согласие экспертов: нет данных${count}`);
+    } else if (typeof agreement === 'string') {
+      const value =
+        typeof average === 'number' && Number.isFinite(average)
+          ? `, ${average.toFixed(2)}`
+          : '';
       console.error(`🤝 Согласие экспертов: ${agreement}${value}`);
     }
   }

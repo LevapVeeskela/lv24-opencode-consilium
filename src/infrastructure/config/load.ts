@@ -72,7 +72,9 @@ export function cloneConfig(config: ConsiliumConfig): ConsiliumConfig {
     ...config,
     experts: config.experts.map(expert => ({ ...expert })),
     chair: { ...config.chair },
-    excludedAgents: config.excludedAgents ? [...config.excludedAgents] : undefined,
+    excludedAgents: Array.isArray(config.excludedAgents)
+      ? [...config.excludedAgents]
+      : undefined,
     timeouts: { ...config.timeouts },
     retry: { ...config.retry },
     output: { ...config.output },
@@ -96,7 +98,9 @@ export function mergeWithDefaults(partial: Partial<ConsiliumConfig>): ConsiliumC
     ...partial,
     experts: partial.experts ? partial.experts.map(expert => ({ ...expert })) : base.experts,
     chair: { ...base.chair, ...partial.chair },
-    excludedAgents: partial.excludedAgents ? [...partial.excludedAgents] : base.excludedAgents,
+    excludedAgents: Array.isArray(partial.excludedAgents)
+      ? [...partial.excludedAgents]
+      : base.excludedAgents,
     timeouts: { ...base.timeouts, ...partial.timeouts },
     retry: { ...base.retry, ...partial.retry },
     output: { ...base.output, ...partial.output },
@@ -376,6 +380,25 @@ function sanitizeChairAgent(
   };
 }
 
+/**
+ * Проверяет excludedAgents: не массив строк — предупреждение, значение
+ * игнорируется, чтобы автоопределение агентов не падало с TypeError.
+ */
+function sanitizeExcludedAgents(
+  userConfig: Partial<ConsiliumConfig>,
+  warnings: string[]
+): void {
+  if (userConfig.excludedAgents === undefined) return;
+
+  const value: unknown = userConfig.excludedAgents;
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+    warnings.push(
+      'Поле excludedAgents должно быть массивом строк; значение проигнорировано.'
+    );
+    delete userConfig.excludedAgents;
+  }
+}
+
 /** Удаляет экспертов с недопустимыми именами (включая найденных в opencode.json) */
 function sanitizeExpertNames(
   userConfig: Partial<ConsiliumConfig>,
@@ -461,6 +484,8 @@ export function loadConfig(
     delete userConfig.experts;
   }
 
+  sanitizeExcludedAgents(userConfig, warnings);
+
   // Автоопределение агентов из opencode.json, если эксперты не заданы явно
   if (userConfig.autoDiscoverAgents !== false) {
     const snapshot = loadOpenCodeAgents({
@@ -470,6 +495,12 @@ export function loadConfig(
 
     if (snapshot.warning !== undefined) {
       warnings.push(snapshot.warning);
+    }
+
+    // Битый файл слоя не должен скрывать остальные слои: предупреждаем о
+    // каждом файле и продолжаем с теми, что разобрались.
+    for (const error of snapshot.errors) {
+      warnings.push(`Не удалось прочитать ${error}`);
     }
 
     if (snapshot.section !== null) {
@@ -488,16 +519,26 @@ export function loadConfig(
       }
 
       // Модель председателя тоже берём из opencode.json, чтобы отчёты были точными.
+      // Явно заданную пользователем модель не перекрываем.
       const chairName = userConfig.chair?.agent ?? DEFAULT_CONFIG.chair.agent;
       const chairEntry = section.entries[chairName];
       const chairModel = chairEntry === undefined ? undefined : readAgentDefinition(chairEntry).model;
-      if (chairModel !== undefined && chairModel.length > 0) {
+      const configuredChairModel = userConfig.chair?.model;
+      const chairModelConfigured =
+        configuredChairModel !== undefined &&
+        (typeof configuredChairModel !== 'string' ||
+          configuredChairModel.trim().length > 0);
+      if (
+        chairModel !== undefined &&
+        chairModel.length > 0 &&
+        !chairModelConfigured
+      ) {
         userConfig.chair = {
           ...(userConfig.chair ?? { agent: DEFAULT_CONFIG.chair.agent }),
           model: chairModel
         };
       }
-    } else if (snapshot.path !== null) {
+    } else if (snapshot.path !== null && snapshot.errors.length === 0) {
       warnings.push(
         `Не удалось прочитать ${snapshot.path}: ${snapshot.error ?? 'неизвестная ошибка'}`
       );

@@ -1,7 +1,9 @@
 // consilium_run tool handler.
 import { canonicalizePath, resolveInside } from '../../../shared/paths.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
+import { selectExperts } from '../../../application/run.js';
 import { applyPreset } from '../../../domain/council/presets.js';
+import { selectSmartExperts } from '../../../domain/council/smart-experts.js';
 import type {
   ConsiliumConfig,
   ConsiliumResult,
@@ -111,6 +113,28 @@ function applyPresetFor(config: ConsiliumConfig, name: PresetName): ConsiliumCon
   return applyPreset(config, name as Parameters<typeof applyPreset>[1]);
 }
 
+/**
+ * Считает фактический размер совета для прогресса: явные эксперты, disabled
+ * и smart-выбор уже применены. Возвращает число экспертов + председатель.
+ */
+export function computeProgressTotal(
+  config: ConsiliumConfig,
+  requestedExperts: string[] | undefined,
+  task: string
+): number {
+  try {
+    const selected = selectExperts(config, requestedExperts, undefined);
+    const council =
+      config.smartExperts === true
+        ? selectSmartExperts(selected, task, { onLog: () => {} }).experts
+        : selected;
+    return Math.max(1, council.length) + 1;
+  } catch {
+    const enabled = config.experts.filter((expert) => expert.enabled !== false).length;
+    return Math.max(1, enabled) + 1;
+  }
+}
+
 export async function toolConsiliumRun(
   args: Record<string, unknown>,
   progressToken: ProgressToken | undefined,
@@ -179,9 +203,7 @@ export async function toolConsiliumRun(
   if (timeoutMs !== undefined) runOptions.timeout = timeoutMs;
   if (outputPath.value !== undefined) runOptions.outputFile = outputPath.value;
 
-  const enabledCount = config.experts.filter((expert) => expert.enabled !== false).length;
-  const expertCount = experts !== undefined && experts.length > 0 ? experts.length : enabledCount;
-  const total = Math.max(1, expertCount) + 1;
+  const total = computeProgressTotal(config, experts, task);
 
   const consilium = new Consilium(config);
   let unsubscribe: (() => void) | undefined;

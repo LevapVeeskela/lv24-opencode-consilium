@@ -15,6 +15,8 @@ import {
   uninstallPreCommitHook,
   upsertHookBlock
 } from '../dist/watch.js';
+import { commandWatch } from '../dist/interfaces/cli/commands/watch.js';
+import { Consilium } from '../dist/application/consilium.js';
 
 const START = '# >>> consilium >>>';
 const END = '# <<< consilium <<<';
@@ -40,6 +42,65 @@ function waitFor(cond, timeoutMs = 5000, stepMs = 25) {
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function writeWatchConfig(dir) {
+  fs.writeFileSync(
+    path.join(dir, 'consilium.config.json'),
+    JSON.stringify(
+      {
+        autoDiscoverAgents: false,
+        artifacts: false,
+        consensus: false,
+        debounceMs: 20,
+        experts: [{ name: 'arch' }, { name: 'sec' }]
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+}
+
+function fakeRunResult() {
+  return {
+    text: 'ok',
+    experts: [{ agent: 'arch', text: 'ok', success: true }],
+    chair: { agent: 'consilium', text: 'ok', success: true },
+    totalTime: 1,
+    parallelTime: 1,
+    success: true,
+    metadata: {}
+  };
+}
+
+function spySignalHandlers() {
+  const originalOnce = process.once;
+  const handlers = { SIGINT: [], SIGTERM: [] };
+  process.once = function (event, listener) {
+    if (event === 'SIGINT' || event === 'SIGTERM') {
+      handlers[event].push(listener);
+    }
+    return originalOnce.call(this, event, listener);
+  };
+  return {
+    handlers,
+    shutdown() {
+      const listener = handlers.SIGINT[0] ?? handlers.SIGTERM[0];
+      if (listener !== undefined) listener();
+    },
+    restore() {
+      process.once = originalOnce;
+    }
+  };
+}
 
 // --- shouldIgnore ---
 
@@ -296,6 +357,39 @@ test('install отказывается трогать не-shell hook', () => {
   assert.throws(() => installPreCommitHook(dir, 'npx consilium'), /python3|shell/i);
 });
 
+test('install принимает #!/usr/bin/env bash', () => {
+  const dir = mkTemp();
+  fs.mkdirSync(path.join(dir, '.git', 'hooks'), { recursive: true });
+  const hookPath = path.join(dir, '.git', 'hooks', 'pre-commit');
+  fs.writeFileSync(hookPath, '#!/usr/bin/env bash\necho hi\n', 'utf8');
+
+  assert.doesNotThrow(() => installPreCommitHook(dir, 'npx consilium'));
+  const content = fs.readFileSync(hookPath, 'utf8');
+  assert.ok(content.includes('echo hi'));
+  assert.ok(content.includes('npx consilium'));
+});
+
+test('install принимает #!/usr/bin/env -S bash -e', () => {
+  const dir = mkTemp();
+  fs.mkdirSync(path.join(dir, '.git', 'hooks'), { recursive: true });
+  const hookPath = path.join(dir, '.git', 'hooks', 'pre-commit');
+  fs.writeFileSync(hookPath, '#!/usr/bin/env -S bash -e\necho hi\n', 'utf8');
+
+  assert.doesNotThrow(() => installPreCommitHook(dir, 'npx consilium'));
+  assert.ok(fs.readFileSync(hookPath, 'utf8').includes('npx consilium'));
+});
+
+test('install отклоняет #!/usr/bin/env -S python3', () => {
+  const dir = mkTemp();
+  fs.mkdirSync(path.join(dir, '.git', 'hooks'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, '.git', 'hooks', 'pre-commit'),
+    '#!/usr/bin/env -S python3 -u\nprint("hi")\n',
+    'utf8'
+  );
+  assert.throws(() => installPreCommitHook(dir, 'npx consilium'), /python3|shell/i);
+});
+
 test('resolveHooksDir понимает .git-файл (worktree)', () => {
   const dir = mkTemp();
   const gitDir = path.join(dir, 'actual-git-dir');
@@ -385,5 +479,195 @@ test('createProjectWatcher: ошибка onTrigger логируется и не 
   } finally {
     console.error = origError;
     w.close();
+  }
+});
+
+// --- commandWatch ---
+
+test('commandWatch: правка во время прогона даёт один повтор после него', async (t) => {
+  const dir = mkTemp();
+  const previousCwd = process.cwd();
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  let releaseFirst;
+  const firstGate = new Promise(resolve => {
+    releaseFirst = resolve;
+  });
+  let calls = 0;
+  t.mock.method(Consilium.prototype, 'run', async function () {
+    calls += 1;
+    if (calls === 1) await firstGate;
+    return fakeRunResult();
+  });
+
+  const signals = spySignalHandlers();
+  try {
+    process.chdir(dir);
+    writeWatchConfig(dir);
+
+    const watchPromise = commandWatch({ task: 'review', silent: true });
+    await waitFor(() => calls === 1);
+
+    fs.writeFileSync(path.join(dir, 'during-run-1.txt'), 'x');
+    await sleep(60);
+    fs.writeFileSync(path.join(dir, 'during-run-2.txt'), 'x');
+    await sleep(60);
+    releaseFirst();
+
+    await waitFor(() => calls >= 2, 3000);
+    assert.equal(calls, 2, 'правки во время прогона должны дать ровно один повтор');
+
+    signals.shutdown();
+    await withTimeout(watchPromise, 2000, 'commandWatch не завершился');
+  } finally {
+    signals.shutdown();
+    signals.restore();
+    process.chdir(previousCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('commandWatch: после прогона правки не глотаются паузой suppressUntil', async (t) => {
+  const dir = mkTemp();
+  const previousCwd = process.cwd();
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  let calls = 0;
+  t.mock.method(Consilium.prototype, 'run', async () => {
+    calls += 1;
+    return fakeRunResult();
+  });
+
+  const signals = spySignalHandlers();
+  try {
+    process.chdir(dir);
+    writeWatchConfig(dir);
+
+    const watchPromise = commandWatch({ task: 'review', silent: true });
+    await waitFor(() => calls === 1);
+    // Первый прогон уже завершён (finally снял running); ждать старую 1-секундную
+    // паузу не должны — иначе эта правка потеряется.
+    await sleep(40);
+    fs.writeFileSync(path.join(dir, 'after-run.txt'), 'x');
+
+    await waitFor(() => calls >= 2, 900);
+    assert.ok(calls >= 2, 'правка сразу после прогона должна запустить новый');
+
+    signals.shutdown();
+    await withTimeout(watchPromise, 2000, 'commandWatch не завершился');
+  } finally {
+    signals.shutdown();
+    signals.restore();
+    process.chdir(previousCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('commandWatch: SIGINT во время первого прогона отменяет его', async (t) => {
+  const dir = mkTemp();
+  const previousCwd = process.cwd();
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  let calls = 0;
+  let finishRun;
+  let cancelled = false;
+  t.mock.method(Consilium.prototype, 'run', async function () {
+    calls += 1;
+    return new Promise(resolve => {
+      finishRun = () => resolve(fakeRunResult());
+    });
+  });
+  t.mock.method(Consilium.prototype, 'cancel', function () {
+    cancelled = true;
+    finishRun?.();
+  });
+
+  const signals = spySignalHandlers();
+  try {
+    process.chdir(dir);
+    writeWatchConfig(dir);
+
+    const watchPromise = commandWatch({ task: 'review', silent: true });
+    await waitFor(() => calls === 1);
+
+    // Обработчики должны быть установлены ещё до первого прогона.
+    assert.equal(signals.handlers.SIGINT.length, 1, 'SIGINT handler зарегистрирован заранее');
+    assert.equal(signals.handlers.SIGTERM.length, 1, 'SIGTERM handler зарегистрирован заранее');
+
+    signals.shutdown();
+    await withTimeout(watchPromise, 2000, 'commandWatch не завершился после SIGINT');
+    assert.equal(cancelled, true, 'активный прогон должен быть отменён');
+  } finally {
+    signals.shutdown();
+    signals.restore();
+    process.chdir(previousCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('commandWatch передаёт --chair в RunOptions', async (t) => {
+  const dir = mkTemp();
+  const previousCwd = process.cwd();
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'error', () => {});
+
+  let calls = 0;
+  let runOptions;
+  t.mock.method(Consilium.prototype, 'run', async function (_task, options) {
+    calls += 1;
+    runOptions = options;
+    return fakeRunResult();
+  });
+
+  const signals = spySignalHandlers();
+  try {
+    process.chdir(dir);
+    writeWatchConfig(dir);
+
+    const watchPromise = commandWatch({ task: 'review', silent: true, chair: 'custom-chair' });
+    await waitFor(() => calls === 1);
+    assert.equal(runOptions?.chair, 'custom-chair');
+
+    signals.shutdown();
+    await withTimeout(watchPromise, 2000, 'commandWatch не завершился');
+  } finally {
+    signals.shutdown();
+    signals.restore();
+    process.chdir(previousCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('commandWatch: --list-agents печатает состав и не запускает прогон', async (t) => {
+  const dir = mkTemp();
+  const previousCwd = process.cwd();
+  const logs = [];
+  t.mock.method(console, 'log', (...args) => {
+    logs.push(args.join(' '));
+  });
+  t.mock.method(console, 'error', () => {});
+
+  let calls = 0;
+  t.mock.method(Consilium.prototype, 'run', async () => {
+    calls += 1;
+    return fakeRunResult();
+  });
+
+  try {
+    process.chdir(dir);
+    writeWatchConfig(dir);
+
+    const code = await commandWatch({ task: 'review', silent: true, listAgents: true });
+    assert.equal(code, 0);
+    assert.equal(calls, 0);
+    const output = logs.join('\n');
+    assert.match(output, /Эксперты:/);
+    assert.match(output, /arch/);
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

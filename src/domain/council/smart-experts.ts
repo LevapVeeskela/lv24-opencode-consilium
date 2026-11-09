@@ -17,6 +17,20 @@ export interface SmartExpertSelection {
   scores: Record<string, number>;
   /** Причины выбора на русском (только для выбранных со счётом > 0). */
   reasons: Record<string, string>;
+  /** true, если ни одна роль не дала положительного счёта (эвристика без сигнала). */
+  noSignal: boolean;
+}
+
+/** Опции выбора экспертов. */
+export interface SmartExpertOptions {
+  /** Максимальный размер совета (по умолчанию 3). */
+  max?: number;
+  /** Минимальный размер совета (по умолчанию 2). */
+  min?: number;
+  /** Дифф, который тоже участвует в скоринге. */
+  diff?: string;
+  /** Необязательный приёмник предупреждений (по умолчанию console.warn). */
+  onLog?: (level: 'warn', message: string) => void;
 }
 
 /**
@@ -201,7 +215,7 @@ function toPositiveInt(value: number | undefined, fallback: number): number {
 export function selectSmartExperts(
   experts: ExpertConfig[],
   task: string,
-  options?: { max?: number; min?: number; diff?: string },
+  options?: SmartExpertOptions,
 ): SmartExpertSelection {
   const haystack = `${task} ${options?.diff ?? ''}`.toLowerCase();
   const enabled: Array<{ expert: ExpertConfig; index: number }> = [];
@@ -226,7 +240,7 @@ export function selectSmartExperts(
   }
 
   if (enabled.length === 0) {
-    return { experts: [], dropped: [], scores, reasons: {} };
+    return { experts: [], dropped: [], scores, reasons: {}, noSignal: false };
   }
 
   const max = Math.min(toPositiveInt(options?.max, 3), enabled.length);
@@ -237,11 +251,21 @@ export function selectSmartExperts(
     (a, b) => (scores[b.expert.name] ?? 0) - (scores[a.expert.name] ?? 0) || a.index - b.index,
   );
   const positives = ranked.filter(({ expert }) => (scores[expert.name] ?? 0) > 0);
+  const noSignal = positives.length === 0;
 
   let picked: Array<{ expert: ExpertConfig; index: number }>;
-  if (positives.length === 0) {
-    // Все нули — держим первые min, чтобы совет не был пустым.
-    picked = ranked.slice(0, min);
+  if (noSignal) {
+    // Ни одна роль не совпала (например, авто-обнаруженные/кастомные имена).
+    // Не раздуваем совет: уважаем max и явно сообщаем, что эвристике не хватило сигнала.
+    const message =
+      'Умный выбор экспертов: ни одна роль не совпала с задачей — ' +
+      `используются первые ${max} из доступного состава`;
+    if (options?.onLog !== undefined) {
+      options.onLog('warn', message);
+    } else {
+      console.warn(message);
+    }
+    picked = ranked.slice(0, max);
   } else if (positives.length < min) {
     // Положительных меньше min — не роняем ни одного из них, добираем нулями до min.
     const zeroes = ranked.filter(({ expert }) => (scores[expert.name] ?? 0) === 0);
@@ -271,5 +295,6 @@ export function selectSmartExperts(
       .map(({ expert }) => expert.name),
     scores,
     reasons,
+    noSignal,
   };
 }

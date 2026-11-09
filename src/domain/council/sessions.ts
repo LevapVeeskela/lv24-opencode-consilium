@@ -22,8 +22,8 @@ export function buildAgentSession(
   const trimmed = base?.trim();
   if (trimmed === undefined || trimmed.length === 0) return undefined;
 
-  // OpenCode требует, чтобы session id начинался с "ses".
-  const prefixed = trimmed.startsWith('ses') ? trimmed : `ses_${trimmed}`;
+  // OpenCode требует, чтобы session id начинался с "ses_".
+  const prefixed = trimmed.startsWith('ses_') ? trimmed : `ses_${trimmed}`;
   const suffix = `-${agentName.trim().length > 0 ? agentName.trim() : 'default'}`;
   const cleaned = `${prefixed}${suffix}`
     .replace(/[^A-Za-z0-9._:-]+/g, '-')
@@ -45,11 +45,15 @@ export function buildChairSession(base: string | undefined): string | undefined 
   const trimmed = base?.trim();
   if (trimmed === undefined || trimmed.length === 0) return undefined;
 
-  const prefixed = trimmed.startsWith('ses') ? trimmed : `ses_${trimmed}`;
+  const prefixed = trimmed.startsWith('ses_') ? trimmed : `ses_${trimmed}`;
   const cleaned = prefixed
     .replace(/[^A-Za-z0-9._:-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^[-_.]+|[-_.]+$/g, '');
 
-  return cleaned.length > 0 ? cleaned.slice(0, 128) : undefined;
+  if (cleaned.length === 0) return undefined;
+  // Очистка могла срезать завершающий "_" (например, из "ses_"); префикс
+  // OpenCode должен сохраниться в любом случае.
+  const safe = cleaned.startsWith('ses_') ? cleaned : `ses_${cleaned}`;
+  return safe.slice(0, 128);
 }

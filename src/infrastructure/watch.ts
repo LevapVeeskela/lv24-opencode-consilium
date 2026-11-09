@@ -240,6 +240,47 @@ export function buildPreCommitHook(command: string): string {
 const SHELL_INTERPRETERS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh']);
 
 /**
+ * Извлекает интерпретатор из shebang-строки.
+ * Понимает `#!/usr/bin/env bash` и `#!/usr/bin/env -S bash -e`:
+ * для `env` берётся первый не-опция токен после него.
+ */
+function parseShebangInterpreter(firstLine: string): string {
+  const tokens = firstLine.slice(2).trim().split(/\s+/).filter(token => token.length > 0);
+  let interpreter = tokens[0] ?? '';
+  if (path.basename(interpreter) !== 'env') {
+    return interpreter;
+  }
+
+  let index = 1;
+  while (index < tokens.length) {
+    const token = tokens[index] ?? '';
+    if (token === '--' || token === '-S' || token === '--split-string') {
+      index += 1;
+      break;
+    }
+    if (token.startsWith('--split-string=') && token.length > '--split-string='.length) {
+      return token.slice('--split-string='.length);
+    }
+    if (token.startsWith('-S') && token.length > 2) {
+      // `env -Sbash` — команда склеена с опцией.
+      return token.slice(2);
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('-')) {
+      // -u/--unset потребляют значение; остальные флаги пропускаем.
+      index += token === '-u' || token === '--unset' ? 2 : 1;
+      continue;
+    }
+    break;
+  }
+
+  return tokens[index] ?? '';
+}
+
+/**
  * Возвращает каталог hooks с учётом `.git`-файла (worktree/submodule) и
  * настройки `core.hooksPath`. Бросает понятную ошибку, если репозитория нет.
  */
@@ -343,9 +384,9 @@ export function installPreCommitHook(
     const firstLine =
       existing.split(/\r?\n/).find(line => line.trim().length > 0) ?? '';
     if (firstLine.startsWith('#!')) {
-      const interpreter = firstLine.slice(2).trim().split(/\s+/)[0] ?? '';
+      const interpreter = parseShebangInterpreter(firstLine);
       const base = path.basename(interpreter);
-      if (!SHELL_INTERPRETERS.has(base)) {
+      if (interpreter.length === 0 || !SHELL_INTERPRETERS.has(base)) {
         throw new Error(
           `Cannot install pre-commit hook: existing hook uses "${interpreter}". ` +
             'Add the consilium block manually or convert the hook to a shell script.'

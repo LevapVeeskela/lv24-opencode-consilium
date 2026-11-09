@@ -4,7 +4,7 @@
  */
 
 import { relative, resolve } from 'path';
-import type { CLIOptions } from '../../../domain/types.js';
+import type { CLIOptions, RunOptions } from '../../../domain/types.js';
 import { Consilium, loadConfig } from '../../../application/consilium.js';
 import { getGitDiff, formatDiffForPrompt } from '../../../infrastructure/git.js';
 import { createProjectWatcher } from '../../../infrastructure/watch.js';
@@ -12,7 +12,13 @@ import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js'
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { readTaskFromFile } from '../task.js';
-import { printDryRun, printResult, printSummary, writeRunReport } from '../output.js';
+import {
+  printAgentList,
+  printDryRun,
+  printResult,
+  printSummary,
+  writeRunReport
+} from '../output.js';
 
 /**
  * Watch-режим: перезапускает консилиум при изменениях в проекте.
@@ -35,6 +41,10 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
     }
   }
   const config = applyCliOverrides(loaded.config, options);
+  if (options.listAgents) {
+    printAgentList(config);
+    return 0;
+  }
   const cwd = config.cwd ?? process.cwd();
   const task =
     options.task.trim().length > 0 ? options.task.trim() : 'Сделай ревью текущих изменений';
@@ -65,12 +75,20 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
   }
 
   let running = false;
+  let pendingRerun = false;
   let closed = false;
-  let suppressUntil = 0;
   let active: Consilium | undefined;
 
+  const runOptions: RunOptions = {};
+  if (options.chair) runOptions.chair = options.chair;
+  if (options.output && !options.noSave) runOptions.outputFile = options.output;
+
   const runOnce = async (): Promise<void> => {
-    if (running || closed) {
+    if (closed) {
+      return;
+    }
+    if (running) {
+      pendingRerun = true;
       return;
     }
     running = true;
@@ -99,10 +117,16 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
         printDryRun(fullTask, config);
         return;
       }
+      if (closed) {
+        return;
+      }
 
       if (!options.silent) console.error('\n🔄 Запуск консилиума...');
       active = new Consilium(config);
-      const result = await active.run(fullTask);
+      if (closed) {
+        return;
+      }
+      const result = await active.run(fullTask, runOptions);
       const reportPrinted = writeRunReport(result, config, options);
       if (!reportPrinted) printResult(result, options);
       printSummary(result, options);
@@ -111,9 +135,11 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
     } finally {
       active = undefined;
       running = false;
-      // Гасим события от собственных записей (report/-o/redirect), которые
-      // fs.watch может доставить уже после завершения прогона.
-      suppressUntil = Date.now() + Math.max(1000, debounceMs + 300);
+      // Правки, пришедшие во время прогона, не теряем: один повтор после старта.
+      if (pendingRerun && !closed) {
+        pendingRerun = false;
+        void runOnce();
+      }
     }
   };
 
@@ -124,9 +150,11 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
       debounceMs,
       ignore,
       onTrigger: () => {
-        // Не ставим в очередь: иначе перенаправленный в проект stdout/stderr
-        // запускает новый прогон после каждого завершения (бесконечный цикл).
-        if (closed || running || Date.now() < suppressUntil) return;
+        if (closed) return;
+        if (running) {
+          pendingRerun = true;
+          return;
+        }
         void runOnce();
       }
     });
@@ -135,18 +163,24 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
     return 1;
   }
 
-  await runOnce();
-
-  await new Promise<void>(resolve => {
+  // Обработчики ставим до первого прогона: Ctrl+C должен отменять и его.
+  const shutdownPromise = new Promise<void>(resolveShutdown => {
     const shutdown = (): void => {
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
+      if (closed) return;
       closed = true;
+      pendingRerun = false;
       active?.cancel();
       watcher.close();
-      resolve();
+      resolveShutdown();
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
   });
+
+  await runOnce();
+  await shutdownPromise;
 
   return 0;
 }

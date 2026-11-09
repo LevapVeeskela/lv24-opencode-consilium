@@ -25,14 +25,20 @@ export interface ConsensusPair {
   similarity: number;
 }
 
+/** Уровень согласия; `none`/`insufficient` означают отсутствие данных. */
+export type ConsensusAgreement = 'high' | 'medium' | 'low' | 'insufficient' | 'none';
+
 /** Итоговый отчёт о консенсусе экспертов. */
 export interface ConsensusReport {
   /** Число учтённых экспертов. */
   experts: number;
-  /** Среднее попарное сходство в диапазоне [0, 1]. */
-  averageSimilarity: number;
-  /** Уровень согласия: high (>= 0.5), medium (>= 0.25), low (< 0.25). */
-  agreement: 'high' | 'medium' | 'low';
+  /** Среднее попарное сходство в диапазоне [0, 1]; `null` при < 2 экспертов. */
+  averageSimilarity: number | null;
+  /**
+   * Уровень согласия: high (>= 0.5), medium (>= 0.25), low (< 0.25).
+   * `insufficient` — один эксперт, `none` — нет успешных ответов.
+   */
+  agreement: ConsensusAgreement;
   /** Все неупорядоченные пары экспертов со сходством. */
   pairs: ConsensusPair[];
   /** Общие термины (встречаются минимум у половины экспертов), до 15. */
@@ -137,7 +143,16 @@ function round4(value: number): number {
 function agreementLabel(agreement: ConsensusReport['agreement']): string {
   if (agreement === 'high') return 'высокое';
   if (agreement === 'medium') return 'среднее';
-  return 'низкое';
+  if (agreement === 'low') return 'низкое';
+  return 'нет данных';
+}
+
+/** Процент сходства или `null`, если сравнивать нечего. */
+function similarityPercent(report: ConsensusReport): number | null {
+  const value = report.averageSimilarity;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.round(value * 100)
+    : null;
 }
 
 /**
@@ -156,8 +171,8 @@ export function analyzeConsensus(
   if (valid.length === 0) {
     return {
       experts: 0,
-      averageSimilarity: 0,
-      agreement: 'low',
+      averageSimilarity: null,
+      agreement: 'none',
       pairs: [],
       sharedTerms: [],
       uniqueTerms: {},
@@ -171,17 +186,17 @@ export function analyzeConsensus(
     const unique: Record<string, string[]> = {
       [name]: [...tokens].sort((x, y) => y.length - x.length || (x < y ? -1 : x > y ? 1 : 0)).slice(0, MAX_UNIQUE_TERMS)
     };
-    const report: ConsensusReport = {
+    return {
       experts: 1,
-      averageSimilarity: 1,
-      agreement: 'high',
+      averageSimilarity: null,
+      agreement: 'insufficient',
       pairs: [],
       sharedTerms: [],
       uniqueTerms: unique,
-      summary: ''
+      summary:
+        `## Консенсус: нет данных (1 эксперт: ${name})\n\n` +
+        `Для оценки согласия нужно минимум два эксперта; пар для сравнения нет.`
     };
-    report.summary = `## Консенсус: высокое (1 эксперт)\n\nОдин эксперт (${name}), среднее сходство 100%. Пар для сравнения нет.`;
-    return report;
   }
 
   // Попарные сходства (все неупорядоченные пары, детерминированный порядок).
@@ -241,8 +256,9 @@ export function analyzeConsensus(
 /** Строит компактное markdown-резюме без дампа исходных текстов. */
 function buildSummary(report: ConsensusReport): string {
   const lines: string[] = [];
-  const percent = Math.round(report.averageSimilarity * 100);
-  lines.push(`## Консенсус: ${agreementLabel(report.agreement)} (сходство ${percent}%, экспертов: ${report.experts})`);
+  const percent = similarityPercent(report);
+  const detail = percent === null ? '' : ` (сходство ${percent}%, экспертов: ${report.experts})`;
+  lines.push(`## Консенсус: ${agreementLabel(report.agreement)}${detail}`);
   const shown = report.pairs.filter(p => p.similarity > 0);
   if (shown.length > 0) {
     lines.push('', '| Эксперты | Сходство |', '|---|---|');
@@ -268,14 +284,17 @@ function buildSummary(report: ConsensusReport): string {
  */
 export function formatConsensusReport(report: ConsensusReport): string {
   const lines: string[] = [];
-  const percent = Math.round(report.averageSimilarity * 100);
+  const percent = similarityPercent(report);
   lines.push(`# Отчёт о консенсусе`);
   lines.push('');
-  lines.push(`Экспертов: ${report.experts}. Согласие: ${agreementLabel(report.agreement)}. Среднее сходство: ${percent}%.`);
+  lines.push(
+    `Экспертов: ${report.experts}. Согласие: ${agreementLabel(report.agreement)}. ` +
+      `Среднее сходство: ${percent === null ? 'нет данных' : `${percent}%`}.`
+  );
   lines.push('');
   lines.push('## Пары');
   if (report.pairs.length === 0) {
-    lines.push('Пар нет (нужен минимум один эксперт для сравнения, два — для пар).');
+    lines.push('Пар нет (для сравнения нужно минимум два эксперта).');
   } else {
     lines.push('| Эксперты | Сходство |');
     lines.push('|---|---|');
@@ -304,14 +323,24 @@ export function formatConsensusReport(report: ConsensusReport): string {
  * уровень согласия, топ общих терминов, разногласия по экспертам.
  */
 export function buildConsensusPromptSection(report: ConsensusReport): string {
-  const percent = Math.round(report.averageSimilarity * 100);
+  const percent = similarityPercent(report);
   const topShared = report.sharedTerms.slice(0, 10);
   const parts: string[] = [];
+  if (percent === null) {
+    const reason =
+      report.experts === 0
+        ? 'нет успешных ответов экспертов'
+        : 'недостаточно экспертов для сравнения (нужно минимум два)';
+    const text = `Консенсус: нет данных — ${reason}. Экспертов: ${report.experts}.`;
+    return text.length > PROMPT_SECTION_LIMIT
+      ? text.slice(0, PROMPT_SECTION_LIMIT - 1) + '…'
+      : text;
+  }
   parts.push(`Консенсус: согласие ${agreementLabel(report.agreement)} (среднее сходство ${percent}%, экспертов ${report.experts}).`);
   parts.push(topShared.length > 0
     ? `Общие темы: ${topShared.join(', ')}.`
     : 'Общих тем нет.');
-  const entries = Object.entries(report.uniqueTerms);
+  const entries = report.experts >= 2 ? Object.entries(report.uniqueTerms) : [];
   if (entries.length > 0) {
     const disagreements = entries
       .map(([agent, terms]) => `${agent} — особое мнение: ${terms.slice(0, 3).join(', ') || 'нет'}`)

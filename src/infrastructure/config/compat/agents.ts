@@ -107,7 +107,9 @@ export function readAgentSection(config: unknown): AgentSectionView {
 
   const entries: Record<string, Record<string, unknown>> = { ...v1 };
   for (const [name, entry] of Object.entries(v2)) {
-    entries[name] = entry;
+    // Внутри одного файла `agents` перекрывает `agent`, но неуказанные поля
+    // сохраняются: записи сливаются по имени, а не заменяются целиком.
+    entries[name] = { ...(entries[name] ?? {}), ...entry };
   }
 
   const duplicated = Object.keys(v1).filter(name => Object.prototype.hasOwnProperty.call(v2, name));

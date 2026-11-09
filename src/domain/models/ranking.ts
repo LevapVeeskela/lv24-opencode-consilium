@@ -150,8 +150,10 @@ function compareRanked(a: FreeModel, b: FreeModel): number {
 }
 
 function isBetter(candidate: FreeModel, current: FreeModel): boolean {
-  if (candidate.score !== current.score) return candidate.score > current.score;
+  // Доступный дубль важнее более высокого рейтинга недоступного: иначе
+  // фильтр доступности может скрыть единственную рабочую копию модели.
   if (candidate.available !== current.available) return candidate.available;
+  if (candidate.score !== current.score) return candidate.score > current.score;
   const sourceDelta = SOURCE_ORDER[candidate.source] - SOURCE_ORDER[current.source];
   if (sourceDelta !== 0) return sourceDelta < 0;
   return candidate.id < current.id;
@@ -173,10 +175,16 @@ export function sortRanked(models: FreeModel[], includeUnavailable: boolean): Fr
  */
 export function rankFreeModels(
   models: FreeModel[],
-  opts: { includeUnavailable?: boolean } = {}
+  opts: { includeUnavailable?: boolean; minContext?: number } = {}
 ): FreeModel[] {
   const now = Date.now();
-  const scored = models.map(model => ({ ...model, score: computeScore(model, now) }));
+  const minContext =
+    typeof opts.minContext === 'number' && Number.isFinite(opts.minContext) && opts.minContext > 0
+      ? opts.minContext
+      : 0;
+  const scored = models
+    .filter(model => model.context >= minContext)
+    .map(model => ({ ...model, score: computeScore(model, now) }));
   return sortRanked(scored, opts.includeUnavailable ?? true);
 }
 
@@ -260,18 +268,30 @@ export function buildCouncilAgents(
     throw new Error('Нет доступных моделей для консилиума');
   }
 
-  const chairIndex = Math.min(4, agentNames.length - 1);
+  // При 3–4 моделях индекс 4 недостижим: выбираем последнюю доступную модель,
+  // иначе ни один агент не получит промпт председателя.
+  const chairIndex = Math.min(4, selected.length - 1);
   const agents: Record<string, { name: string; mode: 'primary'; model: string; prompt: string }> = {};
 
   for (let index = 0; index < selected.length; index += 1) {
     const name = agentNames[index % agentNames.length];
+    if (name === 'consilium') continue;
     agents[name] = {
       name,
       mode: 'primary',
       model: selected[index].id,
-      prompt: index === chairIndex ? CHAIR_PROMPT : expertPrompt(name)
+      prompt: expertPrompt(name)
     };
   }
+
+  // Конфиг всегда ссылается на агента consilium — он обязан существовать,
+  // даже если моделей меньше пяти.
+  agents.consilium = {
+    name: 'consilium',
+    mode: 'primary',
+    model: selected[chairIndex].id,
+    prompt: CHAIR_PROMPT
+  };
 
   return agents;
 }

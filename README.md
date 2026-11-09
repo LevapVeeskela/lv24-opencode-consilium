@@ -407,6 +407,17 @@ The server part is published as `./server` (`dist/plugin.js`); no runtime depend
 | MCP server | External harnesses (Claude Desktop, Codex, Cursor, VS Code, custom agents) |
 | CLI | Terminal, scripts, CI, hooks, watch |
 
+### Slash command (OpenCode V2)
+
+The repository includes `.opencode/commands/council.md`, so `/council <task>` asks the current agent to run the council on your task. It calls the `consilium.run` plugin tool and falls back to the MCP `consilium_run` tool when the plugin is not loaded.
+
+- **Project:** `.opencode/commands/council.md` (already in this repository).
+- **Global:** copy the file to `~/.config/opencode/commands/council.md`.
+- **Usage:** `/council Review the authentication design`.
+- **Requires:** the [V2 plugin](#opencode-v2-plugin) **or** the [MCP server](#use-it-from-any-harness-mcp) to be registered. Without either, the agent reports what is missing instead of running a council.
+
+V1 note: OpenCode V1 reads the singular `command/` directory (`.opencode/command/`, `~/.config/opencode/command/`) and has no V2 plugin API. Copy the file there and use the MCP server or CLI fallback.
+
 ## Presets
 
 | Preset | Experts | Behaviour |

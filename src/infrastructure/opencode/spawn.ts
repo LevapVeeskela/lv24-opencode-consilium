@@ -351,17 +351,22 @@ export function executeOpenCode(options: ProcessRunOptions): Promise<ProcessOutc
     let timedOut = false;
     let timer: NodeJS.Timeout | undefined;
 
+    const clearKillTimer = (): void => {
+      const killTimer = killTimers.get(proc);
+      if (killTimer !== undefined) {
+        clearTimeout(killTimer);
+        killTimers.delete(proc);
+      }
+    };
+
     const cleanup = (): void => {
       if (state) state.children.delete(proc);
       if (timer !== undefined) {
         clearTimeout(timer);
         timer = undefined;
       }
-      const killTimer = killTimers.get(proc);
-      if (killTimer !== undefined) {
-        clearTimeout(killTimer);
-        killTimers.delete(proc);
-      }
+      // Таймер SIGKILL не снимаем здесь: settle может произойти по таймауту,
+      // пока дочерний процесс ещё игнорирует SIGTERM. Снимаем только на close.
     };
 
     const settle = (outcome: ProcessOutcome): void => {
@@ -445,6 +450,7 @@ export function executeOpenCode(options: ProcessRunOptions): Promise<ProcessOutc
     });
 
     proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      clearKillTimer();
       stdout = appendCapped(stdout, stdoutDecoder.end());
       stderr = appendCapped(stderr, stderrDecoder.end());
       settle({

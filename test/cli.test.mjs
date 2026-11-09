@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseArgs, main } from '../dist/cli.js';
+import { printSummary } from '../dist/interfaces/cli/output.js';
 
 test('задача из позиционных аргументов', () => {
   const options = parseArgs(['оцени', 'архитектуру']);
@@ -153,4 +154,32 @@ test('hooks с неизвестным действием — код 2 и без 
   t.mock.method(console, 'error', () => {});
   assert.equal(await main(['hooks', 'remove']), 2);
   assert.equal(await main(['hooks']), 2);
+});
+
+test('printSummary: консенсус без данных не печатает NaN и проценты', (t) => {
+  const lines = [];
+  t.mock.method(console, 'error', (...args) => {
+    lines.push(args.join(' '));
+  });
+
+  const result = {
+    text: 'готово',
+    experts: [],
+    chair: { agent: 'consilium', text: 'готово', success: true },
+    totalTime: 1000,
+    parallelTime: 0,
+    success: true,
+    metadata: {
+      consensus: {
+        experts: 1,
+        averageSimilarity: null,
+        agreement: 'insufficient'
+      }
+    }
+  };
+
+  printSummary(result, {});
+  const output = lines.join('\n');
+  assert.match(output, /Согласие экспертов: нет данных/);
+  assert.doesNotMatch(output, /NaN|100%|insufficient/);
 });

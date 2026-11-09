@@ -85,3 +85,82 @@ test('встроенный набор содержит только валидн
     assert.ok(item.context >= 32768);
   }
 });
+
+test('minContext применяется и при свежем ранжировании', () => {
+  const small = model({
+    id: 'opencode/small-context-free',
+    modelID: 'small-context-free',
+    context: 8000
+  });
+  const large = model({
+    id: 'opencode/large-context-free',
+    modelID: 'large-context-free',
+    context: 400000
+  });
+  const ranked = rankFreeModels([small, large], { minContext: 32768 });
+  assert.deepEqual(
+    ranked.map(item => item.id),
+    ['opencode/large-context-free']
+  );
+});
+
+test('дедупликация предпочитает доступную копию недоступной с более высоким score', () => {
+  const unavailable = model({
+    id: 'zeta/shared-free',
+    providerID: 'zeta',
+    modelID: 'shared-free',
+    canonicalID: 'shared-model',
+    context: 1_000_000,
+    outputLimit: 200_000,
+    available: false,
+    score: 1.2
+  });
+  const available = model({
+    id: 'alpha/shared-free',
+    providerID: 'alpha',
+    modelID: 'shared-free',
+    canonicalID: 'shared-model',
+    context: 128_000,
+    outputLimit: 32_000,
+    available: true,
+    score: 0.2
+  });
+
+  const ranked = rankFreeModels([unavailable, available], { includeUnavailable: true });
+  assert.equal(ranked.length, 1);
+  assert.equal(ranked[0].id, 'alpha/shared-free');
+
+  const selected = selectCouncilModels([unavailable, available], 5);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].id, 'alpha/shared-free');
+});
+
+test('buildCouncilAgents всегда создаёт consilium при 1–4 моделях', () => {
+  for (const count of [1, 2, 3, 4]) {
+    const models = ['a', 'b', 'c', 'd'].slice(0, count).map((name, index) =>
+      model({
+        id: `opencode/${name}-free`,
+        modelID: `${name}-free`,
+        score: 1 - index * 0.01
+      })
+    );
+    const selected = selectCouncilModels(models, 5);
+    const agents = buildCouncilAgents(models);
+    const chair = selected[Math.min(4, selected.length - 1)];
+
+    assert.ok(agents.consilium, `нет consilium при ${count} моделях`);
+    assert.equal(agents.consilium.model, chair.id);
+    assert.match(agents.consilium.prompt, /председател/i);
+    for (const [name, agent] of Object.entries(agents)) {
+      if (name !== 'consilium') {
+        assert.doesNotMatch(agent.prompt, /председател/i);
+      }
+    }
+    for (const item of selected) {
+      assert.ok(
+        Object.values(agents).some(agent => agent.model === item.id),
+        `модель ${item.id} потеряна при ${count} моделях`
+      );
+    }
+  }
+});
