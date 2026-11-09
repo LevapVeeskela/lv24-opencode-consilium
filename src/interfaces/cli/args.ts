@@ -19,12 +19,17 @@ export const COMMANDS = new Set([
   'hooks',
   'baseline',
   'eval',
+  'history',
+  'stats',
   'help',
   'version'
 ]);
 
 /** Команды, у которых есть собственные позиционные аргументы (задача/действие) */
 const COMMANDS_WITH_POSITIONAL_ARGS = new Set(['run', 'watch', 'hooks', 'baseline']);
+
+/** Команды, распознаваемые только в самом начале argv (не после флагов) */
+const START_ONLY_COMMANDS = new Set(['baseline', 'eval', 'history', 'stats']);
 
 /** Типизированные коды выхода CLI */
 export const EXIT_CODES = {
@@ -178,6 +183,9 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--limit':
         options.limit = parsePositiveInt(requireNumericValue(argv, ++i, arg), arg);
+        break;
+      case '--html':
+        options.statsHtml = requireValue(argv, ++i, arg);
         break;
       case '--task-file':
         options.taskFile = requireValue(argv, ++i, arg);
@@ -337,13 +345,12 @@ export function parseArgs(argv: string[]): CLIOptions {
         if (arg === '-') {
           options.taskFile = '-';
         } else if (!arg.startsWith('-')) {
-          // baseline и eval — подкоманды только в самом начале argv, чтобы
-          // слово в задаче или после флагов не переключало режим.
-          if ((arg === 'baseline' || arg === 'eval') && i === 0) {
-            options.command = arg;
+          // baseline, eval, history и stats — команды только в самом начале argv,
+          // чтобы слово в задаче или после флагов не переключало режим.
+          if (START_ONLY_COMMANDS.has(arg) && i === 0) {
+            options.command = arg as CLIOptions['command'];
           } else if (
-            arg !== 'baseline' &&
-            arg !== 'eval' &&
+            !START_ONLY_COMMANDS.has(arg) &&
             options.command === undefined &&
             taskParts.length === 0 &&
             COMMANDS.has(arg)

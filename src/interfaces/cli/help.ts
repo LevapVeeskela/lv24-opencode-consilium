@@ -17,6 +17,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
   consilium baseline accept <runId|latest> [--dry-run]
   consilium baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
+  consilium history [--limit N] [--json]
+  consilium stats [--json] [--html <файл>]
 
 КОДЫ ВЫХОДА:
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
@@ -92,6 +94,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
                           Принять находки запуска в .consilium/baseline.json
   baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
                           Удалить старые записи baseline (по умолчанию старше 90 дней)
+  history [--limit N] [--json]
+                          История запусков из .consilium/runs
+  stats [--json] [--html <файл>]
+                          Сводная статистика запусков; --html — автономный HTML-отчёт
 
 СОВМЕСТИМОСТЬ:
   Работает с OpenCode V1 и V2. Формат opencode.json определяется автоматически:
@@ -124,6 +130,9 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   git diff | consilium - --diff "Сделай ревью изменений"
   consilium --findings --fail-on high "Проверить безопасность API"
   consilium baseline accept latest
+  consilium history --limit 10
+  consilium stats
+  consilium stats --html stats.html
   consilium models --available
   consilium models --reliability
   consilium eval --fail-under 80

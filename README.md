@@ -307,6 +307,8 @@ consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
 consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium history [--limit N] [--json]
+consilium stats [--json] [--html <file>]
 ```
 
 **Core**
@@ -362,6 +364,8 @@ consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd
 | `eval [--fixtures <dir>]` | Run the planted-bug evaluation suite (default `eval/fixtures`) |
 | `--fail-under <pct>` | `eval` gate: exit `3` below the catch-rate percentage |
 | `--reliability` | `models`: print per-model success/latency from `.consilium/reliability.json` |
+| `history [--limit N]` | Recent runs from `.consilium/runs` |
+| `stats [--html <file>]` | Aggregate success/latency/cost/findings/per-model errors |
 
 Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy gate failed.
 
@@ -472,6 +476,16 @@ consilium eval --max-cost 0.50        # stop when the budget is exhausted
 ```
 
 Each fixture is a task, a small diff with a planted bug, and an `expected.json` (`mustFind` / `mustNotFind` claim substrings, optional `file`, `category`, `minSeverity`). Matching is a normalized claim substring check — no LLM judge — so results are reproducible. The report shows per-fixture caught/missed/false positives, aggregate catch and FP rates, p50 latency and cost. Ten seed fixtures ship in [`eval/fixtures`](eval/fixtures); add your own next to them.
+
+## History and stats
+
+```bash
+consilium history --limit 10       # recent runs: success, cost, findings, agreement
+consilium stats                    # success rate, p50/p95, cost, per-model errors
+consilium stats --html stats.html  # self-contained static report
+```
+
+`history` reads `.consilium/runs/<id>/run.json` newest first (corrupt runs are skipped with a warning). `stats` aggregates success rate, latency percentiles, total cost, findings by severity and contested count, per-model attempts/errors and the top failure codes. Both support `--json`; `stats --html` writes an escaped, script-free page.
 
 ## OpenCode V2 plugin
 
@@ -638,7 +652,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
-**1.6.0** — evaluation harness, context pack, reliability memory and a GitHub Action. `consilium eval` runs planted-bug fixtures with deterministic claim matching and reports catch/FP/p50 latency/cost (`--fail-under` exits `3`). `--context auto` adds changed files, the nearest `AGENTS.md`, related tests and recent commits under a char budget. Model outcomes and latency are stored in `.consilium/reliability.json` (`models --reliability`). A composite GitHub Action runs a PR diff review and posts/updates one comment. Fuzzy claim merging deduplicates paraphrased findings. 370 tests.
+**1.6.0** — evaluation harness, context pack, reliability memory and a GitHub Action. `consilium eval` runs planted-bug fixtures with deterministic claim matching and reports catch/FP/p50 latency/cost (`--fail-under` exits `3`). `--context auto` adds changed files, the nearest `AGENTS.md`, related tests and recent commits under a char budget. Model outcomes and latency are stored in `.consilium/reliability.json` (`models --reliability`). A composite GitHub Action runs a PR diff review and posts/updates one comment. Fuzzy claim merging deduplicates paraphrased findings. `consilium history` and `consilium stats` summarize runs, latency and per-model reliability. 381 tests.
 
 **1.5.0** — structured findings and a policy gate. `--findings` makes experts and the chair return a validated `findings[]` JSON block (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); findings are deduplicated by a stable fingerprint, merged across roles, marked `contested` when the chair rejects them, and stored in `metadata.findings`. HTML and PR reports render the findings table and the dissent ledger. `--fail-on <severity>` gates on **new** findings with exit code `3`; `consilium baseline accept|prune` manages `.consilium/baseline.json`. Also: P1 correctness fixes (config V1/V2 precedence, malformed-config warnings, model cache fallback/`minContext`/dedupe, cost telemetry, SIGKILL escalation, `ses_` session prefix, CLI `argv[0]` parsing, watch rerun/signals, preset/consensus/smart-experts edge cases) and the `/council` slash command. 317 tests.
 
@@ -666,7 +680,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (370 tests)
+npm test            # build + node:test (381 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

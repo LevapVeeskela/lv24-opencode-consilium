@@ -23,6 +23,7 @@ Version: 1.6.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium --replay <id>` / `consilium --diff-runs <a> <b>` — rerun or compare saved artifacts.
 - `consilium baseline accept|prune` — manage `.consilium/baseline.json`.
 - `consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]` — deterministic planted-bug suite.
+- `consilium history [--limit N] [--json]` / `consilium stats [--json] [--html <file>]` — recent runs, success rate, p50/p95, cost, per-model errors.
 - `--context <off|auto>` — add changed files, rules, tests and commits to the task.
 - `consilium models --reliability` — per-model success/latency table.
 

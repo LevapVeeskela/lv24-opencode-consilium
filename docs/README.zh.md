@@ -152,6 +152,8 @@ consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
 consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium history [--limit N] [--json]
+consilium stats [--json] [--html <file>]
 ```
 
 | 选项 | 说明 |
@@ -169,6 +171,8 @@ consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
 | `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
 | `--context <off\|auto>` / `eval [--fixtures <dir>]` / `--fail-under <pct>` / `--reliability` | 上下文包（`auto`，默认 `off`）/ 运行评估 fixture（默认 `eval/fixtures`）/ eval 门禁：低于 catch 百分比退出 `3` / `models` 打印 `.consilium/reliability.json` 的成功率与延迟 |
+| `history [--limit N]` | 最近运行：成功、成本、发现、一致性（`.consilium/runs`；`--json` 可用） |
+| `stats [--html <file>]` | 成功率、p50/p95 延迟、成本、发现与按模型错误（`--json`；`--html` 写静态报告） |
 
 退出码：`0` 成功，`1` 运行失败，`2` 用法错误，`3` 策略门禁失败。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
 ## 运行产物/报告/watch/git hooks
@@ -212,6 +216,19 @@ consilium eval --max-cost 0.50        # 预算耗尽时停止
 ```
 
 每个 fixture 是一段任务、一个埋入 bug 的小 diff 和 `expected.json`（`mustFind` / `mustNotFind` 为 claim 子串，可选 `file`、`category`、`minSeverity`）。匹配是规范化后的 claim 子串检查——不用 LLM 裁判——因此结果可复现。报告给出每个 fixture 的 caught/missed/false positives、总体 catch 与 FP 率、p50 延迟和成本。内置十个种子 fixture：[`eval/fixtures`](../eval/fixtures)，可在旁边添加自己的。
+
+## 历史与统计
+
+```bash
+consilium history --limit 10       # 最近运行：成功、成本、发现、一致性
+consilium stats                    # 成功率、p50/p95、成本、按模型错误
+consilium stats --html stats.html  # 自包含静态报告
+```
+
+- `consilium history [--limit N] [--json]` — 从 `.consilium/runs/<id>/run.json` 读取最近运行：成功、成本、发现与一致性；损坏的运行会跳过并给出警告。
+- `consilium stats [--json] [--html <file>]` — 成功率、p50/p95 延迟、总成本、按严重性统计的发现与 `contested` 数量、按模型的尝试/错误次数以及最常见的失败代码。
+- `stats --html` 写出经过转义、无脚本的静态页面。
+- 两个命令都只读数据，不需要守护进程。
 
 ## OpenCode V2 插件
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
@@ -300,7 +317,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
-- **1.6.0** — 评估工具、上下文包、可靠性记忆与 GitHub Action：`consilium eval` 用埋入 bug 的 fixture 和确定性 claim 匹配报告 catch/FP/p50 延迟/成本（`--fail-under` 低于阈值退出 `3`）；`--context auto` 在字符预算内补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交；模型结果与延迟写入 `.consilium/reliability.json`（`models --reliability`）；复合 GitHub Action 评审 PR diff 并发布或更新一条评论；模糊 claim 合并去重同义发现；370 个测试。
+- **1.6.0** — 评估工具、上下文包、可靠性记忆与 GitHub Action：`consilium eval` 用埋入 bug 的 fixture 和确定性 claim 匹配报告 catch/FP/p50 延迟/成本（`--fail-under` 低于阈值退出 `3`）；`--context auto` 在字符预算内补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交；模型结果与延迟写入 `.consilium/reliability.json`（`models --reliability`）；复合 GitHub Action 评审 PR diff 并发布或更新一条评论；模糊 claim 合并去重同义发现；`consilium history` 与 `consilium stats` 汇总运行、延迟与可靠性；381 个测试。
 - **1.5.0** — 结构化发现与策略门禁：`--findings` 让专家和主席返回经过校验的 `findings[]` JSON（`severity`、`category`、`file`、`line`、`claim`、`evidence`、`confidence`），按稳定指纹去重合并，主席拒绝的条目记为 `contested`，并写入 `metadata.findings`；HTML/PR 报告渲染发现表与异议账本；`--fail-on <severity>` 只对**新**发现生效并以退出码 `3` 阻断，`consilium baseline accept|prune` 管理 `.consilium/baseline.json`。同时包含 P1 正确性修复（V1/V2 配置优先级、损坏配置告警、模型缓存回退/`minContext`/去重、成本遥测、SIGKILL 升级、`ses_` 会话前缀、CLI `argv[0]` 解析、watch 重跑/信号、preset/consensus/smart-experts 边界情况）以及 `/council` 斜杠命令；317 个测试。
 - **1.4.3** — 安全加固：项目配置默认不可信（`opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串写入路径需用 `-c` 显式信任）；Windows `.cmd` 参数白名单；MCP 拒绝无 `id` 的调用、限制队列、限制产物路径，`init_free` 生成 `.bak` 且 `force` 需确认；diff fence 与报告转义防注入；产物脱敏并生成 `.gitignore`；246 个测试。
 - **1.4.2** — 内部分层重构（`shared`、`domain`、`application`、`infrastructure`、`interfaces`）与切片 barrel；API 与行为不变，22 个 subpath 的导出与 1.4.1 完全一致；全新 README、`llms.txt`、`docs/architecture.md`；ru/zh 同步；构建前清理 `dist`；224 个测试。
@@ -311,6 +328,6 @@ const top = selectCouncilModels(models, 5);
 ## 路线图
 - TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，370 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，381 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
 ## 许可证
 [MIT](../LICENSE)

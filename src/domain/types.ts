@@ -321,6 +321,8 @@ export interface CLIOptions {
     | 'hooks'
     | 'baseline'
     | 'eval'
+    | 'history'
+    | 'stats'
     | 'help'
     | 'version';
   config?: string;
@@ -401,6 +403,8 @@ export interface CLIOptions {
   report?: 'html' | 'pr' | 'markdown';
   /** Файл отчёта (по умолчанию stdout) */
   reportFile?: string;
+  /** Файл для HTML-отчёта команды stats */
+  statsHtml?: string;
   /** Вариант модели (`provider/model#variant`) для всех агентов */
   variant?: string;
   /** Задержка watch-режима, мс */

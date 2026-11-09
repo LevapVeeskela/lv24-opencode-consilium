@@ -303,6 +303,8 @@ consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
 consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+consilium history [--limit N] [--json]
+consilium stats [--json] [--html <file>]
 ```
 
 **Ядро**
@@ -358,6 +360,8 @@ consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd
 | `eval [--fixtures <dir>]` | Запустить набор оценочных фикстур с посаженными багами (по умолчанию `eval/fixtures`) |
 | `--fail-under <pct>` | Гейт `eval`: выход `3` ниже процента catch rate |
 | `--reliability` | `models`: печатать успешность и латентность по моделям из `.consilium/reliability.json` |
+| `history [--limit N]` | Последние запуски из `.consilium/runs` |
+| `stats [--html <file>]` | Агрегированные успешность, задержка, стоимость, находки и ошибки по моделям |
 
 Коды выхода: `0` успех, `1` запуск неуспешен, `2` ошибка использования, `3` провал policy gate.
 
@@ -468,6 +472,19 @@ consilium eval --max-cost 0.50        # остановиться при исче
 ```
 
 Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. Десять стартовых фикстур лежат в [`eval/fixtures`](../eval/fixtures); свои можно добавлять рядом.
+
+## История и статистика
+
+```bash
+consilium history --limit 10       # последние запуски: успех, стоимость, находки, согласие
+consilium stats                    # успешность, p50/p95, стоимость, ошибки по моделям
+consilium stats --html stats.html  # самодостаточный статический отчёт
+```
+
+- `consilium history [--limit N] [--json]` — последние запуски из `.consilium/runs/<id>/run.json`: успех, стоимость, находки и согласие; битые запуски пропускаются с предупреждением.
+- `consilium stats [--json] [--html <file>]` — успешность, задержка p50/p95, суммарная стоимость, находки по серьёзности и `contested`, попытки/ошибки по моделям и топ-коды ошибок.
+- `stats --html` пишет экранированную статическую страницу без скриптов.
+- Обе команды только читают данные из `.consilium/` и не требуют демона.
 
 ## Плагин OpenCode V2
 
@@ -634,7 +651,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
-**1.6.0** — eval-харнесс, context pack, память надёжности и GitHub Action. `consilium eval` прогоняет фикстуры с посаженными багами и детерминированным сопоставлением `claim`, показывая catch/FP/p50 latency/cost (`--fail-under` завершается кодом `3`). `--context auto` добавляет изменённые файлы, ближайший `AGENTS.md`, связанные тесты и недавние коммиты в пределах лимита символов. Исходы и латентность моделей сохраняются в `.consilium/reliability.json` (`models --reliability`). Композитный GitHub Action делает ревью diff PR и публикует или обновляет один комментарий. Нечёткое слияние по `claim` дедуплицирует перефразированные находки. 370 тестов.
+**1.6.0** — eval-харнесс, context pack, память надёжности и GitHub Action. `consilium eval` прогоняет фикстуры с посаженными багами и детерминированным сопоставлением `claim`, показывая catch/FP/p50 latency/cost (`--fail-under` завершается кодом `3`). `--context auto` добавляет изменённые файлы, ближайший `AGENTS.md`, связанные тесты и недавние коммиты в пределах лимита символов. Исходы и латентность моделей сохраняются в `.consilium/reliability.json` (`models --reliability`). Композитный GitHub Action делает ревью diff PR и публикует или обновляет один комментарий. Нечёткое слияние по `claim` дедуплицирует перефразированные находки. `consilium history` и `consilium stats` сводят данные о запусках, задержке и надёжности. 381 тест.
 
 **1.5.0** — структурированные находки и policy gate. `--findings` заставляет экспертов и председателя возвращать провалидированный JSON-блок `findings[]` (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); находки дедуплицируются по стабильному отпечатку, сливаются по ролям, помечаются `contested`, если председатель их отклонил, и попадают в `metadata.findings`. HTML- и PR-отчёты рисуют таблицу находок и реестр разногласий. `--fail-on <severity>` гейтит по **новым** находкам с кодом выхода `3`; `consilium baseline accept|prune` управляет `.consilium/baseline.json`. Также: исправления корректности P1 (приоритет конфигов V1/V2, предупреждения о битом конфиге, fallback/`minContext`/дедупликация кэша моделей, телеметрия стоимости, эскалация SIGKILL, префикс сессий `ses_`, разбор `argv[0]` в CLI, перезапуск/сигналы watch, крайние случаи preset/consensus/smart-experts) и слэш-команда `/council`. 317 тестов.
 
@@ -662,7 +679,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (370 тестов)
+npm test            # build + node:test (381 тест)
 npm run typecheck   # tsc --noEmit
 ```
 
