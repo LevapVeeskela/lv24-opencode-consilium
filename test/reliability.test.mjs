@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -95,6 +96,7 @@ function makeFakeOpenCode(dir) {
 
   const shim = join(dir, 'fake-opencode');
   writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, 'utf8');
+  chmodSync(shim, 0o755);
   return shim;
 }
 
