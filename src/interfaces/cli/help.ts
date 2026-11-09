@@ -11,15 +11,17 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium [опции] <задача>
   consilium <задача> -              задача читается из stdin
   consilium init [--free]
-  consilium models [--available] [--json]
+  consilium models [--available] [--json] [--reliability]
   consilium doctor
   consilium mcp
+  consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
   consilium baseline accept <runId|latest> [--dry-run]
   consilium baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
 
 КОДЫ ВЫХОДА:
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
   3 — сработала политика --fail-on (находки не ниже порога)
+      или catch rate eval ниже --fail-under
 
 ОСНОВНЫЕ ОПЦИИ:
   -h, --help              Показать эту справку
@@ -46,6 +48,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --staged                Использовать staged-изменения
   --base <ref>            Сравнить с веткой/коммитом
   --task-file <файл>      Прочитать задачу из файла
+  --context <off|auto>    Автосбор контекста проекта (файлы, правила, тесты);
+                          по умолчанию off (поведение не меняется)
 
 АНАЛИЗ И АРТЕФАКТЫ:
   --consensus             Анализ согласия экспертов (в промпт председателя и отчёт)
@@ -75,11 +79,15 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
 КОМАНДЫ:
   init [--free] [--force] [--dry-run] [--native-v2]
                           Создать конфиг; --free — подобрать и проверить сильнейшие бесплатные модели
-  models [--available] [--verify] [--limit N] [--refresh] [--json]
+  models [--available] [--verify] [--limit N] [--refresh] [--json] [--reliability]
                           Рейтинг бесплатных моделей (models.dev + OpenRouter)
+                          --reliability — статистика .consilium/reliability.json
   doctor                  Проверить окружение, конфиг, агентов и модели
   mcp [--install] [--global]
                           Запустить MCP-сервер (stdio) или зарегистрировать его в opencode.json
+  eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
+                          Прогнать eval-фикстуры (по умолчанию eval/fixtures);
+                          --fail-under — код 3, если catch rate ниже порога
   baseline accept <runId|latest> [--dry-run]
                           Принять находки запуска в .consilium/baseline.json
   baseline prune [--older-than <дни>] [--all] [--yes] [--dry-run]
@@ -117,6 +125,8 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium --findings --fail-on high "Проверить безопасность API"
   consilium baseline accept latest
   consilium models --available
+  consilium models --reliability
+  consilium eval --fail-under 80
   consilium doctor
 
 ДОКУМЕНТАЦИЯ:

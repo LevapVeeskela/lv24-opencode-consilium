@@ -79,7 +79,7 @@ export const EXCLUDED_AGENTS = [
  * Конфигурация по умолчанию
  */
 export const DEFAULT_CONFIG: ConsiliumConfig = {
-  version: '1.5.0',
+  version: '1.6.0',
   experts: DEFAULT_EXPERTS,
   chair: DEFAULT_CHAIR,
   excludedAgents: EXCLUDED_AGENTS,
@@ -93,6 +93,7 @@ export const DEFAULT_CONFIG: ConsiliumConfig = {
     chairRetries: 1,
     delay: 1000,
     exponentialBackoff: true,
+    jitter: false,
     maxConcurrency: 3
   },
   output: {
@@ -104,7 +105,9 @@ export const DEFAULT_CONFIG: ConsiliumConfig = {
   standalone: true,
   autoApprove: false,
   autoDiscoverAgents: true,
-  findings: false
+  findings: false,
+  context: 'off',
+  debounceMs: 400
 };
 
 /**

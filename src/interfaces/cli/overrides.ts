@@ -90,6 +90,7 @@ export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions):
   if (options.report !== undefined) result.report = options.report;
   if (options.reportFile !== undefined) result.reportFile = options.reportFile;
   if (options.debounceMs !== undefined) result.debounceMs = options.debounceMs;
+  if (options.context !== undefined) result.context = options.context;
 
   return result;
 }

@@ -151,7 +151,7 @@ export async function commandRun(options: CLIOptions): Promise<number> {
       }
     }
   } else {
-    const built = await buildTask(options);
+    const built = await buildTask(options, config);
     if (!built) {
       throw new UsageError(
         'Укажите задачу: consilium "Оценить архитектуру" (или передайте её через stdin: consilium -)'

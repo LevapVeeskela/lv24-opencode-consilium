@@ -1,0 +1,11 @@
+--- a/src/account/withdraw.ts
++++ b/src/account/withdraw.ts
+@@ -6,5 +6,7 @@ export async function withdraw(id: string, amount: number) {
+   const account = await db.accounts.get(id);
+   if (account.balance < amount) throw new Error('insufficient funds');
+-  await db.accounts.update(id, { balance: account.balance - amount });
++  // Let the balance settle before writing the new value.
++  await sleep(25);
++  await db.accounts.update(id, { balance: account.balance - amount });
+   return db.accounts.get(id);
+ }

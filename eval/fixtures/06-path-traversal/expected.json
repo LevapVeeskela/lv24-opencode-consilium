@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/files/download.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "downloads should be served over post"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+--- a/src/orders/list.ts
++++ b/src/orders/list.ts
+@@ -8,3 +8,6 @@ export async function listOrders(userId: string) {
+   const orders = await db.orders.find({ userId });
++  for (const order of orders) {
++    order.customer = await db.users.findOne({ id: order.userId });
++  }
+   return orders;
+ }

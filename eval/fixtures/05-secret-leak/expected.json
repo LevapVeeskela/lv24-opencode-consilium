@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/config/logger.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the request method should be lowercased"
+    }
+  ]
+}

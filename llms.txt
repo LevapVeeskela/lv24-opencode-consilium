@@ -2,13 +2,13 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.4.3 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.6.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.4.3`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -21,13 +21,24 @@ Version: 1.4.3 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium watch [--debounce <ms>] [task]` — rerun on file changes.
 - `consilium hooks install|uninstall` — managed git pre-commit review hook.
 - `consilium --replay <id>` / `consilium --diff-runs <a> <b>` — rerun or compare saved artifacts.
+- `consilium baseline accept|prune` — manage `.consilium/baseline.json`.
+- `consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]` — deterministic planted-bug suite.
+- `--context <off|auto>` — add changed files, rules, tests and commits to the task.
+- `consilium models --reliability` — per-model success/latency table.
+
+## Findings and gate
+
+- `--findings` — experts/chair return a fenced JSON block with `findings[]` and `rejected[]`.
+- `metadata.findings` = `{ items, counts, rejected, parseErrors }`; findings are deduped by fingerprint (plus fuzzy paraphrases), max severity, `contested` when rejected.
+- `--fail-on <severity>` — exit `3` when new findings reach the threshold.
+- Baseline: `.consilium/baseline.json` via `consilium baseline accept|prune`; accepted fingerprints are ignored by the gate.
 
 ## Machine contract
 
 - stdout: data only. stderr: progress and logs.
 - JSON mode: `consilium -f json "<task>"` → result + `metadata` (models, usage, cost, consensus, artifacts, errorCode).
 - Models JSON: `consilium models --json`.
-- Exit codes: `0` success, `1` run failed, `2` usage error.
+- Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy/eval gate failed.
 - Typed errors: `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`.
 - Cost cap: `--max-cost <usd>`; when exceeded before the chair, a partial result with `errorCode: COST_LIMIT` is returned.
 - Sessions: `--session <id>`; each agent gets `ses_<base>-<agent>`, the chair continues the base session.
@@ -42,6 +53,14 @@ Version: 1.4.3 · License: MIT · Node: >= 18 · Runtime dependencies: none
 ## OpenCode slash command
 
 - `/council <task>` — `.opencode/commands/council.md`; asks the agent to call the V2 plugin tool `consilium.run` (falling back to MCP `consilium_run`). Requires the plugin or MCP server to be registered.
+
+## GitHub Action
+
+- `.github/actions/consilium` — composite action; runs `--diff --base --report pr --fail-on <level>`, posts/updates one PR comment with `<!-- consilium:report -->`. Guide: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/github-action.md
+
+## Evaluation
+
+- `eval/fixtures/` — ten planted-bug fixtures (`task.md`, `changes.diff`, `expected.json`); deterministic claim matching, no LLM judge. Format: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/eval/README.md
 
 ## Configuration
 

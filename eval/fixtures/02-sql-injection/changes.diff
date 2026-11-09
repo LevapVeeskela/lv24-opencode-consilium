@@ -1,0 +1,8 @@
+--- a/src/db/search.ts
++++ b/src/db/search.ts
+@@ -8,3 +8,4 @@ export async function searchUsers(term: string) {
+-  const rows = await db.query('SELECT * FROM users WHERE name LIKE ?', [`%${term}%`]);
++  const pattern = `%${term}%`;
++  const rows = await db.query(`SELECT * FROM users WHERE name LIKE '${pattern}'`);
+   return rows;
+ }

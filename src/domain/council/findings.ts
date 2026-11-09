@@ -74,6 +74,29 @@ const MAX_CLAIM = 500;
 const MAX_EVIDENCE = 1200;
 const MAX_CATEGORY = 60;
 const MAX_FILE = 300;
+const CLAIM_SIMILARITY_THRESHOLD = 0.62;
+const MIN_TOKEN_LENGTH = 3;
+const MIN_CONTAINMENT_TOKENS = 4;
+const CONTAINMENT_RATIO = 0.8;
+
+/** Небольшой встроенный набор служебных слов RU/EN для сравнения claim */
+const CLAIM_STOPWORDS: ReadonlySet<string> = new Set([
+  'без', 'более', 'будет', 'был', 'была', 'были', 'было', 'быть',
+  'все', 'всё', 'где', 'для', 'его', 'её', 'если', 'есть', 'ещё',
+  'или', 'их', 'как', 'какая', 'какие', 'какой', 'когда', 'которая',
+  'которые', 'который', 'которых', 'между', 'может', 'можно', 'над',
+  'него', 'неё', 'они', 'она', 'оно', 'при', 'про', 'так', 'также',
+  'такая', 'такие', 'такой', 'там', 'тогда', 'того', 'тоже', 'только',
+  'уже', 'чего', 'чем', 'через', 'что', 'чтобы', 'эта', 'эти', 'это',
+  'этот', 'эту',
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'these', 'those',
+  'when', 'where', 'which', 'while', 'into', 'than', 'then', 'there',
+  'their', 'them', 'they', 'have', 'has', 'had', 'are', 'was', 'were',
+  'been', 'being', 'will', 'would', 'could', 'should', 'can', 'may',
+  'might', 'must', 'not', 'but', 'its', 'our', 'your', 'all', 'any',
+  'also', 'such', 'only', 'over', 'under', 'about', 'after', 'before',
+  'does', 'did', 'done', 'how', 'why', 'what', 'who', 'whom', 'whose'
+]);
 
 /** Отпечаток стабилен между запусками: без номера строки, регистра и пунктуации */
 export function fingerprintFinding(input: {
@@ -109,6 +132,29 @@ export function sameClaim(a: string, b: string): boolean {
   const shorter = left.length <= right.length ? left : right;
   const longer = left.length <= right.length ? right : left;
   return shorter.length >= 24 && longer.includes(shorter);
+}
+
+/**
+ * Детерминированная похожесть claim по значимым словам.
+ * База — Jaccard по наборам токенов; если один набор содержит не менее 80%
+ * другого и в коротком наборе не меньше 4 токенов, оценка поднимается до 0.8.
+ */
+export function claimSimilarity(a: string, b: string): number {
+  const left = claimTokens(a);
+  const right = claimTokens(b);
+  if (left.size === 0 || right.size === 0) return 0;
+
+  let intersection = 0;
+  for (const token of left) {
+    if (right.has(token)) intersection += 1;
+  }
+  const union = left.size + right.size - intersection;
+  const jaccard = union === 0 ? 0 : intersection / union;
+  const shorter = Math.min(left.size, right.size);
+  if (shorter >= MIN_CONTAINMENT_TOKENS && intersection >= Math.ceil(shorter * CONTAINMENT_RATIO)) {
+    return Math.max(jaccard, CONTAINMENT_RATIO);
+  }
+  return jaccard;
 }
 
 /**
@@ -151,7 +197,7 @@ export function parseFindingsBlock(text: string): FindingsParseResult {
   return { findings: [], rejected: [], error: 'invalid-json' };
 }
 
-/** Сливает находки экспертов и председателя по стабильному отпечатку */
+/** Сливает находки экспертов и председателя по отпечатку и похожести claim */
 export function mergeFindings(
   entries: Array<{
     agent: string;
@@ -161,6 +207,8 @@ export function mergeFindings(
   }>
 ): FindingsSummary {
   const byFingerprint = new Map<string, Finding>();
+  const merged: Finding[] = [];
+  const claimsByFinding = new Map<Finding, string[]>();
   const rejected: RejectedPosition[] = [];
 
   for (const entry of entries) {
@@ -177,22 +225,29 @@ export function mergeFindings(
       const category = truncate((raw.category ?? 'general').trim() || 'general', MAX_CATEGORY);
       const claim = truncate(raw.claim.trim(), MAX_CLAIM);
       if (claim.length === 0) continue;
+      const file = raw.file === undefined ? undefined : truncate(raw.file, MAX_FILE);
+      const line = normalizeLine(raw.line);
       const fingerprint = fingerprintFinding({ category, file: raw.file, claim });
-      const existing = byFingerprint.get(fingerprint);
+      const existing =
+        byFingerprint.get(fingerprint) ?? findFuzzyMatch(merged, category, file, claim);
+
       if (existing === undefined) {
-        byFingerprint.set(fingerprint, {
+        const finding: Finding = {
           fingerprint,
           severity,
           category,
-          file: raw.file === undefined ? undefined : truncate(raw.file, MAX_FILE),
-          line: normalizeLine(raw.line),
+          file,
+          line,
           claim,
           evidence: raw.evidence === undefined ? undefined : truncate(raw.evidence, MAX_EVIDENCE),
           confidence: normalizeConfidence(raw.confidence),
           sources: [sourceOf(entry)],
           contested: false,
           rejectedBy: []
-        });
+        };
+        byFingerprint.set(fingerprint, finding);
+        merged.push(finding);
+        rememberClaim(claimsByFinding, finding, claim);
         continue;
       }
 
@@ -206,20 +261,29 @@ export function mergeFindings(
       if (existing.evidence === undefined && raw.evidence !== undefined) {
         existing.evidence = truncate(raw.evidence, MAX_EVIDENCE);
       }
-      if (existing.line === undefined) existing.line = normalizeLine(raw.line);
-    }
-  }
-
-  for (const finding of byFingerprint.values()) {
-    for (const position of rejected) {
-      if (sameClaim(finding.claim, position.claim)) {
-        finding.contested = true;
-        if (!finding.rejectedBy.includes(position.agent)) finding.rejectedBy.push(position.agent);
+      if (line !== undefined) {
+        existing.line = existing.line === undefined ? line : Math.min(existing.line, line);
       }
+      if (claim.length > existing.claim.length) {
+        byFingerprint.delete(existing.fingerprint);
+        existing.claim = claim;
+        existing.fingerprint = fingerprint;
+        byFingerprint.set(fingerprint, existing);
+      }
+      rememberClaim(claimsByFinding, existing, claim);
     }
   }
 
-  const items = [...byFingerprint.values()].sort((a, b) => {
+  for (const finding of merged) {
+    const aliases = claimsByFinding.get(finding) ?? [finding.claim];
+    for (const position of rejected) {
+      if (!aliases.some(alias => claimsSimilar(alias, position.claim))) continue;
+      finding.contested = true;
+      if (!finding.rejectedBy.includes(position.agent)) finding.rejectedBy.push(position.agent);
+    }
+  }
+
+  const items = [...merged].sort((a, b) => {
     const bySeverity = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
     if (bySeverity !== 0) return bySeverity;
     return a.claim.localeCompare(b.claim);
@@ -259,6 +323,53 @@ export function maxSeverity(items: Finding[]): FindingSeverity | null {
 
 function sourceOf(entry: { agent: string; model?: string }): FindingSource {
   return entry.model === undefined ? { agent: entry.agent } : { agent: entry.agent, model: entry.model };
+}
+
+/** Разбивает нормализованный claim на значимые токены */
+function claimTokens(claim: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const token of normalizeClaim(claim).split(' ')) {
+    if (token.length >= MIN_TOKEN_LENGTH && !CLAIM_STOPWORDS.has(token)) tokens.add(token);
+  }
+  return tokens;
+}
+
+/** Ищет самую похожую находку в той же категории и том же файле */
+function findFuzzyMatch(
+  items: readonly Finding[],
+  category: string,
+  file: string | undefined,
+  claim: string
+): Finding | undefined {
+  const categoryKey = normalizeToken(category);
+  const fileKey = normalizeToken(file ?? '');
+  let best: Finding | undefined;
+  let bestScore = 0;
+  for (const item of items) {
+    if (normalizeToken(item.category) !== categoryKey) continue;
+    if (normalizeToken(item.file ?? '') !== fileKey) continue;
+    const score = claimSimilarity(item.claim, claim);
+    if (score >= CLAIM_SIMILARITY_THRESHOLD && score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** Запоминает все формулировки, сведённые в одну находку, для проверки rejected */
+function rememberClaim(map: Map<Finding, string[]>, finding: Finding, claim: string): void {
+  const claims = map.get(finding);
+  if (claims === undefined) {
+    map.set(finding, [claim]);
+    return;
+  }
+  if (!claims.includes(claim)) claims.push(claim);
+}
+
+/** Позиция считается той же, если совпадает точно или проходит порог похожести */
+function claimsSimilar(a: string, b: string): boolean {
+  return sameClaim(a, b) || claimSimilarity(a, b) >= CLAIM_SIMILARITY_THRESHOLD;
 }
 
 function normalizeRawFinding(value: unknown): RawFinding | null {

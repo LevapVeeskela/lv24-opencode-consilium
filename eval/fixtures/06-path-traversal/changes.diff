@@ -1,0 +1,9 @@
+--- a/src/files/download.ts
++++ b/src/files/download.ts
+@@ -7,4 +7,4 @@ export async function download(req: Request, res: Response) {
+   const safePath = path.resolve(UPLOAD_ROOT, path.basename(req.params.name));
+-  if (!safePath.startsWith(UPLOAD_ROOT)) return res.status(400).end();
+-  await sendFile(res, safePath);
++  const target = path.join(UPLOAD_ROOT, req.params.name);
++  await sendFile(res, target);
+ }

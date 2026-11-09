@@ -1,0 +1,8 @@
+--- a/src/jobs/load.ts
++++ b/src/jobs/load.ts
+@@ -4,4 +4,3 @@ import { unserialize } from './legacy-serializer.js';
+ export function loadJob(payload: string): Job {
+-  const raw = JSON.parse(payload) as unknown;
+-  return jobSchema.parse(raw);
++  return unserialize(payload) as Job;
+ }

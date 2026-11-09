@@ -1,0 +1,11 @@
+--- a/src/api/projects.ts
++++ b/src/api/projects.ts
+@@ -12,7 +12,7 @@ export async function getProject(req: Request, res: Response) {
+   const user = requireUser(req);
+   const project = await db.projects.findOne({
+     id: req.params.id,
+-    ownerId: user.id
++    // ownerId filter removed during query simplification
+   });
+   if (!project) return res.status(404).end();
+   res.json(project);

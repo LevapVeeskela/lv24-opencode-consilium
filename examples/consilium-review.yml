@@ -1,0 +1,59 @@
+# EXAMPLE ONLY - NOT ENABLED BY DEFAULT.
+#
+# GitHub Actions only runs files under .github/workflows/. This file lives in
+# examples/ so it never runs automatically. To enable it, copy it to
+# .github/workflows/consilium-review.yml, commit it, and review the permissions,
+# secrets, and fork policy below.
+#
+# Zero-spend by design: the composite action runs on your runner, calls the
+# public npm package, and uses the GitHub API. No hosted Consilium app, no paid
+# service. Model-provider quotas and GitHub Actions minutes still apply.
+name: Consilium PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: consilium-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  consilium-review:
+    # Fork pull requests do not receive repository secrets and their
+    # GITHUB_TOKEN is read-only, so this example skips them. See
+    # docs/github-action.md before trying to review fork PRs.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the pull request with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Consilium
+        uses: ./.github/actions/consilium
+        with:
+          task: |
+            Review this pull request for correctness bugs, security issues,
+            regressions, and missing tests. Cite files and lines. Do not
+            restate the diff.
+          fail-on: high
+          comment: 'true'
+          # Pin the npm package for reproducible reviews. Use the same version
+          # as the action ref you trust, or the latest release you have tested.
+          version: '1.5.0'
+          # Optional soft cap in USD. Providers must report cost for it to work.
+          # max-cost: '0.50'
+        env:
+          # Model credentials used by the OpenCode CLI. Store them as repository
+          # or environment secrets; never hard-code a key in the workflow.
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

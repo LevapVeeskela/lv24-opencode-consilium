@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/db/search.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the query result should be cached"
+    }
+  ]
+}

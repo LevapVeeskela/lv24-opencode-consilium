@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/users/create.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the 201 status code is wrong for creation"
+    }
+  ]
+}

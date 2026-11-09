@@ -31,11 +31,52 @@ import {
   sanitizeTimeout
 } from './retry.js';
 import { defaultController, type RunController } from './controller.js';
-import { errorToMessage, invokeErrorHook, invokeHook, runAgentProcess } from './spawn.js';
+import {
+  errorToMessage,
+  invokeErrorHook,
+  invokeHook,
+  logWarn,
+  runAgentProcess
+} from './spawn.js';
+import { recordModelAttempt } from '../models/reliability.js';
 
 const DEFAULT_MAX_CONCURRENCY = 3;
 const DEFAULT_MAX_EXPERT_TEXT = 3000;
 const MAX_CONCURRENCY = 8;
+
+/**
+ * Сохраняет статистику попытки, не влияя на результат запуска:
+ * ошибка записи памяти надёжности только логируется.
+ */
+function recordAttemptBestEffort(
+  config: ConsiliumConfig,
+  model: string | undefined,
+  ok: boolean,
+  errorCode: string | undefined,
+  latencyMs: number
+): void {
+  if (model === undefined || model.trim().length === 0) return;
+  try {
+    recordModelAttempt({
+      model,
+      ok,
+      errorCode,
+      latencyMs,
+      dir: config.cwd,
+      onError: error => {
+        logWarn(
+          config,
+          `Не удалось сохранить статистику модели ${model}: ${errorToMessage(error)}`
+        );
+      }
+    });
+  } catch (error) {
+    logWarn(
+      config,
+      `Не удалось сохранить статистику модели ${model}: ${errorToMessage(error)}`
+    );
+  }
+}
 
 interface AgentAttemptOptions {
   agentName: string;
@@ -166,6 +207,7 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
   }
 
   let effectiveAgentArg = agentArg;
+  const startedAt = Date.now();
   let result = await runAgentProcess({
     agentName: options.agentName,
     agentArg: effectiveAgentArg,
@@ -177,10 +219,18 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     controller: options.controller,
     config: options.config
   });
+  recordAttemptBestEffort(
+    options.config,
+    result.model,
+    result.success,
+    result.errorCode,
+    Date.now() - startedAt
+  );
 
   if (result.errorCode === 'AGENT_NOT_FOUND') {
     // Агент не найден: повторяем без --agent и с default-сессией.
     // Старую сессию не переиспользуем — OpenCode запомнил в ней несуществующего агента.
+    const fallbackStartedAt = Date.now();
     const fallback = await runAgentProcess({
       agentName: options.agentName,
       agentArg: undefined,
@@ -195,6 +245,13 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
       controller: options.controller,
       config: options.config
     });
+    recordAttemptBestEffort(
+      options.config,
+      fallback.model,
+      fallback.success,
+      fallback.errorCode,
+      Date.now() - fallbackStartedAt
+    );
     if (model !== undefined) fallback.model = model;
     result = mergeAttemptUsage(result, fallback);
     effectiveAgentArg = undefined;
@@ -206,6 +263,7 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     if (result.success || !shouldFallback(result.errorCode)) break;
     if (options.controller.isCancelled()) break;
 
+    const candidateStartedAt = Date.now();
     const attempt = await runAgentProcess({
       agentName: options.agentName,
       agentArg: effectiveAgentArg,
@@ -217,6 +275,13 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
       controller: options.controller,
       config: options.config
     });
+    recordAttemptBestEffort(
+      options.config,
+      attempt.model,
+      attempt.success,
+      attempt.errorCode,
+      Date.now() - candidateStartedAt
+    );
     attempt.model = candidate;
     result = mergeAttemptUsage(result, attempt);
     if (attempt.success) break;

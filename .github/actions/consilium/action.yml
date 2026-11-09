@@ -1,0 +1,206 @@
+name: Consilium PR review
+description: >-
+  Run the Consilium council on a pull request diff, post or update one sticky
+  review comment, and optionally fail the job when new findings reach a severity
+  threshold. Consilium runs on the caller's runner; no hosted app is involved.
+
+inputs:
+  task:
+    description: Review instructions passed to Consilium.
+    required: false
+    default: >-
+      Review only the changes in this pull request diff. Find correctness bugs,
+      security and privacy risks, regressions, and missing tests. Be concrete:
+      cite files and lines, and do not restate the diff.
+  base:
+    description: >-
+      Git ref to diff against. Leave empty to use origin/<github.base_ref>.
+      Check out the repository with fetch-depth: 0 so the ref exists.
+    required: false
+    default: ''
+  fail-on:
+    description: >-
+      Fail with exit code 3 when new findings at or above this severity remain:
+      critical, high, medium, low, info, or none.
+    required: false
+    default: none
+  comment:
+    description: >-
+      Post or update a single pull request review comment. Set to false to keep
+      the gate without commenting.
+    required: false
+    default: 'true'
+  github-token:
+    description: >-
+      Token used to read and write the pull request comment. It needs
+      pull-requests: write. The token is passed to the comment script only.
+    required: false
+    default: ${{ github.token }}
+  node-version:
+    description: Node.js version used to run Consilium and the comment script.
+    required: false
+    default: '20'
+  max-cost:
+    description: >-
+      Optional soft cost cap in USD, passed to consilium --max-cost. The chair is
+      skipped when reported spend exceeds the cap; providers that do not report
+      cost cannot be capped.
+    required: false
+    default: ''
+  version:
+    description: >-
+      npm version of lv24-opencode-consilium to install. Defaults to latest;
+      pin an exact version for reproducible reviews.
+    required: false
+    default: latest
+
+outputs:
+  exit-code:
+    description: >-
+      Consilium exit code: 0 success, 1 run failed, 2 usage error, 3 policy gate.
+    value: ${{ steps.consilium.outputs.exit-code }}
+  report-file:
+    description: Absolute path to the generated PR markdown report.
+    value: ${{ steps.consilium.outputs.report-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install Consilium
+      shell: bash
+      env:
+        CONSILIUM_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version="${CONSILIUM_VERSION:-latest}"
+        npm install --global --no-fund --no-audit "lv24-opencode-consilium@${version}"
+
+        # Consilium drives the OpenCode CLI. Keep a preinstalled (and pinned)
+        # OpenCode if the caller provided one; only bootstrap it when missing.
+        if ! command -v opencode >/dev/null 2>&1; then
+          npm install --global --no-fund --no-audit opencode-ai@latest
+          echo "::notice::Installed opencode-ai@latest because opencode was not on PATH. Preinstall a pinned version for reproducibility."
+        fi
+
+    - name: Run Consilium on the pull request diff
+      id: consilium
+      shell: bash
+      env:
+        INPUT_TASK: ${{ inputs.task }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_MAX_COST: ${{ inputs.max-cost }}
+        GITHUB_BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -uo pipefail
+
+        workspace="${GITHUB_WORKSPACE:-$PWD}"
+        cd "$workspace"
+        report_file="$workspace/consilium-review.md"
+        exit_code=0
+
+        fail_on="${INPUT_FAIL_ON:-none}"
+        case "$fail_on" in
+          critical|high|medium|low|info|none) ;;
+          *)
+            echo "::error::Invalid fail-on value '${fail_on}'. Use critical, high, medium, low, info, or none." >&2
+            exit_code=2
+            ;;
+        esac
+
+        base="${INPUT_BASE:-}"
+        if [ "$exit_code" -eq 0 ] && [ -z "$base" ]; then
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            base="origin/${GITHUB_BASE_REF}"
+          else
+            echo "::error::No base ref. Set the 'base' input or run this action on a pull_request event." >&2
+            exit_code=2
+          fi
+        fi
+
+        if [ "$exit_code" -eq 0 ] && ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null 2>&1; then
+          echo "::error::Base ref '${base}' was not found. Check out with fetch-depth: 0 and fetch the base branch, or pass 'base' explicitly." >&2
+          exit_code=2
+        fi
+
+        rm -f "$report_file"
+
+        if [ "$exit_code" -eq 0 ]; then
+          args=(
+            --diff
+            --base "$base"
+            --report pr
+            --report-file "$report_file"
+            --fail-on "$fail_on"
+            -s
+            --
+            "${INPUT_TASK:-}"
+          )
+
+          # --fail-on requires structured findings; without this the CLI exits 2
+          # before it can produce a report.
+          if [ "$fail_on" != "none" ]; then
+            args=(--findings "${args[@]}")
+          fi
+
+          if [ -n "${INPUT_MAX_COST:-}" ]; then
+            args=(--max-cost "$INPUT_MAX_COST" "${args[@]}")
+          fi
+
+          echo "Running Consilium (base=${base}, fail-on=${fail_on})..."
+          set +e
+          consilium "${args[@]}"
+          exit_code=$?
+        fi
+
+        {
+          echo "exit-code=${exit_code}"
+          echo "report-file=${report_file}"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ -s "$report_file" ]; then
+          echo "Consilium report: ${report_file} ($(wc -c < "$report_file") bytes)."
+        else
+          echo "::warning::Consilium did not write a report file (exit code ${exit_code})."
+        fi
+
+        # Do not fail here. The comment step must run before the gate is applied.
+        exit 0
+
+    - name: Post or update the Consilium review comment
+      id: comment
+      if: ${{ inputs.comment == 'true' && inputs.github-token != '' && steps.consilium.outputs.report-file != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        CONSILIUM_REPORT_FILE: ${{ steps.consilium.outputs.report-file }}
+      run: |
+        node "${{ github.action_path }}/comment.mjs"
+
+    - name: Apply the Consilium gate
+      if: ${{ always() && steps.consilium.outputs.exit-code != '' && steps.consilium.outputs.exit-code != '0' }}
+      shell: bash
+      env:
+        CONSILIUM_EXIT_CODE: ${{ steps.consilium.outputs.exit-code }}
+      run: |
+        case "$CONSILIUM_EXIT_CODE" in
+          3)
+            echo "::error::Consilium gate failed: new findings reached the configured severity. See the review comment."
+            ;;
+          2)
+            echo "::error::Consilium could not run (usage error, missing base, or invalid input). See the log above."
+            ;;
+          *)
+            echo "::error::Consilium exited with code ${CONSILIUM_EXIT_CODE}. See the log above."
+            ;;
+        esac
+        exit "$CONSILIUM_EXIT_CODE"

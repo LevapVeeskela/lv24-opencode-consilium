@@ -91,9 +91,9 @@ npx -y lv24-opencode-consilium --help
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.5.0
+# consilium v1.6.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -162,6 +162,16 @@ consilium mcp --install --global   # ~/.config/opencode/opencode.json
 opencode mcp list                  # проверка
 ```
 
+## Context pack (`--context auto`)
+
+Эксперты обычно видят только задачу и diff. `--context auto` добавляет изменённые файлы, правила проекта (ближайший `AGENTS.md`), связанные тесты и недавние коммиты:
+
+```bash
+consilium --context auto --diff "Сделай ревью текущих изменений"
+```
+
+Приоритет и бюджет: правила → изменённые файлы → связанные тесты → коммиты; 48k символов всего, 12k на файл, 20 файлов. Бинарные, lock- и сгенерированные файлы пропускаются; каждая секция обёрнута в маркеры `<untrusted-*>`, чтобы текст репозитория не мог выдать себя за инструкции. `--context off` (по умолчанию) сохраняет прежнее поведение.
+
 ## Бесплатные модели автоматически
 
 ```bash
@@ -195,6 +205,8 @@ consilium models --json          # машинный формат
 Бесплатные модели ротируются: `init --free` заново проверяет каталог и реальные ответы. Stealth/alpha-модели (`iceman`, `crouton`) могут исчезнуть — `--refresh` подберёт замену.
 
 Рейтинг (0–1.2) детерминирован: контекстное окно 30%, tool calling 20%, structured output 10%, reasoning 10%, свежесть 10%, лимит вывода 10%, приор семейства 10%, «теневая цена» платного аналога 15% плюс штрафы за alpha/preview/stealth.
+
+Исходы вызовов запоминаются в `.consilium/reliability.json` (успехи, rate limits, таймауты, латентность по каждой модели). `consilium models --reliability` печатает таблицу; рейтинг принимает опциональный бонус за надёжность, когда у модели набралось хотя бы 3 попытки. Файл локальный, его можно безопасно удалить.
 
 ## Использование из любого харнесса (MCP)
 
@@ -243,7 +255,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -290,6 +302,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
+consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
 ```
 
 **Ядро**
@@ -341,6 +354,10 @@ consilium baseline prune [--older-than <days>] [--all --yes]
 | `--findings` / `--no-findings` | Структурированный блок находок в ответах экспертов и председателя (по умолчанию выключено) |
 | `--fail-on <severity>` | Выход `3`, когда новые находки достигают порога: `critical`, `high`, `medium`, `low`, `info`, `none` |
 | `baseline accept\|prune` | Управление `.consilium/baseline.json` (принятые отпечатки находок) |
+| `--context <off\|auto>` | Добавлять в задачу изменённые файлы, правила, связанные тесты и коммиты (`auto`; по умолчанию выключено) |
+| `eval [--fixtures <dir>]` | Запустить набор оценочных фикстур с посаженными багами (по умолчанию `eval/fixtures`) |
+| `--fail-under <pct>` | Гейт `eval`: выход `3` ниже процента catch rate |
+| `--reliability` | `models`: печатать успешность и латентность по моделям из `.consilium/reliability.json` |
 
 Коды выхода: `0` успех, `1` запуск неуспешен, `2` ошибка использования, `3` провал policy gate.
 
@@ -440,6 +457,18 @@ consilium --findings --fail-on high --diff "Сделай ревью текущи
 
 `--fail-on` гейтит по **новым** находкам: отпечатки из `.consilium/baseline.json` игнорируются. Код выхода `3` означает, что гейт не пройден. `--fail-on` без `--findings` — ошибка использования. Baseline-файл проектный, и его можно коммитить, чтобы делить принятые находки с командой.
 
+## Eval-харнесс (`consilium eval`)
+
+Докажите, что совет ловит больше, чем одна модель, — детерминированно:
+
+```bash
+consilium eval --fixtures eval/fixtures --json
+consilium eval --fail-under 70        # выход 3 ниже 70% catch rate
+consilium eval --max-cost 0.50        # остановиться при исчерпании бюджета
+```
+
+Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. Десять стартовых фикстур лежат в [`eval/fixtures`](../eval/fixtures); свои можно добавлять рядом.
+
 ## Плагин OpenCode V2
 
 Нативный плагин запускает совет **внутри TUI OpenCode V2**, без MCP и внешнего CLI — через инструмент `consilium.run`. В V1 он не работает (API плагинов V1 несовместим).
@@ -468,6 +497,19 @@ consilium --findings --fail-on high --diff "Сделай ревью текущи
 - **Требуется:** зарегистрированный [плагин V2](#плагин-opencode-v2) **или** [MCP-сервер](#использование-из-любого-харнесса-mcp). Без них агент сообщит, чего не хватает, и не будет запускать консилиум.
 
 Для V1: каталог команд — сингулярный `command/` (`.opencode/command/`, `~/.config/opencode/command/`), а API плагинов V2 недоступен. Скопируйте файл туда и используйте MCP-сервер или CLI.
+
+## GitHub Action
+
+Композитный action ревьюит diff пул-реквеста и публикует или обновляет ровно один комментарий с маркером `<!-- consilium:report -->`:
+
+```yaml
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.6.0
+  with:
+    fail-on: high
+    github-token: ${{ github.token }}
+```
+
+Он запускает `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`, комментирует один раз и затем передаёт код выхода гейта (`3`). PR из форков по умолчанию пропускаются, потому что секреты недоступны; версию npm можно закрепить входом `version`. Action выполняется на вашем runner — без хостингового приложения и платного сервиса. Полное руководство: [`github-action.md`](github-action.md).
 
 ## Пресеты
 
@@ -520,6 +562,7 @@ consilium --findings --fail-on high --diff "Сделай ревью текущи
 | `variant` | — | Вариант модели для моделей без `#variant` (явный вариант приоритетнее) |
 | `debounceMs` | 400 | Задержка watch-режима, мс |
 | `findings` | `false` | Структурированный блок находок в ответах экспертов и председателя |
+| `context` | `off` | `auto` добавляет изменённые файлы, правила проекта, связанные тесты и коммиты в задачу |
 | `opencodePath` | `opencode` | Свой путь к CLI (игнорируется из проектного конфига без `-c`) |
 | `cwd` | текущая | Рабочая директория для OpenCode (игнорируется из проектного конфига без `-c`) |
 
@@ -591,6 +634,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
+**1.6.0** — eval-харнесс, context pack, память надёжности и GitHub Action. `consilium eval` прогоняет фикстуры с посаженными багами и детерминированным сопоставлением `claim`, показывая catch/FP/p50 latency/cost (`--fail-under` завершается кодом `3`). `--context auto` добавляет изменённые файлы, ближайший `AGENTS.md`, связанные тесты и недавние коммиты в пределах лимита символов. Исходы и латентность моделей сохраняются в `.consilium/reliability.json` (`models --reliability`). Композитный GitHub Action делает ревью diff PR и публикует или обновляет один комментарий. Нечёткое слияние по `claim` дедуплицирует перефразированные находки. 370 тестов.
+
 **1.5.0** — структурированные находки и policy gate. `--findings` заставляет экспертов и председателя возвращать провалидированный JSON-блок `findings[]` (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); находки дедуплицируются по стабильному отпечатку, сливаются по ролям, помечаются `contested`, если председатель их отклонил, и попадают в `metadata.findings`. HTML- и PR-отчёты рисуют таблицу находок и реестр разногласий. `--fail-on <severity>` гейтит по **новым** находкам с кодом выхода `3`; `consilium baseline accept|prune` управляет `.consilium/baseline.json`. Также: исправления корректности P1 (приоритет конфигов V1/V2, предупреждения о битом конфиге, fallback/`minContext`/дедупликация кэша моделей, телеметрия стоимости, эскалация SIGKILL, префикс сессий `ses_`, разбор `argv[0]` в CLI, перезапуск/сигналы watch, крайние случаи preset/consensus/smart-experts) и слэш-команда `/council`. 317 тестов.
 
 **1.4.3** — усиление безопасности. Конфиг проекта недоверенный по умолчанию: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` и строковые пути записи игнорируются, если файл не передан через `-c`. На Windows `.cmd` запускается только с проверенными аргументами, `.exe` — напрямую. MCP отклоняет `tools/call` без `id`, ограничивает очередь, удерживает output/артефакты внутри workspace, а `init_free` делает `.bak` и требует подтверждения для `force`. Динамические fence для diff и экранирование отчётов блокируют инъекции; артефакты редактируют токены и получают `.gitignore`. 246 тестов.
@@ -617,7 +662,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (224 теста)
+npm test            # build + node:test (370 тестов)
 npm run typecheck   # tsc --noEmit
 ```
 

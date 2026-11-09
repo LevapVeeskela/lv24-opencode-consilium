@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/api/projects.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the response should use status 204"
+    }
+  ]
+}

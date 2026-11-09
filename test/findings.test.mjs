@@ -6,10 +6,16 @@ import {
   fingerprintFinding,
   findingsAtLeast,
   maxSeverity,
-  countBySeverity
+  countBySeverity,
+  claimSimilarity
 } from '../dist/domain/council/findings.js';
 
 const block = (payload) => '```json\n' + JSON.stringify(payload, null, 2) + '\n```';
+
+const PARAPHRASE_A =
+  'Функция add выполняет вычитание вместо сложения, нарушая контракт своего имени.';
+const PARAPHRASE_B =
+  'Функция add выполняет вычитание вместо сложения, нарушая контракт, заданный её именем.';
 
 test('parseFindingsBlock: валидный блок с findings и rejected', () => {
   const text = `Ответ эксперта.\n${block({
@@ -126,4 +132,229 @@ test('findingsAtLeast / maxSeverity работают по порогу', () => {
   assert.equal(findingsAtLeast(merged.items, 'high').length, 1);
   assert.equal(findingsAtLeast(merged.items, 'info').length, 2);
   assert.deepEqual(countBySeverity([]), { critical: 0, high: 0, medium: 0, low: 0, info: 0 });
+});
+
+test('claimSimilarity: перефразировка выше порога, разные проблемы ниже', () => {
+  assert.ok(claimSimilarity(PARAPHRASE_A, PARAPHRASE_B) >= 0.62);
+  assert.ok(claimSimilarity('SQL-инъекция в поиске', 'Нет проверки прав на удаление') < 0.62);
+  assert.equal(claimSimilarity('Нет проверки прав', 'Нет проверки прав!'), 1);
+});
+
+test('mergeFindings: перефразировка в одном файле сливается, severity/sources/claim/line корректны', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'arch',
+      model: 'm1',
+      findings: [
+        {
+          severity: 'high',
+          category: 'logic',
+          file: 'src/math.ts',
+          line: 42,
+          claim: PARAPHRASE_A
+        }
+      ]
+    },
+    {
+      agent: 'qa',
+      model: 'm2',
+      findings: [
+        {
+          severity: 'critical',
+          category: 'LOGIC',
+          file: 'src\\math.ts',
+          line: 17,
+          claim: PARAPHRASE_B
+        }
+      ]
+    }
+  ]);
+
+  assert.equal(merged.items.length, 1);
+  const item = merged.items[0];
+  assert.equal(item.severity, 'critical');
+  assert.equal(item.sources.length, 2);
+  assert.deepEqual(
+    item.sources.map(source => source.agent),
+    ['arch', 'qa']
+  );
+  assert.equal(item.claim, PARAPHRASE_B);
+  assert.equal(item.line, 17);
+  assert.equal(merged.counts.critical, 1);
+  assert.equal(merged.counts.high, 0);
+});
+
+test('mergeFindings: разные проблемы в одном файле не сливаются', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'sec',
+      findings: [
+        {
+          severity: 'high',
+          category: 'security',
+          file: 'src/search.ts',
+          claim: 'SQL-инъекция в поиске'
+        },
+        {
+          severity: 'high',
+          category: 'security',
+          file: 'src/search.ts',
+          claim: 'Нет проверки прав на удаление'
+        }
+      ]
+    }
+  ]);
+
+  assert.equal(merged.items.length, 2);
+});
+
+test('mergeFindings: одинаковая перефразировка в разных файлах не сливается', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'arch',
+      findings: [
+        { severity: 'high', category: 'logic', file: 'src/a.ts', claim: PARAPHRASE_A }
+      ]
+    },
+    {
+      agent: 'qa',
+      findings: [
+        { severity: 'high', category: 'logic', file: 'src/b.ts', claim: PARAPHRASE_B }
+      ]
+    }
+  ]);
+
+  assert.equal(merged.items.length, 2);
+});
+
+test('mergeFindings: совпадение только по стоп-словам не сливается', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'arch',
+      findings: [
+        {
+          severity: 'medium',
+          category: 'api',
+          file: 'src/api.ts',
+          claim: 'Метод который также возвращает null'
+        },
+        {
+          severity: 'medium',
+          category: 'api',
+          file: 'src/api.ts',
+          claim: 'Класс который также содержит кэш'
+        }
+      ]
+    }
+  ]);
+
+  assert.equal(claimSimilarity('Метод который также возвращает null', 'Класс который также содержит кэш'), 0);
+  assert.equal(merged.items.length, 2);
+});
+
+test('mergeFindings: точные дубликаты по-прежнему сливаются', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'arch',
+      findings: [
+        { severity: 'low', category: 'api', file: 'src/a.ts', claim: 'Нет лимита запросов' }
+      ]
+    },
+    {
+      agent: 'sec',
+      findings: [
+        { severity: 'high', category: 'api', file: 'src/a.ts', claim: 'нет лимита запросов!' }
+      ]
+    }
+  ]);
+
+  assert.equal(merged.items.length, 1);
+  assert.equal(merged.items[0].severity, 'high');
+  assert.equal(merged.items[0].sources.length, 2);
+});
+
+test('mergeFindings: порядок находок детерминирован', () => {
+  const entries = [
+    {
+      agent: 'arch',
+      findings: [
+        {
+          severity: 'medium',
+          category: 'logic',
+          file: 'src/x.ts',
+          claim: 'Функция add выполняет вычитание вместо сложения'
+        },
+        {
+          severity: 'critical',
+          category: 'security',
+          file: 'src/y.ts',
+          claim: 'SQL-инъекция в поиске'
+        },
+        {
+          severity: 'low',
+          category: 'logic',
+          file: 'src/x.ts',
+          claim: 'Нет проверки прав на удаление'
+        }
+      ]
+    },
+    {
+      agent: 'qa',
+      findings: [
+        {
+          severity: 'high',
+          category: 'logic',
+          file: 'src/x.ts',
+          claim: 'Функция add выполняет вычитание вместо сложения, нарушая контракт'
+        }
+      ]
+    }
+  ];
+
+  const first = mergeFindings(entries);
+  const second = mergeFindings(entries);
+
+  assert.deepEqual(first, second);
+  assert.equal(first.items.length, 3);
+  assert.equal(first.items[0].severity, 'critical');
+  assert.equal(first.items[1].severity, 'high');
+  assert.equal(first.items[1].sources.length, 2);
+  assert.equal(first.items[2].severity, 'low');
+});
+
+test('mergeFindings: отклонённая формулировка делает перефразированную находку contested', () => {
+  const merged = mergeFindings([
+    {
+      agent: 'qa',
+      findings: [
+        {
+          severity: 'high',
+          category: 'logic',
+          file: 'src/math.ts',
+          claim: PARAPHRASE_A
+        }
+      ]
+    },
+    {
+      agent: 'arch',
+      findings: [
+        {
+          severity: 'high',
+          category: 'logic',
+          file: 'src/math.ts',
+          claim: PARAPHRASE_B
+        }
+      ]
+    },
+    {
+      agent: 'consilium',
+      findings: [],
+      rejected: [{ claim: PARAPHRASE_A, reason: 'поведение соответствует контракту' }]
+    }
+  ]);
+
+  assert.equal(merged.items.length, 1);
+  assert.equal(merged.items[0].claim, PARAPHRASE_B);
+  assert.equal(merged.items[0].contested, true);
+  assert.deepEqual(merged.items[0].rejectedBy, ['consilium']);
 });

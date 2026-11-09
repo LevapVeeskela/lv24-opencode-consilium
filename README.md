@@ -95,9 +95,9 @@ npx -y lv24-opencode-consilium --help
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.5.0
+# consilium v1.6.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -166,6 +166,16 @@ consilium mcp --install --global   # ~/.config/opencode/opencode.json
 opencode mcp list                  # verify
 ```
 
+## Context pack (`--context auto`)
+
+Experts normally see only the task and the diff. `--context auto` adds the changed files, project rules, related tests and recent commits:
+
+```bash
+consilium --context auto --diff "Review the current changes"
+```
+
+Priority and budget: rules → changed files → related tests → commits; 48k chars total, 12k per file, 20 files. Binary, lock and generated files are skipped; every section is wrapped in `<untrusted-*>` markers so repo text cannot masquerade as instructions. `--context off` (default) keeps the old behavior.
+
 ## Free models, automatically
 
 ```bash
@@ -199,6 +209,8 @@ Current recommended set (catalog as of 2026-11-08):
 Free models rotate: `init --free` re-checks the catalog and real responses. Stealth/alpha models (`iceman`, `crouton`) can disappear — `--refresh` picks replacements.
 
 Ranking (0–1.2) is deterministic: context window 30%, tool calling 20%, structured output 10%, reasoning 10%, recency 10%, output limit 10%, family prior 10%, paid-sibling "shadow price" 15%, plus alpha/preview/stealth penalties.
+
+Call outcomes are remembered in `.consilium/reliability.json` (successes, rate limits, timeouts, latency per model). `consilium models --reliability` prints the table; the ranking accepts an optional reliability bonus once a model has at least 3 attempts. The file is local and safe to delete.
 
 ## Use it from any harness (MCP)
 
@@ -247,7 +259,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -294,6 +306,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
+consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
 ```
 
 **Core**
@@ -345,6 +358,10 @@ consilium baseline prune [--older-than <days>] [--all --yes]
 | `--findings` / `--no-findings` | Structured findings block in expert/chair answers (off by default) |
 | `--fail-on <severity>` | Exit `3` when new findings reach the threshold: `critical`, `high`, `medium`, `low`, `info`, `none` |
 | `baseline accept\|prune` | Manage `.consilium/baseline.json` (accepted finding fingerprints) |
+| `--context <off\|auto>` | Add changed files, rules, related tests and commits to the task (`auto`; off by default) |
+| `eval [--fixtures <dir>]` | Run the planted-bug evaluation suite (default `eval/fixtures`) |
+| `--fail-under <pct>` | `eval` gate: exit `3` below the catch-rate percentage |
+| `--reliability` | `models`: print per-model success/latency from `.consilium/reliability.json` |
 
 Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy gate failed.
 
@@ -444,6 +461,18 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 `--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
 
+## Evaluation harness (`consilium eval`)
+
+Prove the council catches more than a single model, deterministically:
+
+```bash
+consilium eval --fixtures eval/fixtures --json
+consilium eval --fail-under 70        # exit 3 below 70% catch rate
+consilium eval --max-cost 0.50        # stop when the budget is exhausted
+```
+
+Each fixture is a task, a small diff with a planted bug, and an `expected.json` (`mustFind` / `mustNotFind` claim substrings, optional `file`, `category`, `minSeverity`). Matching is a normalized claim substring check — no LLM judge — so results are reproducible. The report shows per-fixture caught/missed/false positives, aggregate catch and FP rates, p50 latency and cost. Ten seed fixtures ship in [`eval/fixtures`](eval/fixtures); add your own next to them.
+
 ## OpenCode V2 plugin
 
 A native plugin that runs the council **inside the OpenCode V2 TUI**, no MCP or external CLI — via the `consilium.run` tool. It does not work in V1 (the V1 plugin API is incompatible).
@@ -472,6 +501,19 @@ The repository includes `.opencode/commands/council.md`, so `/council <task>` as
 - **Requires:** the [V2 plugin](#opencode-v2-plugin) **or** the [MCP server](#use-it-from-any-harness-mcp) to be registered. Without either, the agent reports what is missing instead of running a council.
 
 V1 note: OpenCode V1 reads the singular `command/` directory (`.opencode/command/`, `~/.config/opencode/command/`) and has no V2 plugin API. Copy the file there and use the MCP server or CLI fallback.
+
+## GitHub Action
+
+A composite action reviews a pull request diff and posts or updates exactly one comment with the `<!-- consilium:report -->` marker:
+
+```yaml
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.6.0
+  with:
+    fail-on: high
+    github-token: ${{ github.token }}
+```
+
+It runs `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`, comments once, then propagates the gate exit code (`3`). Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
 
 ## Presets
 
@@ -524,6 +566,7 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `variant` | — | Model variant for models without `#variant` (explicit variants win) |
 | `debounceMs` | 400 | Watch-mode delay, ms |
 | `findings` | `false` | Structured findings block in expert/chair answers |
+| `context` | `off` | `auto` adds changed files, project rules, related tests and commits to the task |
 | `opencodePath` | `opencode` | Custom CLI path (ignored from project config unless `-c`) |
 | `cwd` | current | Working directory for OpenCode (ignored from project config unless `-c`) |
 
@@ -595,6 +638,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.6.0** — evaluation harness, context pack, reliability memory and a GitHub Action. `consilium eval` runs planted-bug fixtures with deterministic claim matching and reports catch/FP/p50 latency/cost (`--fail-under` exits `3`). `--context auto` adds changed files, the nearest `AGENTS.md`, related tests and recent commits under a char budget. Model outcomes and latency are stored in `.consilium/reliability.json` (`models --reliability`). A composite GitHub Action runs a PR diff review and posts/updates one comment. Fuzzy claim merging deduplicates paraphrased findings. 370 tests.
+
 **1.5.0** — structured findings and a policy gate. `--findings` makes experts and the chair return a validated `findings[]` JSON block (`severity`, `category`, `file`, `line`, `claim`, `evidence`, `confidence`); findings are deduplicated by a stable fingerprint, merged across roles, marked `contested` when the chair rejects them, and stored in `metadata.findings`. HTML and PR reports render the findings table and the dissent ledger. `--fail-on <severity>` gates on **new** findings with exit code `3`; `consilium baseline accept|prune` manages `.consilium/baseline.json`. Also: P1 correctness fixes (config V1/V2 precedence, malformed-config warnings, model cache fallback/`minContext`/dedupe, cost telemetry, SIGKILL escalation, `ses_` session prefix, CLI `argv[0]` parsing, watch rerun/signals, preset/consensus/smart-experts edge cases) and the `/council` slash command. 317 tests.
 
 **1.4.3** — security hardening. Project config is untrusted by default: `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath` and string write paths are ignored unless the file is passed with `-c`. Windows `.cmd` spawning validates every argument; `.exe` spawns directly. MCP rejects id-less tool calls, caps the queue, confines output/artifacts to the workspace, and `init_free` makes backups and requires confirmation for `force`. Dynamic diff fences and report escaping block prompt/markdown injection; artifacts redact tokens and get a `.gitignore`. 246 tests.
@@ -621,7 +666,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (317 tests)
+npm test            # build + node:test (370 tests)
 npm run typecheck   # tsc --noEmit
 ```
 

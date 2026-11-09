@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/orders/list.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "orders should be sorted by creation date"
+    }
+  ]
+}

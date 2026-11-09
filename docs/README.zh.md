@@ -46,7 +46,7 @@ npx -y lv24-opencode-consilium --help   # 不安装直接运行
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.5.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.5.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.6.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.6.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -78,10 +78,20 @@ consilium "Design a rate limiter for a public API"
 | `run --agent` 的模型 | 从配置应用 | **被忽略**，必须显式 `--model` |
 
 默认写 V1 格式（两版都能读），原生 V2 仅在 `--native-v2` 或文件已用 V2 键时写入；模型始终以 `--model` 传递；Agent 从 `agent`/`agents`、`.opencode/opencode.json(c)` 及父目录读取。`RATE_LIMITED` 短时限（<= 30 秒）自动重试，长时限立即失败并给出延迟；`doctor` 报告 CLI 版本、配置格式与 V2 兼容问题。一键注册 MCP：`consilium mcp --install`（项目）、`consilium mcp --install --global`（全局），再用 `opencode mcp list` 验证。
+## 上下文包（`--context auto`）
+专家默认只看到任务和 diff。`--context auto` 会补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交：
+
+```bash
+consilium --context auto --diff "Review the current changes"
+```
+
+优先级与预算：规则 → 改动文件 → 相关测试 → 提交；总计 48k 字符、单文件 12k、最多 20 个文件。二进制、锁文件和生成文件会跳过；每段都包在 `<untrusted-*>` 标记里，仓库文本无法冒充指令。`--context off`（默认）保持旧行为。
 ## 免费模型自动挑选
 `consilium models`（前 20）、`--available`（仅可用提供商）、`--verify`（真实请求）、`--refresh`（忽略 12 小时缓存）、`--json`。来源：`models.dev`、OpenRouter 的 `:free` 变体和内置精选清单；缓存 `%TEMP%/lv24-opencode-consilium/models-cache.json`（或 `CONSILIUM_MODELS_CACHE`）。
 
 当前推荐：`arch → opencode/flint-40b-free`、`ux → opencode/inkling-2-small-free`、`ba → opencode/deepseek-v4.1-flash-free`、`sec → opencode/iceman-free`、`chair → opencode/beam-free`。`opencode-go` 的免费模型（`*-free` 等）也参与排序，但 `opencode-go/muse-spark-1.3-contributor` 这类付费模型不会被 `--free` 选中，需在 `experts[].model` 或 `chair.model` 指定。免费模型会轮换，`init --free` 复核目录与真实响应，`--refresh` 挑选替代者；排序（0–1.2）按上下文、tool calling、结构化输出、推理、新旧、输出上限、家族先验和付费同级“影子价格”加权。
+
+调用结果记录在 `.consilium/reliability.json`（每个模型的成功、限流、超时、延迟）。`consilium models --reliability` 打印表格；模型累计至少 3 次尝试后，排序会接受可选的可信度加分。该文件仅本地保存，可安全删除。
 ## 在任意宿主中使用（MCP）
 `consilium mcp` 或直接二进制 `consilium-mcp` 启动 stdio 服务器。**Claude Desktop**（`claude_desktop_config.json`）示例：
 
@@ -111,7 +121,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -141,6 +151,7 @@ consilium watch [--debounce <ms>] [task]
 consilium hooks install|uninstall
 consilium baseline accept <id|latest> [--dry-run]
 consilium baseline prune [--older-than <days>] [--all --yes]
+consilium eval [--fixtures <dir>] [--json] [--fail-under <pct>] [--max-cost <usd>]
 ```
 
 | 选项 | 说明 |
@@ -157,6 +168,7 @@ consilium baseline prune [--older-than <days>] [--all --yes]
 | `--report <html\|pr\|markdown>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告 / 写文件 / git diff / watch 防抖 |
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
 | `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
+| `--context <off\|auto>` / `eval [--fixtures <dir>]` / `--fail-under <pct>` / `--reliability` | 上下文包（`auto`，默认 `off`）/ 运行评估 fixture（默认 `eval/fixtures`）/ eval 门禁：低于 catch 百分比退出 `3` / `models` 打印 `.consilium/reliability.json` 的成功率与延迟 |
 
 退出码：`0` 成功，`1` 运行失败，`2` 用法错误，`3` 策略门禁失败。示例：`consilium -e arch,sec "Threat-model the upload endpoint"`、`git diff --staged | consilium - --diff "Review these changes"`、`consilium -f json "..." > council.json`。
 ## 运行产物/报告/watch/git hooks
@@ -190,12 +202,35 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 - `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
 
+## 评估工具（`consilium eval`）
+确定性地证明议会比单个模型发现更多：
+
+```bash
+consilium eval --fixtures eval/fixtures --json
+consilium eval --fail-under 70        # 低于 70% catch rate 时退出 3
+consilium eval --max-cost 0.50        # 预算耗尽时停止
+```
+
+每个 fixture 是一段任务、一个埋入 bug 的小 diff 和 `expected.json`（`mustFind` / `mustNotFind` 为 claim 子串，可选 `file`、`category`、`minSeverity`）。匹配是规范化后的 claim 子串检查——不用 LLM 裁判——因此结果可复现。报告给出每个 fixture 的 caught/missed/false positives、总体 catch 与 FP 率、p50 延迟和成本。内置十个种子 fixture：[`eval/fixtures`](../eval/fixtures)，可在旁边添加自己的。
+
 ## OpenCode V2 插件
 在 OpenCode V2 TUI 内运行议会，无需 MCP 或外部 CLI（V1 插件 API 不兼容）。
 
 配置 `{ "plugins": [{ "package": "lv24-opencode-consilium" }] }`。导出 `./server`（`dist/plugin.js`），无运行时依赖；`consilium.run` 接受 `task`、`experts`、`chair`、`timeout_ms`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`preset`。
 
 斜杠命令：`.opencode/commands/council.md`（或全局 `~/.config/opencode/commands/`），用法 `/council <task>`；需要先注册 V2 插件或 MCP 服务器。
+
+## GitHub Action
+复合 Action 会评审 PR diff，并发布或更新恰好一条带 `<!-- consilium:report -->` 标记的评论：
+
+```yaml
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.6.0
+  with:
+    fail-on: high
+    github-token: ${{ github.token }}
+```
+
+它运行 `consilium --diff --base origin/<base> --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，然后传递门禁退出码（`3`）。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
 
 ## 预设
 | 预设 | 专家 | 行为 |
@@ -226,6 +261,7 @@ consilium --findings --fail-on high --diff "Review the current changes"
 | `retry.jitter` / `retry.maxConcurrency` / `output.file` | `false` / 3 / `false` | 随机延迟（50–100%）/ 并行 1–8 / 关闭保存 |
 | `standalone` / `autoApprove` / `autoDiscoverAgents` | `true` / `false` / `true` | 私有服务器 / `--auto` / 复用 Agent |
 | `artifacts` / `consensus` / `smartExperts` / `findings` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色；结构化发现 |
+| `context` | `off` | `auto` 将改动文件、项目规则、相关测试和提交加入任务 |
 | `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式 / 报告文件 / variant / watch 防抖 |
 | `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录；项目配置中除非用 `-c` 否则忽略 |
 
@@ -264,6 +300,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.6.0** — 评估工具、上下文包、可靠性记忆与 GitHub Action：`consilium eval` 用埋入 bug 的 fixture 和确定性 claim 匹配报告 catch/FP/p50 延迟/成本（`--fail-under` 低于阈值退出 `3`）；`--context auto` 在字符预算内补充改动文件、最近的 `AGENTS.md`、相关测试和近期提交；模型结果与延迟写入 `.consilium/reliability.json`（`models --reliability`）；复合 GitHub Action 评审 PR diff 并发布或更新一条评论；模糊 claim 合并去重同义发现；370 个测试。
 - **1.5.0** — 结构化发现与策略门禁：`--findings` 让专家和主席返回经过校验的 `findings[]` JSON（`severity`、`category`、`file`、`line`、`claim`、`evidence`、`confidence`），按稳定指纹去重合并，主席拒绝的条目记为 `contested`，并写入 `metadata.findings`；HTML/PR 报告渲染发现表与异议账本；`--fail-on <severity>` 只对**新**发现生效并以退出码 `3` 阻断，`consilium baseline accept|prune` 管理 `.consilium/baseline.json`。同时包含 P1 正确性修复（V1/V2 配置优先级、损坏配置告警、模型缓存回退/`minContext`/去重、成本遥测、SIGKILL 升级、`ses_` 会话前缀、CLI `argv[0]` 解析、watch 重跑/信号、preset/consensus/smart-experts 边界情况）以及 `/council` 斜杠命令；317 个测试。
 - **1.4.3** — 安全加固：项目配置默认不可信（`opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串写入路径需用 `-c` 显式信任）；Windows `.cmd` 参数白名单；MCP 拒绝无 `id` 的调用、限制队列、限制产物路径，`init_free` 生成 `.bak` 且 `force` 需确认；diff fence 与报告转义防注入；产物脱敏并生成 `.gitignore`；246 个测试。
 - **1.4.2** — 内部分层重构（`shared`、`domain`、`application`、`infrastructure`、`interfaces`）与切片 barrel；API 与行为不变，22 个 subpath 的导出与 1.4.1 完全一致；全新 README、`llms.txt`、`docs/architecture.md`；ru/zh 同步；构建前清理 `dist`；224 个测试。
@@ -274,6 +311,6 @@ const top = selectCouncilModels(models, 5);
 ## 路线图
 - TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，224 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，370 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
 ## 许可证
 [MIT](../LICENSE)

@@ -1,0 +1,8 @@
+--- a/src/util/pagination.ts
++++ b/src/util/pagination.ts
+@@ -3,4 +3,4 @@ export function pageSlice<T>(items: T[], page: number, size: number): T[] {
+   const start = page * size;
+-  const end = Math.min(start + size, items.length);
++  const end = Math.min(start + size - 1, items.length);
+   return items.slice(start, end);
+ }

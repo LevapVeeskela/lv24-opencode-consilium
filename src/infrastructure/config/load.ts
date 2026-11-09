@@ -275,6 +275,9 @@ export function validateConfig(config: ConsiliumConfig): string[] {
   ) {
     warnings.push('debounceMs должен быть целым числом >= 0.');
   }
+  if (config.context !== undefined && config.context !== 'off' && config.context !== 'auto') {
+    warnings.push(`context должен быть "off" или "auto", получено: ${String(config.context)}`);
+  }
 
   return warnings;
 }

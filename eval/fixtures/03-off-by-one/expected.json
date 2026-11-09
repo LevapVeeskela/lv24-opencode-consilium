@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/util/pagination.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "page numbers should start at one"
+    }
+  ]
+}

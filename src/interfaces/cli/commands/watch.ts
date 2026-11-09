@@ -11,7 +11,7 @@ import { createProjectWatcher } from '../../../infrastructure/watch.js';
 import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
-import { readTaskFromFile } from '../task.js';
+import { readTaskFromFile, appendTaskContext } from '../task.js';
 import {
   printAgentList,
   printDryRun,
@@ -100,18 +100,21 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
       }
 
       let fullTask = baseTask;
+      let diffText: string | undefined;
       try {
         const diff = await getGitDiff({
           cwd,
           staged: options.diffStaged,
           base: options.diffBase
         });
+        diffText = diff.diff;
         if (diff.filesChanged > 0) {
           fullTask = `${baseTask}\n\n${formatDiffForPrompt(diff)}`;
         }
       } catch {
         // Вне git-репозитория работаем с задачей как есть
       }
+      fullTask = await appendTaskContext(options, config, fullTask, diffText);
 
       if (options.dryRun) {
         printDryRun(fullTask, config);

@@ -18,6 +18,7 @@ export const COMMANDS = new Set([
   'watch',
   'hooks',
   'baseline',
+  'eval',
   'help',
   'version'
 ]);
@@ -74,6 +75,14 @@ export function parseNonNegativeFloat(value: string, flag: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new UsageError(`Флаг ${flag} ожидает число >= 0, получено: ${value}`);
+  }
+  return parsed;
+}
+
+export function parsePercent(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new UsageError(`Флаг ${flag} ожидает число от 0 до 100, получено: ${value}`);
   }
   return parsed;
 }
@@ -222,6 +231,23 @@ export function parseArgs(argv: string[]): CLIOptions {
       case '--max-cost':
         options.maxCost = parseNonNegativeFloat(requireNumericValue(argv, ++i, arg), arg);
         break;
+      case '--fixtures':
+        options.fixtures = requireValue(argv, ++i, arg);
+        break;
+      case '--fail-under':
+        options.failUnder = parsePercent(requireNumericValue(argv, ++i, arg), arg);
+        break;
+      case '--context': {
+        const mode = requireValue(argv, ++i, arg);
+        if (mode !== 'off' && mode !== 'auto') {
+          throw new UsageError(`Флаг --context ожидает off или auto, получено: ${mode}`);
+        }
+        options.context = mode;
+        break;
+      }
+      case '--reliability':
+        options.reliability = true;
+        break;
       case '--fail-on': {
         const level = requireValue(argv, ++i, arg);
         if (!(FAIL_ON_LEVELS as readonly string[]).includes(level)) {
@@ -311,12 +337,13 @@ export function parseArgs(argv: string[]): CLIOptions {
         if (arg === '-') {
           options.taskFile = '-';
         } else if (!arg.startsWith('-')) {
-          // baseline — подкоманда только в самом начале argv, чтобы слово
-          // в задаче или после флагов не переключало режим.
-          if (arg === 'baseline' && i === 0) {
-            options.command = 'baseline';
+          // baseline и eval — подкоманды только в самом начале argv, чтобы
+          // слово в задаче или после флагов не переключало режим.
+          if ((arg === 'baseline' || arg === 'eval') && i === 0) {
+            options.command = arg;
           } else if (
             arg !== 'baseline' &&
+            arg !== 'eval' &&
             options.command === undefined &&
             taskParts.length === 0 &&
             COMMANDS.has(arg)

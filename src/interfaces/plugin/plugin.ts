@@ -4,7 +4,6 @@
  * @module lv24-opencode-consilium/plugin
  */
 
-import type { Plugin as PluginNamespace } from '@opencode/plugin';
 import { isRecord } from '../../shared/record.js';
 import type { ConsiliumConfig } from '../../domain/types.js';
 import { runConsiliumTool, type ToolRunArgs } from './tool-run.js';
@@ -86,6 +85,15 @@ export interface PluginContextLike {
   tool: { transform(cb: (editor: ToolEditorLike) => void): Promise<unknown> };
   /** Активный проект OpenCode V2 */
   location?: { directory?: string };
+}
+
+/**
+ * Structural plugin contract: enough for the OpenCode V2 host and for fakes.
+ * Kept local so the published .d.ts has no dependency on `@opencode/plugin`.
+ */
+export interface ConsiliumPluginDefinition {
+  id: string;
+  setup: (ctx: PluginContextLike) => unknown;
 }
 
 /**
@@ -272,9 +280,9 @@ export async function registerConsilium(
   });
 }
 
-const plugin: PluginNamespace.Plugin = {
+const plugin: ConsiliumPluginDefinition = {
   id: 'consilium',
-  setup: ctx => registerConsilium(ctx as unknown as PluginContextLike)
+  setup: ctx => registerConsilium(ctx)
 };
 
 export default plugin;

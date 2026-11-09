@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/jobs/load.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "unserialize is faster than json parse"
+    }
+  ]
+}

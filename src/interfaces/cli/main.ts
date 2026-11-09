@@ -20,6 +20,7 @@ import { commandMcpInstall } from './commands/mcp-install.js';
 import { commandWatch } from './commands/watch.js';
 import { commandHooks } from './commands/hooks.js';
 import { commandBaseline } from './commands/baseline.js';
+import { commandEval } from './commands/eval.js';
 
 export { applyCliOverrides } from './overrides.js';
 
@@ -75,6 +76,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         return await commandHooks(options);
       case 'baseline':
         return await commandBaseline(options);
+      case 'eval':
+        return await commandEval(options);
       case 'run':
         return await commandRun(options);
       default:

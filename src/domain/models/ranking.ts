@@ -4,6 +4,10 @@
  */
 
 import { DEFAULT_EXPERT_PROMPTS } from '../defaults.js';
+import {
+  reliabilityBonus,
+  type ReliabilityStore
+} from '../../infrastructure/models/reliability.js';
 import type { FreeModel, FreeModelSource } from './catalog.js';
 
 const ALPHA_PATTERN = /alpha|preview|stealth|experimental/i;
@@ -113,7 +117,11 @@ function isPenalized(model: FreeModel): boolean {
   return registryKeys(model).some(key => penalizedModels.has(key));
 }
 
-function computeScore(model: FreeModel, now: number): number {
+function computeScore(
+  model: FreeModel,
+  now: number,
+  reliability?: ReliabilityStore
+): number {
   const contextNorm = clamp01(Math.log2(Math.max(model.context, 1) / 8192) / 7);
   const outputNorm = clamp01(Math.log2(Math.max(model.outputLimit, 1) / 8192) / 4);
   const recency = releaseRecency(model.releaseDate, now);
@@ -132,6 +140,9 @@ function computeScore(model: FreeModel, now: number): number {
 
   if (isPenalized(model)) score -= 0.25;
   if (model.available) score += 0.05;
+  // Бонус подключается только явно переданной статистикой: без неё
+  // ранжирование остаётся чистым и детерминированным.
+  if (reliability !== undefined) score += reliabilityBonus(model.id, reliability);
 
   return Math.round(score * 1_000_000) / 1_000_000;
 }
@@ -175,7 +186,12 @@ export function sortRanked(models: FreeModel[], includeUnavailable: boolean): Fr
  */
 export function rankFreeModels(
   models: FreeModel[],
-  opts: { includeUnavailable?: boolean; minContext?: number } = {}
+  opts: {
+    includeUnavailable?: boolean;
+    minContext?: number;
+    /** Надёжность моделей; без неё бонус не применяется */
+    reliability?: ReliabilityStore;
+  } = {}
 ): FreeModel[] {
   const now = Date.now();
   const minContext =
@@ -184,7 +200,7 @@ export function rankFreeModels(
       : 0;
   const scored = models
     .filter(model => model.context >= minContext)
-    .map(model => ({ ...model, score: computeScore(model, now) }));
+    .map(model => ({ ...model, score: computeScore(model, now, opts.reliability) }));
   return sortRanked(scored, opts.includeUnavailable ?? true);
 }
 

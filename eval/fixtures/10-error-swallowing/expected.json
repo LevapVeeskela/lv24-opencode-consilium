@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/payments/capture.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the boolean return type is deprecated"
+    }
+  ]
+}

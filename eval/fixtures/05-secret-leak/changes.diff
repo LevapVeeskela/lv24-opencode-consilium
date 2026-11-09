@@ -1,0 +1,10 @@
+--- a/src/config/logger.ts
++++ b/src/config/logger.ts
+@@ -4,6 +4,6 @@ export function logRequest(req: Request): void {
+   logger.info('request', {
+     method: req.method,
+     url: req.url,
+-    headers: redact(req.headers)
++    headers: req.headers
+   });
+ }

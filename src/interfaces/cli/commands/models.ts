@@ -1,15 +1,48 @@
 /**
- * @fileoverview Команда models: рейтинг бесплатных моделей
+ * @fileoverview Команда models: рейтинг бесплатных моделей и статистика надёжности
  * @module lv24-opencode-consilium/cli/commands/models
  */
 
 import type { CLIOptions } from '../../../domain/types.js';
 import { fetchFreeModels } from '../../../infrastructure/models/sources.js';
+import {
+  formatReliabilityTable,
+  loadReliability,
+  type ModelReliability,
+  type ReliabilityStore
+} from '../../../infrastructure/models/reliability.js';
 import { verifyModels } from '../../../application/models/verify.js';
 import { log } from '../output.js';
 
-export async function commandModels(options: CLIOptions): Promise<number> {
-  const result = await fetchFreeModels({
+/** Зависимости команды models, подменяемые в тестах */
+export interface ModelsCommandDependencies {
+  /** Рабочая директория для .consilium/reliability.json */
+  cwd?: string;
+  /** Загрузчик каталога моделей */
+  fetchModels?: typeof fetchFreeModels;
+  /** Загрузчик статистики надёжности */
+  loadReliabilityStore?: (dir?: string) => ReliabilityStore;
+}
+
+/** Строка JSON-вывода статистики надёжности */
+type ReliabilityRow = { model: string } & ModelReliability;
+
+function reliabilityRows(store: ReliabilityStore): ReliabilityRow[] {
+  return Object.entries(store.models)
+    .sort((a, b) => {
+      if (b[1].attempts !== a[1].attempts) return b[1].attempts - a[1].attempts;
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+    })
+    .map(([model, entry]) => ({ model, ...entry }));
+}
+
+export async function commandModels(
+  options: CLIOptions,
+  deps: ModelsCommandDependencies = {}
+): Promise<number> {
+  const cwd = deps.cwd ?? process.cwd();
+  const fetchModels = deps.fetchModels ?? fetchFreeModels;
+  const result = await fetchModels({
     forceRefresh: options.refresh,
     includeUnavailable: !options.available
   });
@@ -26,9 +59,17 @@ export async function commandModels(options: CLIOptions): Promise<number> {
     log(options, `🔬 Рабочих моделей: ${working}/${verified.length}`);
   }
 
+  const reliabilityStore = options.reliability
+    ? (deps.loadReliabilityStore ?? loadReliability)(cwd)
+    : undefined;
+
   if (options.json) {
     const enriched = models.map(model => ({ ...model, verified: checks.get(model.id)?.ok }));
-    console.log(JSON.stringify({ ...result, models: enriched }, null, 2));
+    const payload: Record<string, unknown> = { ...result, models: enriched };
+    if (reliabilityStore !== undefined) {
+      payload.reliability = reliabilityRows(reliabilityStore);
+    }
+    console.log(JSON.stringify(payload, null, 2));
     return 0;
   }
 
@@ -56,6 +97,11 @@ export async function commandModels(options: CLIOptions): Promise<number> {
   });
   if (models.length === 0) {
     console.log('Нет моделей по заданным критериям.');
+  }
+
+  if (reliabilityStore !== undefined) {
+    console.log('');
+    console.log(formatReliabilityTable(reliabilityStore));
   }
   return 0;
 }

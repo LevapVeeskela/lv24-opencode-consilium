@@ -1,0 +1,13 @@
+{
+  "mustFind": [
+    {
+      "file": "src/account/withdraw.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the sleep call should be removed for speed"
+    }
+  ]
+}

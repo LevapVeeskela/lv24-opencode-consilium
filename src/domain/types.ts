@@ -231,6 +231,8 @@ export interface ConsiliumConfig {
   variant?: string;
   /** Задержка watch-режима, мс */
   debounceMs?: number;
+  /** Автосбор контекста проекта: off (по умолчанию) или auto */
+  context?: 'off' | 'auto';
 }
 
 /**
@@ -318,6 +320,7 @@ export interface CLIOptions {
     | 'watch'
     | 'hooks'
     | 'baseline'
+    | 'eval'
     | 'help'
     | 'version';
   config?: string;
@@ -402,6 +405,14 @@ export interface CLIOptions {
   variant?: string;
   /** Задержка watch-режима, мс */
   debounceMs?: number;
+  /** Каталог eval-фикстур (по умолчанию eval/fixtures) */
+  fixtures?: string;
+  /** Минимальный catch rate eval в процентах (0..100); ниже — код 3 */
+  failUnder?: number;
+  /** Автосбор контекста проекта */
+  context?: 'off' | 'auto';
+  /** Показать статистику надёжности моделей */
+  reliability?: boolean;
   /** Порог политики: завершиться с кодом 3 при находках не ниже уровня */
   failOn?: FailOnLevel;
   /** Действие команды baseline */
