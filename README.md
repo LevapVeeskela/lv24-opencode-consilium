@@ -757,7 +757,7 @@ npm test            # build + node:test (491 tests)
 npm run typecheck   # tsc --noEmit
 ```
 
-Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / config key): [`docs/architecture.md`](docs/architecture.md).
+Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / config key): [`docs/architecture.md`](docs/architecture.md). Release process (Trusted Publishing, tags, GHCR): [`docs/releasing.md`](docs/releasing.md).
 
 ## License
 

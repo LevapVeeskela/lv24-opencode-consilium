@@ -1,0 +1,92 @@
+name: npm-publish
+
+# Publishes lv24-opencode-consilium to npm with Trusted Publishing (OIDC):
+# no NPM_TOKEN secret and no manual one-time password. npm validates the
+# calling workflow against the package's trusted publishers.
+#
+# Triggers:
+#   - publishing a GitHub release (tag vX.Y.Z) publishes that version;
+#   - manual dispatch with an explicit version (must match package.json).
+# If the version already exists on npm, the publish step is skipped.
+#
+# Free for a public repository; no paid runners or services are used.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (must equal package.json, e.g. 1.8.0)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.event.release.tag_name || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Resolve and validate version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          raw="${RELEASE_TAG:-$INPUT_VERSION}"
+          version="${raw#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ -z "$version" ]; then
+            echo "::error::No version provided (release tag or workflow input)."
+            exit 1
+          fi
+          if [ "$version" != "$package_version" ]; then
+            echo "::error::Version '$version' does not match package.json '$package_version'."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the version is already published
+        id: check
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::${name}@${VERSION} is already published; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install
+        if: steps.check.outputs.skip == 'false'
+        run: npm ci
+
+      - name: Test
+        if: steps.check.outputs.skip == 'false'
+        run: npm test
+
+      # Trusted Publishing: npm exchanges the GitHub OIDC token for a
+      # short-lived publish credential. No NODE_AUTH_TOKEN is set.
+      - name: Publish with provenance
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --provenance --access public
