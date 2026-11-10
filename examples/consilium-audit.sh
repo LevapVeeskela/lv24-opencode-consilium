@@ -41,7 +41,7 @@ if [[ -n "${CONSILIUM_BIN:-}" ]]; then
 elif command -v consilium >/dev/null 2>&1; then
   CLI=(consilium)
 else
-  CLI=(npx -y lv24-opencode-consilium@1.12.0)
+  CLI=(npx -y lv24-opencode-consilium@1.12.1)
 fi
 
 set +e

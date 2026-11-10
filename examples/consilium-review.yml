@@ -58,7 +58,7 @@ jobs:
           sarif: true
           # Pin the npm package for reproducible reviews. Use the same version
           # as the action ref you trust, or the latest release you have tested.
-          version: '1.12.0'
+          version: '1.12.1'
           # Optional soft cap in USD. Providers must report cost for it to work.
           # max-cost: '0.50'
         env:

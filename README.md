@@ -86,7 +86,7 @@ npx -y lv24-opencode-consilium --help
 pip install lv24-opencode-consilium
 ```
 
-`pip` installs a `consilium` console script that delegates to the npm package via `npx`; npm remains the canonical distribution. Python 3.9+ is required for the launcher. Details: [`docs/pypi.md`](docs/pypi.md).
+`pip` installs `consilium` and `consilium-mcp` console scripts that delegate to the npm package via `npx`; npm remains the canonical distribution. Python 3.9+ is required for the launcher. Details: [`docs/pypi.md`](docs/pypi.md).
 
 **Requirements**
 
@@ -101,9 +101,9 @@ pip install lv24-opencode-consilium
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.12.0
+# consilium v1.12.1
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -286,7 +286,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -659,7 +659,7 @@ permissions:
   pull-requests: write
   security-events: write   # required for the SARIF upload
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -811,6 +811,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 | Empty result | `consilium doctor`, then rerun with `-V` |
 
 ## Changelog
+
+**1.12.1** — Python MCP launcher. `pip install lv24-opencode-consilium` now also installs the `consilium-mcp` console script, which starts the same stdio MCP server through `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; arguments, environment and exit codes are forwarded, and `python -m lv24_opencode_consilium.mcp` is supported. No changes to the npm engine. 601 JavaScript tests + 16 Python tests.
 
 **1.12.0** — managed isolation and MCP replay. `--isolate` now creates a Consilium-managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked changes, applies the read-only overlay inside each worktree, and removes it after every call; stale worktrees are cleaned conservatively and non-git projects fail before any model call. MCP gains `consilium_replay`, restoring a saved task/models/options and streaming progress through `progressToken`. The eval harness gets `npm run eval:report`, which validates recorded `eval --json`/`--compare-rounds --json` output and renders `docs/eval-results.md` without inventing numbers. 588 JavaScript tests + 9 Python tests.
 

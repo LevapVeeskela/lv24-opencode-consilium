@@ -2,7 +2,8 @@
 
 `lv24-opencode-consilium` is published on PyPI as a small Python wrapper around
 the canonical npm CLI. `pip install lv24-opencode-consilium` installs the
-`consilium` console script, which delegates to the npm package through `npx`.
+`consilium` CLI and `consilium-mcp` MCP server console scripts, which delegate
+to the npm package through `npx`.
 The council engine, models, prompts, MCP server and plugin live in the npm
 package. **npm remains the canonical distribution**: PyPI mirrors the same
 version and is not a second source of features.
@@ -44,10 +45,13 @@ blank. For a GitHub environment named `pypi`, add `environment: pypi` to the
 ## Release flow
 
 Publishing a GitHub release for tag `vX.Y.Z` triggers both npm-publish and
-pypi-publish. Bump `package.json`, `python/pyproject.toml` and
-`python/src/lv24_opencode_consilium/__init__.py` (`__version__`) to the same
-version before tagging; the PyPI workflow fails fast if the tag and both
-metadata files differ, and `test/version-consistency.test.mjs` checks all three.
+pypi-publish. Bump every version copy before tagging: `package.json` (and the
+root fields in `package-lock.json`), `python/pyproject.toml`,
+`python/src/lv24_opencode_consilium/__init__.py` (`__version__`), the config
+and MCP protocol defaults, `llms.txt`, the container workflow and the README
+tags. The PyPI workflow fails fast if the tag, `package.json`,
+`python/pyproject.toml` or `__version__` differ; `npm test` runs
+`test/version-consistency.test.mjs`, which checks the rest.
 
 1. Bump the version files and run the usual checks (`npm test`,
    `python -m build` in `python/`).
@@ -57,7 +61,7 @@ metadata files differ, and `test/version-consistency.test.mjs` checks all three.
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=1.12.0
+gh workflow run pypi-publish.yml -f version=1.12.1
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -83,16 +87,37 @@ pip install lv24-opencode-consilium
 consilium --help
 consilium doctor
 consilium "Review the authentication design"
+consilium-mcp   # stdio MCP server
 ```
 
-Set `CONSILIUM_NPM_VERSION` to pin the npm CLI version the wrapper invokes
+Register the MCP server with an MCP client. Claude Desktop example
+(`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "consilium": {
+      "command": "consilium-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+The server uses stdout for JSON-RPC and stderr for logs; any stdio MCP client
+works. The same command is available as
+`python -m lv24_opencode_consilium.mcp`. Node.js >= 18, npm/npx and an
+authenticated OpenCode CLI are still required for both entry points.
+
+Set `CONSILIUM_NPM_VERSION` to pin the npm CLI version the wrappers invoke
 (default: the wrapper's own version):
 
 ```bash
-CONSILIUM_NPM_VERSION=1.12.0 consilium "Review the API"
+CONSILIUM_NPM_VERSION=1.12.1 consilium "Review the API"
+CONSILIUM_NPM_VERSION=1.12.1 consilium-mcp
 ```
 
-On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.12.0"`.
+On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.12.1"`.
 
 Upgrade with `pip install --upgrade lv24-opencode-consilium`. The PyPI version is
 kept in lockstep with npm, so either installation route gives the same engine.
@@ -103,7 +128,7 @@ kept in lockstep with npm, so either installation route gives the same engine.
 | --- | --- |
 | `invalid-publisher` or `Trusted publishing failed` | The owner, repository, workflow filename or environment does not match the pending publisher. Use `LevapVeeskela`, `lv24-opencode-consilium`, `pypi-publish.yml`; leave the environment blank unless the job declares it. |
 | `id-token` or OIDC permission error | Keep `permissions: id-token: write` on the job. Do not replace Trusted Publishing with a token. |
-| Version already exists | PyPI rejects duplicate filenames. Bump both version files and publish a new tag; the workflow skips existing versions automatically. |
+| Version already exists | PyPI rejects duplicate filenames. Bump every version copy and publish a new tag; the workflow skips existing versions automatically. |
 | Upload rejected because 2FA is missing | Enable 2FA on the PyPI account. Publishing is blocked without it. |
 | npm publishes but PyPI does not | Check the `pypi-publish` run. A tag/version mismatch fails before upload; fix it and use the manual dispatch. |
 | Wrapper cannot find Node or OpenCode | Install Node.js >= 18 and `npm install -g opencode-ai`, authenticate OpenCode, then run `consilium doctor`. |
@@ -123,7 +148,7 @@ python -m twine upload --repository-url https://test.pypi.org/legacy/ python/dis
 The committed workflow publishes to PyPI only and never handles tokens. For a CI
 dry run, add a separate job that passes
 `repository-url: https://test.pypi.org/legacy/` to the publish action. Use a
-throwaway version such as `1.12.0rc1` and never reuse it for a real release.
+throwaway version such as `1.12.1rc1` and never reuse it for a real release.
 
 ## Cost
 

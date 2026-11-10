@@ -97,9 +97,9 @@ pip install lv24-opencode-consilium
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.12.0
+# consilium v1.12.1
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -282,7 +282,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -658,7 +658,7 @@ permissions:
   pull-requests: write
   security-events: write   # нужно для загрузки SARIF
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -810,6 +810,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.12.1** — MCP-лаунчер для Python. `pip install lv24-opencode-consilium` теперь также устанавливает консольный скрипт `consilium-mcp`, который запускает тот же stdio MCP-сервер через `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; аргументы, окружение и код выхода передаются, поддерживается `python -m lv24_opencode_consilium.mcp`. Движок npm не менялся. 601 тест JavaScript + 16 тестов Python.
 
 **1.12.0** — управляемая изоляция и MCP replay. `--isolate` создаёт управляемый Consilium git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения, применяет read-only-слой внутри каждого worktree и удаляет его после каждого вызова; осиротевшие worktree очищаются консервативно, а проект без git падает до вызова моделей. В MCP добавлен `consilium_replay`: восстановление task/моделей/опций сохранённого артефакта и progress-уведомления. Eval-харнесс получил `npm run eval:report`, который валидирует записанный `eval --json`/`--compare-rounds --json` и рендерит `docs/eval-results.md` без выдуманных цифр. 588 тестов JavaScript + 9 тестов Python.
 

@@ -10,7 +10,8 @@ review and audit CLI for the [OpenCode](https://opencode.ai/) ecosystem.
 Consilium itself is a Node.js command-line tool published on npm as
 [`lv24-opencode-consilium`](https://www.npmjs.com/package/lv24-opencode-consilium).
 This package does not reimplement Consilium and does not bundle Node.js: the
-`consilium` command delegates to the npm package through `npx`.
+`consilium` and `consilium-mcp` commands delegate to the npm package through
+`npx`.
 
 The npm package remains the canonical distribution. The PyPI package only
 contains this launcher, so both installation routes run the same engine and
@@ -34,10 +35,10 @@ stay in lockstep on the same version.
 pip install lv24-opencode-consilium
 ```
 
-This installs two equivalent console scripts:
+This installs three console scripts:
 
-- `consilium`
-- `lv24-opencode-consilium`
+- `consilium` and `lv24-opencode-consilium` — equivalent CLI entry points.
+- `consilium-mcp` — the stdio MCP server.
 
 Upgrade with `pip install --upgrade lv24-opencode-consilium`.
 
@@ -59,11 +60,43 @@ python -m lv24_opencode_consilium --help
 If `npx` cannot be found, the launcher exits with code `127` and prints an
 installation hint. An interrupted run exits with code `130`.
 
+## MCP server
+
+`consilium-mcp` starts the same stdio MCP server as the npm `consilium-mcp`
+binary. The launcher runs:
+
+```text
+npx --yes --package lv24-opencode-consilium@<version> consilium-mcp
+```
+
+Point an MCP client at the console script. Claude Desktop example
+(`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "consilium": {
+      "command": "consilium-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Any stdio MCP client works, including OpenCode, Codex, Cursor and VS Code.
+stdout carries only the JSON-RPC protocol; logs go to stderr. The Node.js and
+OpenCode prerequisites above apply to this command as well. You can also run it
+without the console script:
+
+```bash
+python -m lv24_opencode_consilium.mcp
+```
+
 ## Version pinning
 
-By default the launcher runs the npm package version matching its own version
-(currently `1.12.0`). Override it with `CONSILIUM_NPM_VERSION` to use any npm
-version or tag:
+By default both launchers run the npm package version matching the Python
+package version (currently `1.12.1`). Override it with
+`CONSILIUM_NPM_VERSION` to use any npm version or tag:
 
 ```bash
 CONSILIUM_NPM_VERSION=latest consilium --help

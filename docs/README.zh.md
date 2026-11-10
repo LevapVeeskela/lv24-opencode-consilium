@@ -49,7 +49,7 @@ pip install lv24-opencode-consilium     # PyPI 薄启动器（仍需 Node.js + O
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；PyPI 启动器需要 Python 3.9+；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.12.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.12.1`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -143,7 +143,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -362,7 +362,7 @@ permissions:
   pull-requests: write
   security-events: write   # SARIF 上传所需
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -456,6 +456,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.12.1** — Python MCP 启动器：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。npm 引擎无变化；601 个 JavaScript 测试 + 16 个 Python 测试。
 - **1.12.0** — 托管隔离与 MCP replay：`--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree（基于 HEAD + tracked 改动），在每个 worktree 内应用只读层并在调用后删除；崩溃残留由保守清理处理，非 git 项目在调用模型前失败。MCP 新增 `consilium_replay`：从已保存产物恢复 task/模型/选项并通过 progress 通知流式反馈。评估工具新增 `npm run eval:report`，校验真实 `eval --json`/`--compare-rounds --json` 并生成 `docs/eval-results.md`，不编造数字；588 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.11.0** — 只读与隔离运行、MCP 产物工具、工单报告与更大的评估语料：`--read-only` 通过带锁、备份和按字节精确恢复的临时 `.opencode/opencode.json` 层，将专家与主席限制为 read/glob/grep；`audit` 与 GitHub Action 默认只读，`--allow-write` 可取消；`--isolate` 让每个 Agent 在 OpenCode worktree 中运行；MCP 新增 `consilium_list_runs`、`consilium_get_run`、`consilium_sarif` 和 `consilium_diff_runs`；`--report jira|linear` 渲染 Jira wiki/Linear Markdown；V1 `tools`/`permission` 现在迁移为有序的 V2 规则；评估语料扩充到 22 个 fixture，基准数字由真实运行生成而不提交；561 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.10.0** — PyPI 发行与 GitHub Action 的 SARIF 上传：`pip install lv24-opencode-consilium` 安装一个无依赖的薄 `consilium` 启动器，通过 `npx` 委托给 npm CLI（仍需 Node.js >= 18 与 OpenCode；npm 仍是规范发行版）；PyPI 发布使用 `.github/workflows/pypi-publish.yml` 中的 Trusted Publishing（OIDC），GitHub release 无需令牌或 OTP 即可同时发布 npm 与 PyPI；`consilium sarif --run <id|latest> [--output <file>]` 从已保存产物导出 SARIF，无需重新运行议会；复合 Action 现在传入 `--artifacts`、导出 SARIF 并通过 `github/codeql-action/upload-sarif` 上传（`sarif`、`sarif-file`、`category` 输入；需要 `security-events: write`），SARIF 失败不会掩盖门禁；522 个 JavaScript 测试 + 5 个 Python 测试。

@@ -2,14 +2,14 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.12.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.12.1 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
 - `pip install lv24-opencode-consilium` — thin Python launcher that delegates to the npm CLI via `npx` (still needs Node.js >= 18 and OpenCode; npm is canonical).
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands

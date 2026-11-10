@@ -19,10 +19,11 @@ _NPX_CLI_RELATIVE_PATH = os.path.join(
 )
 
 _NPX_MISSING_MESSAGE = """\
-consilium: npx was not found on PATH.
+{0}: npx was not found on PATH.
 
-This package is a Python launcher for the Node.js Consilium CLI; it does not
-bundle Node.js. Install Node.js 18 or newer (npm and npx are included) from
+This package is a Python launcher for the Node.js Consilium CLI and MCP server;
+it does not bundle Node.js. Install Node.js 18 or newer (npm and npx are
+included) from
 https://nodejs.org/ and make sure the OpenCode CLI is installed and available:
 https://opencode.ai/docs/
 """
@@ -62,17 +63,15 @@ def _node_launcher(
     return [node, script]
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Run the npm CLI through npx and return its exit code."""
-    args = list(sys.argv[1:] if argv is None else argv)
-
+def _run_npx(arguments: Sequence[str], program: str = "consilium") -> int:
+    """Run npx with the given arguments and return its exit code."""
     npx = shutil.which("npx")
     if npx is None:
-        sys.stderr.write(_NPX_MISSING_MESSAGE)
+        sys.stderr.write(_NPX_MISSING_MESSAGE.format(program))
         return 127
 
     launcher = _node_launcher(npx) or [npx]
-    command = [*launcher, "--yes", npm_spec(), *args]
+    command = [*launcher, *arguments]
 
     try:
         completed = subprocess.run(command, check=False)
@@ -81,6 +80,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 130
     except OSError as exc:
         sys.stderr.write(
-            "consilium: failed to start {0}: {1}\n".format(command[0], exc)
+            "{0}: failed to start {1}: {2}\n".format(
+                program, command[0], exc
+            )
         )
         return 127
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Run the npm CLI through npx and return its exit code."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_npx(["--yes", npm_spec(), *args])

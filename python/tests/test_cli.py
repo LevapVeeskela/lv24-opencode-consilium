@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,7 @@ from lv24_opencode_consilium.cli import (
     _node_launcher,
     main,
 )
+from lv24_opencode_consilium.mcp import main as mcp_main
 
 _FAKE_NPX = '''\
 import json
@@ -116,7 +118,7 @@ class MainTests(unittest.TestCase):
                 | stat.S_IXOTH
             )
 
-    def _invoke(self, args, *, env=None, path=None, cwd=None):
+    def _invoke(self, args, *, env=None, path=None, cwd=None, entry=main):
         call_env = {
             "PATH": str(self.bin_dir if path is None else path),
             "CONSILIUM_TEST_LOG": str(self.log_path),
@@ -133,7 +135,7 @@ class MainTests(unittest.TestCase):
         try:
             with mock.patch.dict(os.environ, call_env, clear=False):
                 with contextlib.redirect_stderr(stderr):
-                    code = main(list(args))
+                    code = entry(list(args))
         finally:
             if cwd is not None:
                 os.chdir(previous_cwd)
@@ -167,7 +169,7 @@ class MainTests(unittest.TestCase):
         )
 
     def test_version_matches_expected_release(self):
-        self.assertEqual(__version__, "1.12.0")
+        self.assertEqual(__version__, "1.12.1")
 
     def test_node_launcher_resolves_batch_shim(self):
         node_dir = self.root / "nodejs"
@@ -276,6 +278,135 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(code, 130)
         self.assertEqual(stderr, "")
+
+    def test_mcp_forwards_arguments_with_package_and_bin(self):
+        code, stderr = self._invoke(
+            ["review", "the", "repo"], entry=mcp_main
+        )
+
+        self.assertEqual(code, 3)
+        self.assertEqual(stderr, "")
+        calls = self._calls()
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(
+            calls[0]["argv"],
+            [
+                "--yes",
+                "--package",
+                "{0}@{1}".format(NPM_PACKAGE, __version__),
+                "consilium-mcp",
+                "review",
+                "the",
+                "repo",
+            ],
+        )
+
+    def test_mcp_uses_env_override_and_inherits_it(self):
+        code, stderr = self._invoke(
+            [], env={NPM_VERSION_ENV: "latest"}, entry=mcp_main
+        )
+
+        self.assertEqual(code, 3)
+        self.assertEqual(stderr, "")
+        call = self._calls()[0]
+        self.assertEqual(
+            call["argv"],
+            [
+                "--yes",
+                "--package",
+                "{0}@latest".format(NPM_PACKAGE),
+                "consilium-mcp",
+            ],
+        )
+        self.assertEqual(call["env"][NPM_VERSION_ENV], "latest")
+
+    def test_mcp_missing_npx_returns_127_with_install_hint(self):
+        code, stderr = self._invoke(
+            [], path=self.empty_dir, cwd=self.empty_dir, entry=mcp_main
+        )
+
+        self.assertEqual(code, 127)
+        self.assertIn("consilium-mcp", stderr)
+        self.assertIn("npx", stderr)
+        self.assertIn("Node.js", stderr)
+        self.assertIn("npm", stderr)
+        self.assertIn("OpenCode", stderr)
+        self.assertEqual(self._calls(), [])
+
+    def test_mcp_start_failure_returns_127_with_executable_name(self):
+        with mock.patch(
+            "lv24_opencode_consilium.cli.subprocess.run",
+            side_effect=OSError("permission denied"),
+        ):
+            code, stderr = self._invoke([], entry=mcp_main)
+
+        self.assertEqual(code, 127)
+        self.assertIn("consilium-mcp", stderr)
+        self.assertIn("failed to start", stderr)
+        self.assertIn("npx", stderr)
+        self.assertIn("permission denied", stderr)
+
+    def test_mcp_keyboard_interrupt_returns_130(self):
+        with mock.patch(
+            "lv24_opencode_consilium.cli.subprocess.run",
+            side_effect=KeyboardInterrupt,
+        ):
+            code, stderr = self._invoke([], entry=mcp_main)
+
+        self.assertEqual(code, 130)
+        self.assertEqual(stderr, "")
+
+    def test_mcp_windows_launcher_keeps_npx_arguments(self):
+        completed = mock.Mock(returncode=0)
+        with mock.patch(
+            "lv24_opencode_consilium.cli.shutil.which",
+            return_value=r"C:\nodejs\npx.cmd",
+        ):
+            with mock.patch(
+                "lv24_opencode_consilium.cli._node_launcher",
+                return_value=[
+                    r"C:\nodejs\node.exe",
+                    r"C:\nodejs\node_modules\npm\bin\npx-cli.js",
+                ],
+            ):
+                with mock.patch(
+                    "lv24_opencode_consilium.cli.subprocess.run",
+                    return_value=completed,
+                ) as run:
+                    code = mcp_main(["review", "a&b"])
+
+        self.assertEqual(code, 0)
+        run.assert_called_once_with(
+            [
+                r"C:\nodejs\node.exe",
+                r"C:\nodejs\node_modules\npm\bin\npx-cli.js",
+                "--yes",
+                "--package",
+                "{0}@{1}".format(NPM_PACKAGE, __version__),
+                "consilium-mcp",
+                "review",
+                "a&b",
+            ],
+            check=False,
+        )
+
+    def test_mcp_module_runs_with_python_dash_m(self):
+        env = os.environ.copy()
+        env["PATH"] = str(self.empty_dir)
+        env["PYTHONPATH"] = str(SRC_DIR)
+        env.pop(NPM_VERSION_ENV, None)
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "lv24_opencode_consilium.mcp"],
+            cwd=str(self.empty_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 127)
+        self.assertIn("consilium-mcp", completed.stderr)
 
 
 if __name__ == "__main__":

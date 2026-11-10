@@ -9,9 +9,9 @@ uncommitted changes use `consilium --findings --diff --fail-on high "Review the 
 
 - Node.js 18 or newer, `git`, and a checkout containing the ref you audit (`git fetch --prune`
   first).
-- Install the CLI (`npm install --global lv24-opencode-consilium@1.12.0`) or use
-  `npx -y lv24-opencode-consilium@1.12.0`. Pin a release you tested; `latest` makes scheduled
-  results change under you. The npx examples use `1.12.0` as the pinned placeholder.
+- Install the CLI (`npm install --global lv24-opencode-consilium@1.12.1`) or use
+  `npx -y lv24-opencode-consilium@1.12.1`. Pin a release you tested; `latest` makes scheduled
+  results change under you. The npx examples use `1.12.1` as the pinned placeholder.
 - OpenCode must be installed and authenticated: run `opencode auth login`, or provide provider
   keys such as `OPENCODE_API_KEY` or `OPENROUTER_API_KEY` in the scheduler environment. Commit a
   `consilium.config.json` so the same models run every night; verify it with `consilium doctor`.
@@ -109,7 +109,7 @@ permissions: { contents: read }
 concurrency: { group: consilium-audit, cancel-in-progress: false }
 # see the example for checkout, setup-node, artifact upload, and gate steps
 run: >-
-  npx -y lv24-opencode-consilium@1.12.0 audit
+  npx -y lv24-opencode-consilium@1.12.1 audit
   --since "origin/${{ github.event.repository.default_branch }}"
   --fail-on high --deadline 900000 --max-cost 2.00
   --report sarif --report-file consilium-audit.sarif

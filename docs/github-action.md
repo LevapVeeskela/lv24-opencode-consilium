@@ -60,7 +60,7 @@ Pin the action to a commit SHA (recommended) or a release tag:
 - name: Run Consilium
   uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.12.0'
+    version: '1.12.1'
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
@@ -346,7 +346,7 @@ Three things can move independently:
 
 1. **The action ref.** Pin `uses:` to a full commit SHA (or a reviewed release
    tag) instead of `@main`.
-2. **The npm package.** Pass an exact `version`, for example `1.12.0`, instead
+2. **The npm package.** Pass an exact `version`, for example `1.12.1`, instead
    of the default `latest`.
 3. **The OpenCode CLI.** The action installs `opencode-ai@latest` only when
    `opencode` is not already on `PATH`. To pin it, install a specific version in
@@ -359,7 +359,7 @@ Three things can move independently:
    - name: Run Consilium
      uses: ./.github/actions/consilium
      with:
-       version: '1.12.0'
+       version: '1.12.1'
    ```
 
    Also pin `actions/checkout` to a commit SHA in production workflows.
@@ -369,7 +369,7 @@ Example remote pin:
 ```yaml
 - uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.12.0'
+    version: '1.12.1'
     fail-on: high
 ```
 
