@@ -74,7 +74,7 @@ export interface ConsiliumMetadata extends Record<string, unknown> {
   safety?: {
     /** Эксперты и председатель работали без права записи/вызова опасных инструментов */
     readOnly: boolean;
-    /** Каждый агент запускался в отдельном worktree OpenCode */
+    /** Каждый агент запускался в отдельном управляемом git worktree Consilium */
     isolate: boolean;
   };
 }
@@ -254,7 +254,7 @@ export interface ConsiliumConfig {
    * Write/edit/shell/webfetch/subagent и MCP-инструменты запрещены.
    */
   readOnly?: boolean;
-  /** Запускать каждого агента в отдельном worktree OpenCode (`--worktree`) */
+  /** Запускать каждого агента в отдельном git worktree `.consilium/worktrees` */
   isolate?: boolean;
   /** Формат отчёта после запуска */
   report?: ReportFormat;
@@ -324,7 +324,7 @@ export interface RunOptions {
   session?: string;
   /** Переопределить read-only режим (true — только чтение, false — разрешить запись) */
   readOnly?: boolean;
-  /** Запускать каждого агента в отдельном worktree OpenCode */
+  /** Запускать каждого агента в отдельном управляемом git worktree */
   isolate?: boolean;
 }
 
@@ -467,7 +467,7 @@ export interface CLIOptions {
   session?: string;
   /** Read-only режим: только read/glob/grep; флаг --read-only */
   readOnly?: boolean;
-  /** Запуск каждого агента в отдельном worktree OpenCode; флаг --isolate */
+  /** Запуск каждого агента в отдельном управляемом git worktree; флаг --isolate */
   isolate?: boolean;
   /** Формат отчёта после запуска */
   report?: ReportFormat;

@@ -26,6 +26,10 @@ import {
   applyReadOnlyOverlay,
   type ReadOnlyOverlay
 } from '../infrastructure/opencode/read-only.js';
+import {
+  cleanupStaleWorktrees,
+  resolveIsolateRoot
+} from '../infrastructure/opencode/isolate.js';
 import { DEFAULT_CONFIG, DEFAULT_CHAIR_PROMPT_TEMPLATE } from '../domain/defaults.js';
 import { applyPreset } from '../domain/council/presets.js';
 import { auditLocalOnly } from '../infrastructure/local-models.js';
@@ -298,10 +302,21 @@ export class Consilium {
 
       const selectedExperts = selectExperts(runConfig, options.experts, hooks);
 
-      if (readOnly) {
+      if (isolate) {
+        // Проверяем git до вызова моделей и заранее убираем осиротевшие
+        // worktree прошлых запусков. Без репозитория изоляция невозможна.
+        const isolateRoot = resolveIsolateRoot(resolveCwd(runConfig));
+        cleanupStaleWorktrees({
+          root: isolateRoot,
+          onLog: (level, message) => hooks?.onLog?.(level, message)
+        });
+      }
+
+      if (readOnly && !isolate) {
         // Слой пишется до запуска агентов и снимается в finally.
         // Проектный .opencode/opencode.json приоритетнее прямого opencode.json,
         // поэтому OpenCode читает эти deny-правила для каждого дочернего процесса.
+        // При --isolate слой живёт внутри worktree каждого агента.
         readOnlyOverlay = await applyReadOnlyOverlay({
           cwd: resolveCwd(runConfig),
           agents: [

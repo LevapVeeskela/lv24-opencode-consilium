@@ -202,8 +202,15 @@ export function resolveOpenCodePath(
   return absolute;
 }
 
-/** Рабочий каталог запуска из конфигурации */
-export function resolveCwd(config?: Pick<ConsiliumConfig, 'cwd'>): string {
+/** Рабочий каталог запуска: явный override (worktree) или конфигурация */
+export function resolveCwd(
+  config?: Pick<ConsiliumConfig, 'cwd'>,
+  override?: string
+): string {
+  const explicit = override?.trim();
+  if (explicit !== undefined && explicit.length > 0) {
+    return explicit;
+  }
   const configured = config?.cwd?.trim();
   return configured !== undefined && configured.length > 0 ? configured : process.cwd();
 }
@@ -475,6 +482,8 @@ export interface ProcessCallOptions {
   attempt: number;
   controller: RunController;
   config: ConsiliumConfig;
+  /** Рабочий каталог изолированного worktree; не мутирует конфигурацию */
+  cwdOverride?: string;
 }
 
 /** Один запуск процесса opencode для агента */
@@ -490,7 +499,7 @@ export async function runAgentProcess(options: ProcessCallOptions): Promise<Agen
   const outcome = await executeOpenCode({
     opencodePath: resolveOpenCodePath(options.config),
     args,
-    cwd: resolveCwd(options.config),
+    cwd: resolveCwd(options.config, options.cwdOverride),
     timeoutMs: options.timeoutMs,
     input: options.prompt,
     controller: options.controller
