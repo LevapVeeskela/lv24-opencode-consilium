@@ -18,6 +18,7 @@ import {
 } from '../../../application/replay.js';
 import { EXIT_CODES, UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
+import { assertCliIsolatedReadOnlyPreflight } from '../preflight.js';
 import { buildTask } from '../task.js';
 import {
   printAgentList,
@@ -135,6 +136,14 @@ export async function commandRun(options: CLIOptions): Promise<number> {
     printDryRun(task, config);
     return EXIT_CODES.success;
   }
+
+  // JSONC в корне репозитория перекрывает per-worktree read-only слой:
+  // падаем один раз до создания совета, хуков и вызова моделей (exit 2).
+  assertCliIsolatedReadOnlyPreflight({
+    cwd: config.cwd ?? process.cwd(),
+    readOnly: config.readOnly === true,
+    isolate: config.isolate === true
+  });
 
   setupConsoleHooks(config, options);
   const consilium = new Consilium(config);

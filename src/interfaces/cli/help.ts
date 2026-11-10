@@ -54,7 +54,9 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --read-only             Только чтение: экспертам и председателю разрешены
                           read/glob/grep; write/edit/shell/webfetch/subagent,
                           skill/question и MCP-инструменты запрещены;
-                          .env-файлы закрыты (audit включает по умолчанию)
+                          .env-файлы закрыты (audit включает по умолчанию).
+                          .opencode/opencode.jsonc не поддерживается:
+                          переименуйте его в .opencode/opencode.json
   --allow-write           Разрешить запись (отключает --read-only);
                           взаимоисключающе с --read-only
   --isolate               Каждый агент — в отдельном git worktree
@@ -63,7 +65,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
                           Изоляция видит HEAD и отслеживаемые незакоммиченные
                           изменения (git stash create), untracked-файлы не
                           копируются. С --read-only запреты действуют внутри
-                          worktree, основной проект не меняется
+                          worktree, основной проект не меняется. Если в корне
+                          репозитория есть .opencode/opencode.jsonc, запуск с
+                          --read-only отклоняется (код 2): переименуйте файл в
+                          .opencode/opencode.json или уберите --read-only
   -r, --retries <число>   Повторные попытки
 
   -o, --output <файл>     Сохранить результат в файл

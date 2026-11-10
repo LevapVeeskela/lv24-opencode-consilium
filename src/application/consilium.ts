@@ -27,6 +27,7 @@ import {
   type ReadOnlyOverlay
 } from '../infrastructure/opencode/read-only.js';
 import {
+  assertIsolatedReadOnlyPreflight,
   cleanupStaleWorktrees,
   resolveIsolateRoot
 } from '../infrastructure/opencode/isolate.js';
@@ -301,6 +302,14 @@ export class Consilium {
       }
 
       const selectedExperts = selectExperts(runConfig, options.experts, hooks);
+
+      // Fail fast до создания worktree, хуков и вызова моделей: JSONC в корне
+      // репозитория перекрывает per-worktree read-only слой (SPAWN_ERROR).
+      assertIsolatedReadOnlyPreflight({
+        cwd: resolveCwd(runConfig),
+        readOnly,
+        isolate
+      });
 
       if (isolate) {
         // Проверяем git до вызова моделей и заранее убираем осиротевшие
@@ -746,4 +755,11 @@ export * from '../infrastructure/watch.js';
 export * from '../domain/council/variants.js';
 export * from '../domain/artifacts/replay.js';
 export * from './models/verify.js';
+export {
+  ISOLATION_JSONC_UNSUPPORTED,
+  IsolationConfigError,
+  assertIsolatedReadOnlyPreflight,
+  isIsolationConfigError,
+  type IsolatedReadOnlyPreflightOptions
+} from '../infrastructure/opencode/isolate.js';
 export { DEFAULT_CONFIG } from '../domain/defaults.js';
