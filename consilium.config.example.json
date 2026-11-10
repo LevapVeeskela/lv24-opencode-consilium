@@ -1,6 +1,6 @@
 {
   "$schema": "./schema/config.schema.json",
-  "version": "1.10.0",
+  "version": "1.11.0",
 
   "experts": [
     {
@@ -83,6 +83,8 @@
   "findings": false,
   "smartExperts": false,
   "localOnly": false,
+  "readOnly": false,
+  "isolate": false,
   "deadlineMs": 900000,
   "rounds": 1,
   "presets": {

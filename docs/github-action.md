@@ -60,7 +60,7 @@ Pin the action to a commit SHA (recommended) or a release tag:
 - name: Run Consilium
   uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.10.0'
+    version: '1.11.0'
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
@@ -125,6 +125,7 @@ jobs:
 | `github-token` | `${{ github.token }}` | Token for the comment API. Needs `pull-requests: write`. |
 | `node-version` | `20` | Node.js version used by the action. |
 | `max-cost` | empty | Optional soft cost cap in USD, passed to `--max-cost`. |
+| `read-only` | `true` | Pass `--read-only`: experts may only read/glob/grep; write/edit/shell/subagent/MCP tools are denied. Set to `false` to pass `--allow-write`. |
 | `version` | `latest` | npm version of `lv24-opencode-consilium` to install. Pin an exact version for reproducibility. |
 | `sarif` | `true` | Export findings as SARIF 2.1.0 and upload them to GitHub code scanning. Requires `security-events: write` and code scanning enabled for the repository. Set to `false` to skip both SARIF steps. |
 | `sarif-file` | `consilium.sarif` | Path to the generated SARIF file, relative to the workspace or absolute. |
@@ -202,6 +203,18 @@ PR. The action skips the script when `comment` is not `true` or when
 Comment failures do not turn a passing review into a failing job, and they do
 not replace exit code `3`. If the comment matters for branch protection, monitor
 the workflow warnings or add a separate check for the comment step's outcome.
+
+## Read-only reviews
+
+The action enables `--read-only` by default. The review can read files, glob and
+grep, but cannot write, edit, patch, run a shell, fetch the web, launch
+subagents or call MCP tools. This is enforced with a temporary project
+`.opencode/opencode.json` layer that is restored after the run; an existing
+`.opencode/opencode.jsonc` fails closed.
+
+Set `read-only: false` to pass `--allow-write` when a workflow intentionally
+lets the council modify the workspace. The effective policy is recorded in
+`metadata.safety` and in the run artifacts.
 
 ## SARIF and code scanning
 
@@ -333,7 +346,7 @@ Three things can move independently:
 
 1. **The action ref.** Pin `uses:` to a full commit SHA (or a reviewed release
    tag) instead of `@main`.
-2. **The npm package.** Pass an exact `version`, for example `1.10.0`, instead
+2. **The npm package.** Pass an exact `version`, for example `1.11.0`, instead
    of the default `latest`.
 3. **The OpenCode CLI.** The action installs `opencode-ai@latest` only when
    `opencode` is not already on `PATH`. To pin it, install a specific version in
@@ -346,7 +359,7 @@ Three things can move independently:
    - name: Run Consilium
      uses: ./.github/actions/consilium
      with:
-       version: '1.10.0'
+       version: '1.11.0'
    ```
 
    Also pin `actions/checkout` to a commit SHA in production workflows.
@@ -356,7 +369,7 @@ Example remote pin:
 ```yaml
 - uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.10.0'
+    version: '1.11.0'
     fail-on: high
 ```
 

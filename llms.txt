@@ -2,14 +2,14 @@
 
 > A council of AI experts for OpenCode: four expert agents (`arch`, `ux`, `ba`, `sec`) answer in parallel on different models, then a chair model synthesizes one plan. CLI, MCP server, native OpenCode V2 plugin and library API. Free-model bootstrap included.
 
-Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
+Version: 1.11.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Install
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
 - `pip install lv24-opencode-consilium` — thin Python launcher that delegates to the npm CLI via `npx` (still needs Node.js >= 18 and OpenCode; npm is canonical).
-- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0`
+- Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.11.0`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
 ## Commands
@@ -31,6 +31,9 @@ Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `consilium init --local [--dry-run] [--force]` — probe Ollama/LM Studio and write a `localOnly` config.
 - `--rounds <1|2>` — second anonymized peer-review round; `metadata.debate`.
 - `consilium audit --since <ref> [--dry-run] [--fail-on <severity>]` — review `<ref>...HEAD` end-to-end.
+- `--read-only` — experts/chair may only read/glob/grep; write/edit/shell/webfetch/subagent/MCP tools denied. `audit` and the GitHub Action default to it; `--allow-write` opts out.
+- `--isolate` — each agent runs in an OpenCode-managed git worktree (`--worktree`).
+- `--report jira|linear --report-file ticket.jira|ticket.md` — Jira wiki / Linear Markdown ticket body.
 - `--report sarif --report-file report.sarif` — SARIF 2.1.0 for code scanning (findings required).
 - `consilium sarif [--run <id|latest>] [--output <file>]` — export SARIF from saved artifacts without re-running.
 - `consilium eval --compare-rounds` / `--rounds 2` — compare single-pass vs debate catch/FP/latency/cost.
@@ -45,10 +48,16 @@ Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - `--fail-on <severity>` — exit `3` when new findings reach the threshold.
 - Baseline: `.consilium/baseline.json` via `consilium baseline accept|prune`; accepted fingerprints are ignored by the gate.
 
+## Safety
+
+- `--read-only` writes a temporary `.opencode/opencode.json` layer with V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, holds `.consilium/read-only.lock`, backs up an existing layer and restores it on success/error/cancel/exit. Invalid JSON, an existing `.opencode/opencode.jsonc` or symlinked layer fails closed.
+- `metadata.safety = { readOnly, isolate }` records the effective policy in results/artifacts.
+- `--isolate` uses OpenCode worktrees; the main project is not a write target, but worktrees persist per OpenCode's lifecycle.
+
 ## Machine contract
 
 - stdout: data only. stderr: progress and logs.
-- JSON mode: `consilium -f json "<task>"` → result + `metadata` (models, usage, cost, consensus, artifacts, errorCode).
+- JSON mode: `consilium -f json "<task>"` → result + `metadata` (models, usage, cost, consensus, artifacts, safety, errorCode).
 - Models JSON: `consilium models --json`.
 - Exit codes: `0` success, `1` run failed, `2` usage error, `3` policy/eval gate failed.
 - Typed errors: `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`.
@@ -62,8 +71,8 @@ Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 ## MCP
 
 - Command: `npx -y lv24-opencode-consilium mcp` (stdio JSON-RPC 2.0).
-- Tools: `consilium_run`, `consilium_list_agents`, `consilium_free_models`, `consilium_doctor`, `consilium_init_free`.
-- `consilium_init_free` is dry-run unless `"apply": true`; `consilium_run` streams progress with a `progressToken`.
+- Tools: `consilium_run` (`read_only`, `isolate`), `consilium_list_agents`, `consilium_free_models`, `consilium_doctor`, `consilium_init_free`, `consilium_list_runs`, `consilium_get_run`, `consilium_sarif`, `consilium_diff_runs`.
+- `consilium_init_free` is dry-run unless `"apply": true`; `consilium_run` streams progress with a `progressToken`. The four artifact tools are read-only and never call a model.
 
 ## OpenCode slash command
 
@@ -71,11 +80,11 @@ Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## GitHub Action
 
-- `.github/actions/consilium` — composite action; runs `--diff --base --artifacts --report pr --fail-on <level>`, posts/updates one PR comment with `<!-- consilium:report -->`, exports SARIF and uploads it with `github/codeql-action/upload-sarif` (`sarif`, `sarif-file`, `category`; requires `security-events: write`). Guide: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/github-action.md
+- `.github/actions/consilium` — composite action; runs `--diff --base --artifacts --read-only --report pr --fail-on <level>`, posts/updates one PR comment with `<!-- consilium:report -->`, exports SARIF and uploads it with `github/codeql-action/upload-sarif` (`sarif`, `sarif-file`, `category`; requires `security-events: write`). `read-only` defaults to true; set false to pass `--allow-write`. Guide: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/github-action.md
 
 ## Evaluation
 
-- `eval/fixtures/` — ten planted-bug fixtures (`task.md`, `changes.diff`, `expected.json`); deterministic claim matching, no LLM judge. Format: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/eval/README.md
+- `eval/fixtures/` — 22 planted-bug fixtures (`task.md`, `changes.diff`, `expected.json`); deterministic claim matching, no LLM judge. Benchmark numbers must come from a real run. Format: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/eval/README.md
 
 ## Configuration
 
@@ -92,6 +101,7 @@ Version: 1.10.0 · License: MIT · Node: >= 18 · Runtime dependencies: none
 - Sessions and plugin internals: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/session-and-plugin.md
 - Architecture (layers, barrels, extension guides): https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/architecture.md
 - Scheduling: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/scheduling.md
+- Eval results template: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/eval-results.md
 - PyPI publishing and wrapper: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/pypi.md
 - npm: https://www.npmjs.com/package/lv24-opencode-consilium
 - PyPI: https://pypi.org/project/lv24-opencode-consilium/

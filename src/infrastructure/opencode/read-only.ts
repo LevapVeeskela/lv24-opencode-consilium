@@ -321,6 +321,7 @@ export async function applyReadOnlyOverlay(
     );
   }
   for (const [candidate, label] of [
+    [configDir, '.consilium'],
     [dirname(target), '.opencode'],
     [target, READ_ONLY_OVERLAY_RELATIVE_PATH]
   ] as const) {

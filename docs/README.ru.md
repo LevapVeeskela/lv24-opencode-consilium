@@ -49,11 +49,12 @@ $ consilium "Оцени дизайн аутентификации"
 | 🆓 | **Bootstrap бесплатных моделей** | `models.dev` + OpenRouter + офлайн-набор, кэш 12 ч, опциональная живая проверка |
 | 🩺 | **`doctor` как preflight** | Версия CLI, формат конфига, агенты, модели, форма MCP, подводные камни V1/V2 |
 | 🧾 | **Артефакты запусков** | `run.json`, `report.md`, `experts/*.md`; `--replay` и `--diff-runs` |
-| 📊 | **Отчёты** | Самодостаточный HTML или markdown, готовый для PR в GitHub |
+| 📊 | **Отчёты** | Самодостаточный HTML, markdown для PR в GitHub, SARIF 2.1.0, тикеты Jira/Linear |
 | 🔁 | **Watch-режим** | Перезапуск при изменениях файлов с debounce, текущий git diff прикладывается |
 | 🪝 | **Git pre-commit hook** | Ревью staged-изменений и блокировка коммита при ошибке |
 | 🔌 | **MCP-сервер** | stdio JSON-RPC для Claude Desktop, Codex, Cursor, VS Code, своих агентов |
 | 🧩 | **Плагин V2** | Инструмент `consilium.run` прямо в TUI OpenCode V2 |
+| 🛡 | **Безопасное ревью** | `--read-only` запрещает запись, shell и MCP-инструменты; `--isolate` даёт каждому агенту свой worktree |
 | 🔒 | **Безопасный раннер** | Промпт через stdin (без shell-инъекций и лимита 8 КБ Windows), `--standalone`, повторы, таймауты, лимит стоимости |
 | 📦 | **Маленький и строгий** | Ноль runtime-зависимостей, строгий TypeScript, Node >= 18 |
 
@@ -96,9 +97,9 @@ pip install lv24-opencode-consilium
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.11.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.10.0
+# consilium v1.11.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -261,13 +262,17 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 
 | Инструмент | Аргументы | Результат |
 | --- | --- | --- |
-| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `deadline_ms`, `local_only`, `rounds`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки, дедлайн, дебаты) |
+| `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `deadline_ms`, `local_only`, `read_only`, `isolate`, `rounds`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки, safety, дедлайн, дебаты) |
 | `consilium_list_agents` | — | Настроенные эксперты, модели, председатель, пресеты, путь конфига |
 | `consilium_free_models` | `limit`, `available_only`, `refresh`, `local_only`, `probe_local` | Таблица рейтинга бесплатных моделей + проверка локальных провайдеров |
 | `consilium_doctor` | — | Диагностика окружения и конфига |
 | `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | План (по умолчанию) или запись `opencode.json` + `consilium.config.json` |
+| `consilium_list_runs` | `limit` (1–100, по умолчанию 10) | Сохранённые запуски от новых к старым: id, время, задача, успех, число находок |
+| `consilium_get_run` | `run` (id или `latest`, по умолчанию `latest`) | Полный `run.json` как JSON |
+| `consilium_sarif` | `run` (id или `latest`), опционально `output_file` | SARIF 2.1.0 JSON или атомарный файл внутри workspace |
+| `consilium_diff_runs` | `left`, `right` (id или `latest`) | Markdown-сравнение двух сохранённых запусков |
 
-`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы; `force: true` дополнительно требует `"confirm": true` и создаёт `.bak`-копии. `consilium_run` показывает прогресс в реальном времени, если клиент прислал `progressToken`, а его ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены.
+`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы; `force: true` дополнительно требует `"confirm": true` и создаёт `.bak`-копии. `consilium_run` показывает прогресс в реальном времени, если клиент прислал `progressToken`, а его ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены. Четыре инструмента артефактов только читают, никогда не вызывают модель и ограничены `.consilium/runs` и workspace.
 
 ## Для ИИ-агентов
 
@@ -276,11 +281,14 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
   "findings": "consilium --findings -f json \"<task>\" -> metadata.findings",
+  "safety": { "read_only": "--read-only", "isolate": "--isolate", "metadata": "metadata.safety" },
+  "report_formats": ["html", "pr", "markdown", "sarif", "jira", "linear"],
+  "artifact_tools": ["consilium_list_runs", "consilium_get_run", "consilium_sarif", "consilium_diff_runs"],
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
@@ -343,6 +351,9 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--rounds <1\|2>` | `2` добавляет раунд анонимизированного peer-review; применяется к run/watch/eval и удваивает вызовы моделей (по умолчанию 1) |
 | `--compare-rounds` | `eval`: прогнать каждую фикстуру с одним и двумя раундами и напечатать таблицу дельт |
 | `--local-only` | Требовать явную локальную модель для каждого агента; отклонять нелокальных провайдеров до запуска |
+| `--read-only` | Эксперты и председатель могут только read/glob/grep; write/edit/patch/shell/webfetch/subagent/question/MCP-инструменты запрещены |
+| `--allow-write` | Отказ от read-only (взаимоисключающе с `--read-only`); `audit` по умолчанию работает в read-only |
+| `--isolate` | Запускать каждого агента в отдельном git worktree под управлением OpenCode (`--worktree`) |
 | `--expert-timeout`, `--chair-timeout` | Таймауты в мс (на попытку) |
 | `-r, --retries <n>` | Число повторов (0 = одна попытка) |
 | `-o, --output <file>` | Сохранить результат (text/markdown/json по `-f`) |
@@ -373,8 +384,8 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--artifacts-dir <path>` | Свой каталог артефактов (вместо `.consilium/runs/<id>/`) |
 | `--replay <id>` | Повторить сохранённый запуск (восстанавливает модели председателя/экспертов и флаги consensus/smartExperts/fallbackModels/session) |
 | `--diff-runs <a> <b>` | Напечатать markdown-сравнение двух сохранённых запусков |
-| `--report <format>` | Отчёт после запуска: `html`, `pr`, `markdown`, `sarif` (`markdown` — тот же PR-вариант) |
-| `--report-file <file>` | Записать отчёт в файл (`.html` → html, `.md` → pr, `.sarif` → sarif; без файла отчёт идёт в stdout, кроме `-f json`) |
+| `--report <format>` | Отчёт после запуска: `html`, `pr`, `markdown`, `sarif`, `jira`, `linear` (`markdown` — тот же PR-вариант) |
+| `--report-file <file>` | Записать отчёт в файл (`.html` → html, `.md` → pr, `.sarif` → sarif, `.jira` → jira, `.linear` → linear; без файла отчёт идёт в stdout, кроме `-f json`) |
 | `--diff [--staged] [--base <ref>]` | Приложить текущий git diff к задаче |
 | `--debounce <ms>` | Задержка watch-режима (по умолчанию 400) |
 | `watch [--debounce <ms>] [task]` | Следить за проектом и перезапускать при изменениях (до Ctrl+C) |
@@ -419,7 +430,8 @@ consilium hooks install
 consilium --report html --report-file report.html "Сделай ревью текущих изменений"
 consilium --report pr "Сделай ревью текущих изменений"
 
-# --report-file сам определяет формат: .html → html, .md → pr, .sarif → sarif
+# --report-file сам определяет формат: .html → html, .md → pr, .sarif → sarif,
+# .jira → jira, .linear → linear
 consilium --report-file notes.md "Спроектируй схему БД для подписок"
 
 # Перезапуск при изменениях файлов (игнорирует .git/node_modules/dist/.consilium/coverage/*.tmp/*.log,
@@ -510,6 +522,32 @@ consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON на stdout
 
 Несуществующий запуск — ошибка использования (выход 2); запуск без находок даёт валидный пустой SARIF.
 
+## Read-only и изоляция
+
+Ревью-задачи не должны иметь возможности менять репозиторий. `--read-only` ограничивает каждого эксперта и председателя инструментами `read`, `glob` и `grep`; `write`, `edit`, `patch`, `shell`, `webfetch`, `websearch`, `subagent`, `question`, MCP-инструменты и доступ к внешним каталогам запрещены. Файлы `.env` остаются нечитаемыми (`.env.example` разрешён). `--allow-write` явно отменяет read-only; флаги взаимоисключающие. `audit` по умолчанию работает в read-only.
+
+```bash
+consilium --read-only "Review the authentication design"
+consilium audit --since origin/main --fail-on high   # audit по умолчанию read-only
+consilium audit --since origin/main --allow-write   # явный отказ от read-only
+consilium --isolate --read-only "Review the migration"
+```
+
+Ограничение применяется через временный слой `.opencode/opencode.json`, который OpenCode загружает после прямого проектного конфига. Consilium берёт блокировку, делает резервную копию существующего слоя, сливает V2 `agents.<name>.permissions` и V1 `agent.<name>.tools` и восстанавливает исходные байты в `finally` (включая отмену). Устаревшая блокировка восстанавливается при следующем запуске; нечитаемый слой или существующий `.opencode/opencode.jsonc` приводят к fail-closed, а не к тихому запуску без ограничений. Пока read-only-запуск активен, другие интерактивные сессии OpenCode в этом же проекте видят временные ограничения.
+
+`--isolate` добавляет `--worktree` в каждый `opencode run`, поэтому каждый агент получает свой git worktree. Жизненным циклом worktree управляет OpenCode: read-only действует на основной проект, а запись внутри одноразового worktree не может затронуть основное дерево.
+
+Оба флага записываются в `metadata.safety` (`readOnly`, `isolate`) и в артефакты запуска. GitHub Action включает `read-only` по умолчанию и позволяет отключить его через `read-only: false`.
+
+## Отчёты для Jira и Linear
+
+```bash
+consilium --report jira --report-file ticket.jira "Review the current changes"
+consilium --report linear --report-file ticket.md "Review the current changes"
+```
+
+`jira` выдаёт разметку Jira wiki (`h2.`, таблицы `||...||`, блоки `{code}`), а `linear` — чистый Markdown. Оба содержат вердикт, модели, стоимость, длительность, таблицу находок (серьёзность, категория, файл:строка, `claim`, доказательство, спорность), отклонённые позиции и ошибки разбора; запуск без находок даёт валидный отчёт «находок нет». `--report-file` определяет `.jira` и `.linear` автоматически; явный `--report` работает с любым именем файла.
+
 ## Дедлайны и частичный синтез
 
 Долгие запуски на бесплатных моделях не должны подвешивать CI или pre-commit hook:
@@ -540,7 +578,9 @@ consilium eval --fail-under 70        # выход 3 ниже 70% catch rate
 consilium eval --max-cost 0.50        # остановиться при исчерпании бюджета
 ```
 
-Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. Десять стартовых фикстур лежат в [`eval/fixtures`](../eval/fixtures); свои можно добавлять рядом.
+Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. **Двадцать две (22) стартовых фикстуры** лежат в [`eval/fixtures`](../eval/fixtures) и покрывают инъекции, авторизацию, конкурентность, надёжность, SSRF/path traversal, целостность данных, пагинацию/кэширование и prompt injection; свои можно добавлять рядом.
+
+Корпус — production; числа бенчмарка должны приходить из реального запуска модели (в CI нет доступов к моделям). В [`eval/README.md`](../eval/README.md#results) описаны точные команды и намеренно нет выдуманной таблицы; [`eval-results.md`](eval-results.md) — шаблон отчёта для измеренного запуска.
 
 Сравните одиночный проход с раундами дебатов на тех же фикстурах:
 
@@ -616,14 +656,15 @@ permissions:
   pull-requests: write
   security-events: write   # нужно для загрузки SARIF
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.10.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.11.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
+    read-only: true          # по умолчанию; false передаёт --allow-write
     sarif: true             # по умолчанию; false отключает SARIF
 ```
 
-Он запускает `consilium --diff --base origin/<base> --artifacts --report pr --report-file consilium-review.md --fail-on <level>`, комментирует один раз, экспортирует находки через `consilium sarif --run latest` и загружает их с помощью `github/codeql-action/upload-sarif`, а затем передаёт код выхода гейта (`3`). Сбои SARIF и загрузки никогда не маскируют гейт (эти шаги помечены `continue-on-error`). Для загрузки должны быть включены code scanning и разрешение `security-events: write`; путь к файлу задаёт `sarif-file`, а `category` отличает отчёт от других SARIF-загрузок репозитория. `sarif: false` пропускает оба шага. PR из форков по умолчанию пропускаются, потому что секреты недоступны; версию npm можно закрепить входом `version`. Action выполняется на вашем runner — без хостингового приложения и платного сервиса. Полное руководство: [`github-action.md`](github-action.md).
+Он запускает `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`, комментирует один раз, экспортирует находки через `consilium sarif --run latest` и загружает их с помощью `github/codeql-action/upload-sarif`, а затем передаёт код выхода гейта (`3`). Сбои SARIF и загрузки никогда не маскируют гейт (эти шаги помечены `continue-on-error`). Для загрузки должны быть включены code scanning и разрешение `security-events: write`; путь к файлу задаёт `sarif-file`, а `category` отличает отчёт от других SARIF-загрузок репозитория. `sarif: false` пропускает оба шага. PR из форков по умолчанию пропускаются, потому что секреты недоступны; версию npm можно закрепить входом `version`. Action выполняется на вашем runner — без хостингового приложения и платного сервиса. Полное руководство: [`github-action.md`](github-action.md).
 
 ## Пресеты
 
@@ -683,8 +724,8 @@ permissions:
 | `maxCost` | — | Лимит стоимости в USD (число >= 0); без значения — без лимита |
 | `fallbackModels` | — | Массив строк `provider/model` для повторов при ошибках модели |
 | `session` | — | Базовый id сессии OpenCode |
-| `report` | — | Формат отчёта: `html`, `pr`, `markdown` |
-| `reportFile` | — | Путь к файлу отчёта (`.html`/`.md` выбирает формат) |
+| `report` | — | Формат отчёта: `html`, `pr`, `markdown`, `sarif`, `jira`, `linear` |
+| `reportFile` | — | Путь к файлу отчёта (`.html`/`.md`/`.sarif`/`.jira`/`.linear` выбирает формат) |
 | `variant` | — | Вариант модели для моделей без `#variant` (явный вариант приоритетнее) |
 | `debounceMs` | 400 | Задержка watch-режима, мс |
 | `findings` | `false` | Структурированный блок находок в ответах экспертов и председателя |
@@ -692,6 +733,8 @@ permissions:
 | `deadlineMs` | — | Бюджет фазы экспертов в мс (максимум 24 ч); частичный синтез по таймауту |
 | `rounds` | `1` | `2` = раунд анонимизированного peer-review; удваивает вызовы моделей |
 | `localOnly` | `false` | Требовать явную локальную модель для каждого агента |
+| `readOnly` | `false` | Только read/glob/grep для экспертов и председателя; `audit` включает принудительно без `--allow-write` |
+| `isolate` | `false` | Каждый агент в отдельном worktree OpenCode (`--worktree`) |
 | `presets` | — | Свои пресеты, сливаются поверх встроенных |
 | `opencodePath` | `opencode` | Свой путь к CLI (игнорируется из проектного конфига без `-c`) |
 | `cwd` | текущая | Рабочая директория для OpenCode (игнорируется из проектного конфига без `-c`) |
@@ -736,6 +779,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 - Текст задачи никогда не подставляется в shell-команду — он передаётся через stdin.
 - Имена агентов и id моделей валидируются перед использованием.
 - **Конфиг проекта недоверенный по умолчанию.** `consilium.config.json` в репозитории может задавать модели, экспертов, промпты и пресеты, но process/path-ключи — `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath`, строковый `output.file`, `reportFile`, строковый `artifacts` — игнорируются с предупреждением. Чтобы доверять им, передайте файл явно через `-c`.
+- **Read-only-запуски** пишут временный слой `.opencode/opencode.json` с deny-разрешениями, держат `.consilium/read-only.lock` и восстанавливают исходные байты при успехе, ошибке, отмене и `process.exit`. Битый JSON, существующий `.opencode/opencode.jsonc` или слой-симлинк приводят к fail-closed. Другие интерактивные сессии в этом же проекте видят временные ограничения, пока запуск активен.
+- **`--isolate`** использует worktree под управлением OpenCode; основной проект остаётся нетронутым, но worktree могут сохраняться по жизненному циклу самого OpenCode.
 - **Windows:** `.cmd`/`.bat`-шимы запускаются через `cmd.exe` только после строгой проверки каждого аргумента (без кавычек, `%`, `!`, `^`, `&`, `|`, `<`, `>`, пробелов); `.exe` и POSIX-бинарники запускаются напрямую.
 - **MCP:** `tools/call` требует `id`, очередь ограничена 16, `output_file` и пути артефактов удерживаются внутри workspace, а `consilium_init_free` делает `.bak` и требует `confirm: true` вместе с `force`.
 - `autoApprove` (авто-подтверждение разрешений) **выключен** по умолчанию; не включайте его для недоверенных промптов и инструментов.
@@ -763,6 +808,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.11.0** — read-only- и изолированные запуски, MCP-инструменты артефактов, отчёты для тикетов и расширенный eval-корпус. `--read-only` ограничивает экспертов и председателя инструментами read/glob/grep через временный слой `.opencode/opencode.json` с блокировкой, резервной копией и побайтовым восстановлением; `audit` и GitHub Action по умолчанию работают в read-only, а `--allow-write` отменяет ограничение. `--isolate` запускает каждого агента в worktree OpenCode. В MCP добавлены `consilium_list_runs`, `consilium_get_run`, `consilium_sarif` и `consilium_diff_runs`; `--report jira|linear` рендерит Jira wiki/Linear Markdown. V1 `tools`/`permission` теперь мигрируют в упорядоченные правила V2. Eval-корпус вырос до 22 фикстур; числа бенчмарка получаются реальным запуском моделей и не коммитятся. 561 тест JavaScript + 9 тестов Python.
 
 **1.10.0** — дистрибуция PyPI и загрузка SARIF в GitHub Action. `pip install lv24-opencode-consilium` устанавливает тонкий лаунчер `consilium` без зависимостей, который делегирует npm CLI через `npx` (Node.js >= 18 и OpenCode остаются обязательными; npm остаётся каноническим). Публикация в PyPI использует Trusted Publishing (OIDC) из `.github/workflows/pypi-publish.yml`, поэтому GitHub-релиз публикует npm и PyPI без токенов и OTP. `consilium sarif --run <id|latest> [--output <file>]` экспортирует SARIF из сохранённых артефактов без повторного запуска совета; композитный action теперь передаёт `--artifacts`, экспортирует SARIF и загружает его через `github/codeql-action/upload-sarif` (входы `sarif`, `sarif-file`, `category`; требуется `security-events: write`), а сбои SARIF никогда не маскируют гейт. 522 теста JavaScript + 5 тестов Python.
 
@@ -792,16 +839,20 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 | Идея | Ценность | Размер |
 | --- | --- | --- |
-| Slash-команда `consilium` для TUI | Вызвать совет одной командой внутри OpenCode | S |
-| Экспорт отчёта в тикет-системы | Готовый артефакт для Jira/Linear | S |
+| Опубликовать измеренные результаты eval на 22 фикстурах | Доказательство catch/FP/p50/cost на реальном провайдере | M |
+| Read-only внутри изолированных worktree + очистка worktree | Глубина защиты для `--isolate` | M |
+| MCP replay/streaming | Запуск или стрим совета из удалённого харнесса | M |
+
+Slash-команда `/council` и экспорт в Jira/Linear из прошлых планов вышли в 1.11.0.
 
 ## Разработка
 
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (522 теста)
+npm test            # build + node:test (561 тест)
 npm run typecheck   # tsc --noEmit
+python -m unittest discover -s python/tests   # 9 тестов лаунчера
 ```
 
 ## Лицензия

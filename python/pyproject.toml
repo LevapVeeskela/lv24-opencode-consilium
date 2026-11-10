@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lv24-opencode-consilium"
-version = "1.10.0"
+version = "1.11.0"
 description = "Python launcher for the Consilium multi-agent review CLI (npm: lv24-opencode-consilium)"
 readme = "README.md"
 requires-python = ">=3.9"

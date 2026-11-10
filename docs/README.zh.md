@@ -27,7 +27,7 @@ $ consilium "Review the authentication design"
 - **复用现有环境。** 认证、provider、agent 都交给 OpenCode CLI，无需额外密钥。
 - **同一引擎。** 终端、MCP、原生 V2 插件、库 API 共用一套实现。
 ## 能力一览
-并行议会、主席综合、免费模型引导、`doctor` 预检、运行产物（`--replay`/`--diff-runs`）、HTML/PR 报告、watch、git hooks、MCP、V2 插件、stdin 安全执行器；零运行时依赖，Node >= 18。
+并行议会、主席综合、免费模型引导、`doctor` 预检、运行产物（`--replay`/`--diff-runs`）、HTML/PR/SARIF/Jira/Linear 报告、只读与隔离评审（`--read-only`/`--isolate`）、watch、git hooks、MCP（含只读产物工具）、V2 插件、stdin 安全执行器；零运行时依赖，Node >= 18。
 ## 议会角色
 | 角色 | Agent | 关注点 | 典型问题 |
 | --- | --- | --- | --- |
@@ -49,7 +49,7 @@ pip install lv24-opencode-consilium     # PyPI 薄启动器（仍需 Node.js + O
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；PyPI 启动器需要 Python 3.9+；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.10.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.10.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.11.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.11.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -127,22 +127,29 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 
 | 工具 | 参数 / 结果 |
 | --- | --- |
-| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`deadline_ms`、`local_only`、`rounds`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`findings` → 方案 + 意见 + 元数据（含截止时间与辩论信息） |
+| `consilium_run` | `task`（必填）、`experts`、`chair`、`timeout_ms`、`deadline_ms`、`local_only`、`read_only`、`isolate`、`rounds`、`format`、`preset`、`output_file`、`consensus`、`smart_experts`、`max_cost`、`fallback_models`、`session`、`artifacts`、`findings` → 方案 + 意见 + 元数据（含 safety、截止时间与辩论信息） |
 | `consilium_list_agents` | 专家、模型、主席、预设、配置路径 |
 | `consilium_free_models` | `limit`、`available_only`、`refresh`、`local_only`、`probe_local` |
 | `consilium_doctor` | 环境/配置诊断 |
 | `consilium_init_free` | `apply`、`force`、`confirm`、`verify`；默认只给方案 |
+| `consilium_list_runs` | `limit`（1–100，默认 10）→ 已保存运行（新到旧）：id、时间、任务、成功、发现数量 |
+| `consilium_get_run` | `run`（id 或 `latest`，默认 `latest`）→ 完整 `run.json` 的 JSON |
+| `consilium_sarif` | `run`（id 或 `latest`）、可选 `output_file` → SARIF 2.1.0 JSON，或 workspace 内原子写入的文件 |
+| `consilium_diff_runs` | `left`、`right`（id 或 `latest`）→ 两次已保存运行的 Markdown 对比 |
 
-`consilium_run` 支持 `progressToken`，响应含 `cost`、共识摘要和 `**Artifacts:**` 行；`force` 需要同时传 `confirm: true`，写入前会生成 `.bak`。
+`consilium_run` 支持 `progressToken`，响应含 `cost`、共识摘要和 `**Artifacts:**` 行；`force` 需要同时传 `confirm: true`，写入前会生成 `.bak`。四个产物工具均为只读，不会调用模型，且仅限 `.consilium/runs` 与 workspace。
 ## 面向 AI 代理
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
   "findings": "consilium --findings -f json \"<task>\" -> metadata.findings",
+  "safety": { "read_only": "--read-only", "isolate": "--isolate", "metadata": "metadata.safety" },
+  "report_formats": ["html", "pr", "markdown", "sarif", "jira", "linear"],
+  "artifact_tools": ["consilium_list_runs", "consilium_get_run", "consilium_sarif", "consilium_diff_runs"],
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
@@ -181,6 +188,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `-c, --config <file>` / `-e, --experts a,b` / `--chair <agent>` | 配置文件 / 专家子集 / 主席 |
 | `--preset <name>` | `fast`、`deep`、`security`、`review`、`free` 或配置中的自定义预设 |
 | `--deadline <ms>` / `--local-only` | 专家阶段时限（最多 24 小时，超时后部分综合）/ 每个 Agent 必须显式使用本地模型，启动前拒绝非本地提供商 |
+| `--read-only` / `--allow-write` / `--isolate` | 专家与主席仅能 read/glob/grep，write/edit/patch/shell/webfetch/subagent/question/MCP 工具被拒绝 / `--allow-write` 取消只读（与 `--read-only` 互斥，`audit` 默认只读）/ `--isolate` 为每个 Agent 使用 OpenCode 管理的 git worktree（`--worktree`） |
 | `--rounds <1\|2>` | `2` 增加匿名化同伴评审轮次，适用于 run/watch/eval，模型调用翻倍（默认 1） |
 | `--compare-rounds` | `eval`：以一轮和两轮分别运行每个 fixture，并打印差值表 |
 | `--expert-timeout`、`--chair-timeout`、`-r, --retries <n>` | 每次尝试超时（ms）、重试（0 = 一次） |
@@ -190,7 +198,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--max-cost <usd>` / `--fallback-models a,b` | 成本上限（`COST_LIMIT`）/ 换模型重试（最多 2 次） |
 | `--session <id>` / `--variant <name>` | 会话基 id（`ses_<base>-<agent>`）/ variant，非法退出 2 |
 | `--artifacts`、`--no-artifacts`、`--artifacts-dir <path>`、`--replay <id>`、`--diff-runs <a> <b>` | 产物 / 目录 / 重跑 / 对比 |
-| `--report <html\|pr\|markdown\|sarif>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告（SARIF 2.1.0）/ 写文件（`.sarif`/`.sarif.json` 推断为 SARIF）/ git diff / watch 防抖 |
+| `--report <html\|pr\|markdown\|sarif\|jira\|linear>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告（SARIF 2.1.0、Jira wiki、Linear Markdown）/ 写文件（`.sarif`/`.sarif.json` 推断为 SARIF，`.jira`/`.linear` 推断为对应格式）/ git diff / watch 防抖 |
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
 | `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
 | `--context <off\|auto>` / `eval [--fixtures <dir>]` / `--fail-under <pct>` / `--reliability` | 上下文包（`auto`，默认 `off`）/ 运行评估 fixture（默认 `eval/fixtures`）/ eval 门禁：低于 catch 百分比退出 `3` / `models` 打印 `.consilium/reliability.json` 的成功率与延迟 |
@@ -205,7 +213,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 ```bash
 consilium --report html --report-file report.html "Review the current changes"
 consilium --report pr "Review the current changes"
-consilium --report-file notes.md "..."      # .html → html，.md → pr，.sarif → sarif
+consilium --report-file notes.md "..."      # .html → html，.md → pr，.sarif → sarif，.jira/.linear → 对应格式
 consilium watch --debounce 500 "Review the current changes"
 consilium hooks install                     # 提交前评审 staged，失败则阻止提交
 consilium hooks uninstall                   # 只删托管块
@@ -248,6 +256,30 @@ consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON 输出到 stdout
 
 运行不存在属于用法错误（退出码 2）；没有发现时会生成合法的空 SARIF。
 
+## 只读与隔离
+评审任务不应能修改仓库。`--read-only` 将每位专家和主席限制为 `read`、`glob`、`grep`；`write`、`edit`、`patch`、`shell`、`webfetch`、`websearch`、`subagent`、`question`、MCP 工具及外部目录访问一律拒绝。`.env` 文件不可读（`.env.example` 允许）。`--allow-write` 显式取消只读（与 `--read-only` 互斥）；`audit` 默认只读。
+
+```bash
+consilium --read-only "Review the authentication design"
+consilium audit --since origin/main --fail-on high   # audit 默认只读
+consilium audit --since origin/main --allow-write   # 显式取消只读
+consilium --isolate --read-only "Review the migration"
+```
+
+限制通过临时 `.opencode/opencode.json` 层生效：OpenCode 在直接的项目配置之后加载该层。Consilium 先加锁、备份已有层，合并 V2 `agents.<name>.permissions` 与 V1 `agent.<name>.tools`，并在 `finally` 中按字节精确恢复（包括取消）。残留锁会在下次运行时恢复；层不可读或已存在 `.opencode/opencode.jsonc` 时 fail-closed，而不是静默地无限制运行。只读运行期间，同一项目中其他交互式 OpenCode 会话会看到临时限制。
+
+`--isolate` 为每次 `opencode run` 加上 `--worktree`，每个 Agent 获得独立 git worktree。worktree 生命周期由 OpenCode 管理：只读作用于主项目，而一次性 worktree 内的写入无法触及主工作树。
+
+两个标志都记录在 `metadata.safety`（`readOnly`、`isolate`）和运行产物中。GitHub Action 默认启用 `read-only`，可用 `read-only: false` 关闭。
+
+## Jira 与 Linear 报告
+```bash
+consilium --report jira --report-file ticket.jira "Review the current changes"
+consilium --report linear --report-file ticket.md "Review the current changes"
+```
+
+`jira` 输出 Jira wiki 标记（`h2.`、`||...||` 表格、`{code}` 块），`linear` 输出干净的 Markdown。两者都包含结论、模型、成本、耗时、发现表（严重性、类别、文件:行、claim、证据、争议）、被拒绝的立场和解析错误；没有发现的运行会生成合法的“无发现”报告。`--report-file` 会推断 `.jira` 和 `.linear`；显式 `--report` 可搭配任意文件名。
+
 ## 截止时间与部分综合
 长时间运行的免费模型不应拖住 CI 或 pre-commit hook：
 
@@ -275,7 +307,9 @@ consilium eval --fail-under 70        # 低于 70% catch rate 时退出 3
 consilium eval --max-cost 0.50        # 预算耗尽时停止
 ```
 
-每个 fixture 是一段任务、一个埋入 bug 的小 diff 和 `expected.json`（`mustFind` / `mustNotFind` 为 claim 子串，可选 `file`、`category`、`minSeverity`）。匹配是规范化后的 claim 子串检查——不用 LLM 裁判——因此结果可复现。报告给出每个 fixture 的 caught/missed/false positives、总体 catch 与 FP 率、p50 延迟和成本。内置十个种子 fixture：[`eval/fixtures`](../eval/fixtures)，可在旁边添加自己的。
+每个 fixture 是一段任务、一个埋入 bug 的小 diff 和 `expected.json`（`mustFind` / `mustNotFind` 为 claim 子串，可选 `file`、`category`、`minSeverity`）。匹配是规范化后的 claim 子串检查——不用 LLM 裁判——因此结果可复现。报告给出每个 fixture 的 caught/missed/false positives、总体 catch 与 FP 率、p50 延迟和成本。内置**二十二个（22）**种子 fixture：[`eval/fixtures`](../eval/fixtures)，覆盖注入、授权、并发、可靠性、SSRF/路径穿越、数据完整性、分页/缓存和提示注入；可在旁边添加自己的。
+
+语料是生产级的；基准数字必须来自真实的模型运行（CI 没有模型凭据）。[`eval/README.md`](../eval/README.md#results) 记录了确切命令，并刻意不提供虚构表格；[`eval-results.md`](eval-results.md) 是实测运行的报告模板。
 
 在同一批 fixture 上比较单轮与辩论轮次：
 
@@ -326,14 +360,15 @@ permissions:
   pull-requests: write
   security-events: write   # SARIF 上传所需
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.10.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.11.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
+    read-only: true         # 默认；设为 false 会传 --allow-write
     sarif: true             # 默认；设为 false 可跳过 SARIF
 ```
 
-它运行 `consilium --diff --base origin/<base> --artifacts --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
+它运行 `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
 
 ## 预设
 | 预设 | 专家 | 行为 |
@@ -378,7 +413,8 @@ permissions:
 | `artifacts` / `consensus` / `smartExperts` / `findings` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色；结构化发现 |
 | `context` | `off` | `auto` 将改动文件、项目规则、相关测试和提交加入任务 |
 | `deadlineMs` / `rounds` / `localOnly` / `presets` | — / `1` / `false` / — | 专家阶段时限（ms，最多 24 小时，超时后部分综合）/ `2` 为匿名化同伴评审轮次，模型调用翻倍 / 每个 Agent 必须显式使用本地模型 / 自定义预设合并覆盖内置预设 |
-| `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式 / 报告文件 / variant / watch 防抖 |
+| `readOnly` / `isolate` | `false` / `false` | 专家与主席仅 read/glob/grep（`audit` 默认开启，`--allow-write` 取消）/ 每个 Agent 使用 OpenCode 管理的 worktree（`--worktree`） |
+| `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式（`html`、`pr`、`markdown`、`sarif`、`jira`、`linear`）/ 报告文件（扩展名推断格式）/ variant / watch 防抖 |
 | `opencodePath` / `cwd` | `opencode` / 当前目录 | CLI 路径 / 工作目录；项目配置中除非用 `-c` 否则忽略 |
 
 完整 Schema：[`../schema/config.schema.json`](../schema/config.schema.json)。
@@ -401,6 +437,8 @@ const top = selectCouncilModels(models, 5);
 ## 安全
 - 任务文本从不拼进 shell，一律经 stdin；Agent 名和模型 ID 使用前校验；`--standalone` 隔离端口。
 - **项目配置默认不可信**：仓库里的 `consilium.config.json` 可定义模型/专家/提示词/预设，但 `opencodePath`、`opencodeArgs`、`autoApprove`、`cwd`、`opencodeConfigPath`、字符串 `output.file`/`reportFile`/`artifacts` 会被忽略并告警；只有用 `-c` 显式传入才信任。
+- **只读运行**会写入带拒绝权限的临时 `.opencode/opencode.json` 层，持有 `.consilium/read-only.lock`，并在成功、出错、取消和 `process.exit` 时恢复原始字节。无效 JSON、已存在的 `.opencode/opencode.jsonc` 或符号链接层都会 fail-closed。运行期间，同一项目的其他交互式会话会看到临时限制。
+- **`--isolate`** 使用 OpenCode 管理的 worktree；主项目保持不被修改，但 worktree 可能按 OpenCode 自身的生命周期保留。
 - **Windows**：`.cmd`/`.bat` 仅在每个参数通过严格白名单后才经 `cmd.exe` 启动；`.exe` 与 POSIX 直接启动。
 - **MCP**：`tools/call` 必须有 `id`，队列上限 16，`output_file`/产物路径限制在 workspace 内，`init_free` 写 `.bak` 且 `force` 需要 `confirm: true`。
 - `autoApprove` 默认**关闭**；产物会脱敏常见 token 并自动生成 `.consilium/.gitignore`。
@@ -416,6 +454,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.11.0** — 只读与隔离运行、MCP 产物工具、工单报告与更大的评估语料：`--read-only` 通过带锁、备份和按字节精确恢复的临时 `.opencode/opencode.json` 层，将专家与主席限制为 read/glob/grep；`audit` 与 GitHub Action 默认只读，`--allow-write` 可取消；`--isolate` 让每个 Agent 在 OpenCode worktree 中运行；MCP 新增 `consilium_list_runs`、`consilium_get_run`、`consilium_sarif` 和 `consilium_diff_runs`；`--report jira|linear` 渲染 Jira wiki/Linear Markdown；V1 `tools`/`permission` 现在迁移为有序的 V2 规则；评估语料扩充到 22 个 fixture，基准数字由真实运行生成而不提交；561 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.10.0** — PyPI 发行与 GitHub Action 的 SARIF 上传：`pip install lv24-opencode-consilium` 安装一个无依赖的薄 `consilium` 启动器，通过 `npx` 委托给 npm CLI（仍需 Node.js >= 18 与 OpenCode；npm 仍是规范发行版）；PyPI 发布使用 `.github/workflows/pypi-publish.yml` 中的 Trusted Publishing（OIDC），GitHub release 无需令牌或 OTP 即可同时发布 npm 与 PyPI；`consilium sarif --run <id|latest> [--output <file>]` 从已保存产物导出 SARIF，无需重新运行议会；复合 Action 现在传入 `--artifacts`、导出 SARIF 并通过 `github/codeql-action/upload-sarif` 上传（`sarif`、`sarif-file`、`category` 输入；需要 `security-events: write`），SARIF 失败不会掩盖门禁；522 个 JavaScript 测试 + 5 个 Python 测试。
 - **1.9.0** — SARIF 导出、辩论评估与调度方案：`--report sarif` 输出 SARIF 2.1.0（严重性映射、文件/行号位置、稳定指纹、按类别划分的规则 id），可用于 GitHub code scanning 及其他 SARIF 查看器，`.sarif`/`.sarif.json` 扩展名自动推断；`eval --compare-rounds` 以一轮和两轮运行每个 fixture 并打印 catch/FP/p50/cost 差值，`eval --rounds 2` 以辩论模式运行整套用例；`docs/scheduling.md` 与 cron、任务计划程序、launchd、GitHub Actions 示例让提交范围审计无需守护进程即可定时执行；515 个测试。
 - **1.8.0** — 辩论轮次、本地引导与提交范围审计：`--rounds 2` 增加匿名化同伴评审，每位专家点评他人并给出最终立场，主席看到最终立场及哪些专家改变立场，`metadata.debate` 记录参与者与变化；`consilium init --local` 探测 Ollama/LM Studio，将本地模型轮流分配给各角色和主席，并写入 `localOnly` 配置；`consilium audit --since <ref>` 端到端评审提交范围，复用报告、产物与 `--fail-on`，`--dry-run` 不调用模型即可打印请求；491 个测试。
@@ -429,8 +468,10 @@ const top = selectCouncilModels(models, 5);
 - **1.3.0** — 运行产物、`--replay`/`--diff-runs`、`--consensus`、`--smart-experts`、`--max-cost`、`--fallback-models`、`--session` 及对应 MCP 参数。
 - **1.2.0** — 支持 V2 并保留 V1：双配置段、目录合并、始终传 `--model`、`mcp.servers`、`--native-v2`。
 ## 路线图
-- TUI 的 `consilium` slash 命令（S）；报告导出到 Jira/Linear（S）。
+- 在 22 个 fixture 上发布实测评估结果（真实提供商上的 catch/FP/p50/cost 证明，M）；隔离 worktree 内的只读与 worktree 清理（为 `--isolate` 提供纵深防御，M）；MCP replay/streaming（从远程宿主运行或流式获取议会结果，M）。
+- 上一版路线图中的 `/council` 斜杠命令与 Jira/Linear 导出已在 1.11.0 发布。
+
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，522 个测试）→ `npm run typecheck`（`tsc --noEmit`）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，561 个测试）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（9 个启动器测试）。
 ## 许可证
 [MIT](../LICENSE)

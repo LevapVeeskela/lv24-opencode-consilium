@@ -74,7 +74,7 @@ jobs:
           fi
 
           code=0
-          npx -y lv24-opencode-consilium@1.10.0 audit \
+          npx -y lv24-opencode-consilium@1.11.0 audit \
             --since "$since" \
             --fail-on high \
             --deadline 900000 \

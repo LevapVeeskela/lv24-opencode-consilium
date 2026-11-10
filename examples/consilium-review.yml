@@ -50,12 +50,15 @@ jobs:
             restate the diff.
           fail-on: high
           comment: 'true'
+          # Read-only is the default: the council may read/glob/grep but cannot
+          # write, edit, run a shell or call MCP tools. Set false to opt out.
+          read-only: true
           # Export findings to SARIF and upload them to GitHub code scanning.
           # Requires security-events: write and code scanning enabled.
           sarif: true
           # Pin the npm package for reproducible reviews. Use the same version
           # as the action ref you trust, or the latest release you have tested.
-          version: '1.10.0'
+          version: '1.11.0'
           # Optional soft cap in USD. Providers must report cost for it to work.
           # max-cost: '0.50'
         env:

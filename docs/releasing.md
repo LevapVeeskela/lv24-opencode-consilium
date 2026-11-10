@@ -42,7 +42,8 @@ first release creates the project. Details: [`docs/pypi.md`](pypi.md).
    `src/domain/defaults.ts`, `src/infrastructure/config/generate.ts`,
    `src/interfaces/mcp/protocol.ts`, `consilium.config.example.json`,
    `llms.txt`, `.github/workflows/container.yml`, `python/pyproject.toml`,
-   `python/src/lv24_opencode_consilium/__init__.py`, README/ru/zh (container
+   `python/src/lv24_opencode_consilium/__init__.py`,
+   `python/tests/test_cli.py` (expected `__version__`), README/ru/zh (container
    tag, agent card, changelog) and the changelog entry.
 
 3. Verify and push:
