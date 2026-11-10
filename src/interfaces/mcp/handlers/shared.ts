@@ -11,6 +11,7 @@ export {
   optionalBoolean,
   optionalEnum,
   optionalInteger,
+  optionalNonNegativeNumber,
   optionalPositiveNumber,
   optionalString,
   optionalStringArray,

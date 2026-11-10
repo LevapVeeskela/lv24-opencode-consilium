@@ -12,7 +12,10 @@ import {
   loadBaseline
 } from '../../../domain/artifacts/baseline.js';
 import { loadArtifact, resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
-import { planReplay } from '../../../domain/artifacts/replay.js';
+import {
+  applyReplayPlan,
+  parseReplayExperts
+} from '../../../application/replay.js';
 import { EXIT_CODES, UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { buildTask } from '../task.js';
@@ -94,59 +97,27 @@ export async function commandRun(options: CLIOptions): Promise<number> {
       throw new UsageError((error as Error).message);
     }
 
-    const plan = planReplay(replayArtifact, {
+    const requestedExperts = parseReplayExperts(options.experts);
+    const replay = applyReplayPlan(config, replayArtifact, {
       chairAgent: config.chair.agent,
-      artifacts: artifactsSetting
+      artifacts: artifactsSetting,
+      experts: requestedExperts
     });
-    task = plan.task;
+    task = replay.plan.task;
 
-    const byName = new Map(config.experts.map(expert => [expert.name, expert]));
-    config.experts = plan.experts.map((expert, index) => {
-      const base = byName.get(expert.name) ?? {
-        name: expert.name,
-        enabled: true,
-        priority: index + 1
-      };
-      return expert.model !== undefined ? { ...base, model: expert.model } : base;
-    });
-
-    if (options.experts !== undefined) {
-      const requested = options.experts
-        .split(',')
-        .map(name => name.trim())
-        .filter(name => name.length > 0);
-      const wanted = new Set(requested);
-      const filtered = config.experts.filter(expert => wanted.has(expert.name));
-
-      if (filtered.length === 0) {
-        throw new UsageError(
-          `В артефакте ${replayArtifact.id} нет экспертов: ${requested.join(', ')}. ` +
-            `Доступны: ${plan.experts.map(expert => expert.name).join(', ')}`
-        );
-      }
-      const missing = requested.filter(
-        name => !plan.experts.some(expert => expert.name === name)
+    if (replay.emptySelection) {
+      throw new UsageError(
+        `В артефакте ${replayArtifact.id} нет экспертов: ${(requestedExperts ?? []).join(', ')}. ` +
+          `Доступны: ${replay.plan.experts.map(expert => expert.name).join(', ')}`
       );
-      if (missing.length > 0 && !options.silent) {
-        console.error(`⚠️ Нет в артефакте: ${missing.join(', ')}`);
-      }
-      config.experts = filtered;
     }
-    config.chair = { ...config.chair, agent: plan.chair.agent };
-    if (plan.chair.model !== undefined) {
-      config.chair = { ...config.chair, model: plan.chair.model };
+    if (replay.missing.length > 0 && !options.silent) {
+      console.error(`⚠️ Нет в артефакте: ${replay.missing.join(', ')}`);
     }
-    if (plan.options.consensus !== undefined) config.consensus = plan.options.consensus;
-    if (plan.options.smartExperts !== undefined) config.smartExperts = plan.options.smartExperts;
-    if (plan.options.fallbackModels !== undefined) {
-      config.fallbackModels = plan.options.fallbackModels;
-    }
-    if (plan.options.session !== undefined) config.session = plan.options.session;
-    if (plan.options.artifacts !== undefined) config.artifacts = plan.options.artifacts;
 
     if (!options.silent) {
       console.error(`↩️ Повтор артефакта ${replayArtifact.id} (${replayArtifact.createdAt})`);
-      for (const warning of plan.warnings) {
+      for (const warning of replay.plan.warnings) {
         console.error(`⚠️ ${warning}`);
       }
     }

@@ -22,6 +22,7 @@ import { toolDiffRuns, toolGetRun, toolListRuns, toolSarif } from './artifacts.j
 import { toolDoctor } from './doctor.js';
 import { toolInitFree } from './init-free.js';
 import { toolFreeModels } from './models.js';
+import { toolConsiliumReplay } from './replay.js';
 import { toolConsiliumRun } from './run.js';
 import { toolError } from './shared.js';
 import type { McpToolResult } from './shared.js';
@@ -36,6 +37,8 @@ export async function executeTool(
     switch (name) {
       case 'consilium_run':
         return await toolConsiliumRun(args, progressToken, requestId);
+      case 'consilium_replay':
+        return await toolConsiliumReplay(args, progressToken, requestId);
       case 'consilium_list_agents':
         return await toolListAgents();
       case 'consilium_free_models':
@@ -80,7 +83,7 @@ function buildInitializeResult(
     },
     serverInfo: { name: SERVER_NAME, version },
     instructions:
-      'lv24-opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration. Saved runs are read-only: consilium_list_runs, consilium_get_run, consilium_sarif and consilium_diff_runs inspect them without calling a model.'
+      'lv24-opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_replay to re-run a saved run with its task, models and replayable options, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration. Saved runs are read-only: consilium_list_runs, consilium_get_run, consilium_sarif and consilium_diff_runs inspect them without calling a model. Long runs stream notifications/progress when the request supplies _meta.progressToken; no partial result chunks are returned.'
   };
 }
 

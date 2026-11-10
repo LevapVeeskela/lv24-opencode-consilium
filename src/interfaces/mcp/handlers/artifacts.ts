@@ -36,7 +36,7 @@ interface RunSummary {
 }
 
 /** Стандартный корень артефактов текущего проекта: `.consilium/runs`. */
-function artifactRoot(): string {
+export function artifactRoot(): string {
   return resolveArtifactRoot({ cwd: process.cwd() });
 }
 
@@ -57,7 +57,7 @@ function loadRunById(id: string, root: string): ArtifactRun {
  * Загружает запуск по id или `latest`.
  * Идентификатор проверяется до чтения: пути и `..` не принимаются.
  */
-function loadRun(selectorValue: string | undefined, root: string): ArtifactRun {
+export function loadRun(selectorValue: string | undefined, root: string): ArtifactRun {
   const selector = normalizeRunSelector(selectorValue);
   if (selector === 'latest') {
     const [latest] = listArtifacts(root);

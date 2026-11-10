@@ -6,6 +6,7 @@ export {
   setActiveConsilium
 } from './shared.js';
 export { toolConsiliumRun } from './run.js';
+export { toolConsiliumReplay } from './replay.js';
 export { toolListAgents } from './agents.js';
 export { toolFreeModels } from './models.js';
 export { toolDoctor } from './doctor.js';
