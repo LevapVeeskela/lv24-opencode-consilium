@@ -275,14 +275,26 @@ test('loadEvalFixtures: invalid expected.json fails with fixture context', t => 
   assert.throws(() => loadEvalFixtures(root), /broken.*invalid expected\.json/);
 });
 
-test('loadEvalFixtures: repository corpus contains exactly ten valid fixtures', () => {
+test('loadEvalFixtures: repository corpus contains exactly twenty-two valid fixtures', () => {
   const directory = fileURLToPath(new URL('../eval/fixtures/', import.meta.url));
   const fixtures = loadEvalFixtures(directory);
-  assert.equal(fixtures.length, 10);
+  assert.equal(fixtures.length, 22);
+  const names = fixtures.map(fixture => fixture.name);
+  assert.equal(new Set(names).size, names.length, 'fixture names must be unique');
   for (const fixture of fixtures) {
+    assert.ok(fixture.task.length > 0, `${fixture.name} has no task`);
     assert.ok(fixture.expected.mustFind.length >= 1, `${fixture.name} has no mustFind`);
     assert.ok(fixture.expected.mustNotFind.length >= 1, `${fixture.name} has no mustNotFind`);
     assert.ok((fixture.diff ?? '').length > 0, `${fixture.name} has no diff`);
+    for (const expected of fixture.expected.mustFind) {
+      assert.ok(
+        expected.claimIncludes !== undefined ||
+          expected.file !== undefined ||
+          expected.category !== undefined ||
+          expected.minSeverity !== undefined,
+        `${fixture.name} has an empty mustFind entry`
+      );
+    }
   }
 });
 

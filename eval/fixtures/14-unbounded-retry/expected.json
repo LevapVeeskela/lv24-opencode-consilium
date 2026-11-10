@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "unbounded retry",
+        "infinite retry loop",
+        "retries forever"
+      ],
+      "file": "src/queue/delivery.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the delivery function should return a boolean"
+    }
+  ]
+}

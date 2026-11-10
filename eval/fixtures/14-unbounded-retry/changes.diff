@@ -1,0 +1,12 @@
+--- a/src/queue/delivery.ts
++++ b/src/queue/delivery.ts
+@@ -8,7 +8,12 @@ export async function deliver(job: DeliveryJob): Promise<void> {
+-  return send(job);
++  while (true) {
++    try {
++      return await send(job);
++    } catch {
++      await sleep(100);
++    }
++  }
+ }

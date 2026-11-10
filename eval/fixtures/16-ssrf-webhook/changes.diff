@@ -1,0 +1,10 @@
+--- a/src/webhooks/register.ts
++++ b/src/webhooks/register.ts
+@@ -9,7 +9,8 @@ export async function registerWebhook(userId: string, url: string) {
+-  const parsed = new URL(url);
+-  if (!ALLOWED_HOSTS.has(parsed.hostname)) throw new Error('HOST_NOT_ALLOWED');
++  // syntax check only; hosts are reviewed later
++  new URL(url);
+   await db.webhooks.insert({ userId, url });
+   return { ok: true };
+ }

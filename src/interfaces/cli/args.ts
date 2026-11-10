@@ -320,8 +320,17 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--report': {
         const format = requireValue(argv, ++i, arg);
-        if (format !== 'html' && format !== 'pr' && format !== 'markdown' && format !== 'sarif') {
-          throw new UsageError(`Неизвестный формат отчёта: ${format} (html, pr, markdown, sarif)`);
+        if (
+          format !== 'html' &&
+          format !== 'pr' &&
+          format !== 'markdown' &&
+          format !== 'sarif' &&
+          format !== 'jira' &&
+          format !== 'linear'
+        ) {
+          throw new UsageError(
+            `Неизвестный формат отчёта: ${format} (html, pr, markdown, sarif, jira, linear)`
+          );
         }
         options.report = format;
         break;

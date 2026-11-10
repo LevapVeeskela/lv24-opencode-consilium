@@ -174,6 +174,8 @@ export function inferReportFormat(file: string): ReportFormat {
   const lower = file.toLowerCase();
   if (lower.endsWith('.sarif') || lower.endsWith('.sarif.json')) return 'sarif';
   if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.jira')) return 'jira';
+  if (lower.endsWith('.linear')) return 'linear';
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'pr';
   return 'html';
 }

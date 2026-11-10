@@ -1,0 +1,16 @@
+--- a/src/audit/list.ts
++++ b/src/audit/list.ts
+@@ -18,9 +18,9 @@ export async function listAudit(cursor: string | undefined, limit: number) {
+-  const rows = await db.audit.findMany({
+-    where: cursor ? { id: { gt: cursor } } : {},
+-    orderBy: { id: 'asc' },
+-    take: limit
+-  });
++  const rows = await db.audit.findMany({
++    where: {},
++    skip: Number(cursor ?? 0),
++    orderBy: { createdAt: 'desc' },
++    take: limit
++  });
+   return rows;
+ }

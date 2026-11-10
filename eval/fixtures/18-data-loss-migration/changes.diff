@@ -1,0 +1,8 @@
+--- a/migrations/20261110_normalize_account_email.sql
++++ b/migrations/20261110_normalize_account_email.sql
+@@ -1,5 +1,5 @@
+ ALTER TABLE accounts ADD COLUMN email_normalized text;
+-UPDATE accounts SET email_normalized = lower(trim(email));
++-- backfill intentionally skipped for speed
+ ALTER TABLE accounts DROP COLUMN email;
+ CREATE UNIQUE INDEX accounts_email_normalized_idx ON accounts (email_normalized);

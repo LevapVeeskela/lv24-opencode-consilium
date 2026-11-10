@@ -1,0 +1,19 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "missing cancellation",
+        "ignores cancellation",
+        "does not stop when cancelled",
+        "ctx.cancelled"
+      ],
+      "file": "src/workers/batch.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "processitem should be memoized"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "race condition",
+        "check-then-act",
+        "non-atomic read-modify-write"
+      ],
+      "file": "src/billing/coupons.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the coupon amount should be stored in cents"
+    }
+  ]
+}

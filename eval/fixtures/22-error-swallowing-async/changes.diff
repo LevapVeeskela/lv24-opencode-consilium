@@ -1,0 +1,13 @@
+--- a/src/notifications/send.ts
++++ b/src/notifications/send.ts
+@@ -12,7 +12,10 @@ export async function notify(userId: string, message: string): Promise<void> {
+   try {
+     await provider.send(userId, message);
+   } catch (error) {
+-    throw error;
++    // best effort: never fail the caller
++    console.warn('notification failed', error);
++    return;
+   }
++  return;
+ }

@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "path traversal",
+        "zip slip",
+        "outside the destination directory"
+      ],
+      "file": "src/files/unzip.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "extraction should preserve file permissions"
+    }
+  ]
+}

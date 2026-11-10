@@ -8,7 +8,7 @@ import type { FailOnLevel } from './artifacts/baseline.js';
 import type { CouncilPreset } from './council/presets.js';
 
 /** Формат отчёта. */
-export type ReportFormat = 'html' | 'pr' | 'markdown' | 'sarif';
+export type ReportFormat = 'html' | 'pr' | 'markdown' | 'sarif' | 'jira' | 'linear';
 
 /** Код ошибки агента */
 export type AgentErrorCode =

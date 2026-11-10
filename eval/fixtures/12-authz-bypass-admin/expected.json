@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "authorization bypass",
+        "authz bypass",
+        "trusts the x-internal header"
+      ],
+      "file": "src/api/admin.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the 403 response should include a json error body"
+    }
+  ]
+}

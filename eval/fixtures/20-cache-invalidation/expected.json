@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "stale cache",
+        "cache invalidation",
+        "profiles:all"
+      ],
+      "file": "src/users/profile.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "profile reads should use a shorter ttl"
+    }
+  ]
+}

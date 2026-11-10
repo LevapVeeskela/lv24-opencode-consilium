@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "data loss",
+        "drops the email column without backfill",
+        "destructive migration"
+      ],
+      "file": "migrations/20261110_normalize_account_email.sql",
+      "minSeverity": "critical"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the new column should be named email_normalized"
+    }
+  ]
+}

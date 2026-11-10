@@ -82,9 +82,11 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --no-artifacts          Не сохранять артефакты
   --replay <id>           Повторить сохранённый запуск
   --diff-runs <a> <b>     Сравнить два артефакта
-  --report <формат>       Отчёт после запуска: html, pr, markdown, sarif (SARIF 2.1.0)
+  --report <формат>       Отчёт после запуска: html, pr, markdown, sarif (SARIF 2.1.0),
+                          jira (Jira wiki), linear (Linear markdown)
   --report-file <файл>    Записать отчёт в файл (по умолчанию stdout);
-                          .sarif — автоматически SARIF 2.1.0
+                          .sarif — автоматически SARIF 2.1.0,
+                          .jira/.linear — Jira/Linear разметка
   --variant <имя>         Вариант для моделей без #variant (существующий сохраняется)
 
 РЕЖИМ НАБЛЮДЕНИЯ:
@@ -175,6 +177,7 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium init --local --dry-run
   consilium audit --since HEAD~1 --fail-on high
   consilium sarif --run latest --output consilium.sarif
+  consilium --report linear --report-file ticket.md "Сделать ревью изменений"
   consilium --rounds 2 "Оценить архитектуру проекта"
   consilium doctor
 
