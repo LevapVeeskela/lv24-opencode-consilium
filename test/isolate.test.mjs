@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync
@@ -185,7 +186,15 @@ function gitWorktreeCount(dir) {
 }
 
 function isInside(parent, child) {
-  const rel = relative(parent, child);
+  let root = parent;
+  let target = child;
+  try {
+    root = realpathSync(parent);
+    target = realpathSync(child);
+  } catch {
+    // Worktree may already be removed; the lexical check is still useful.
+  }
+  const rel = relative(root, target);
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }
 

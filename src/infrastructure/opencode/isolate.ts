@@ -12,7 +12,7 @@
 
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, type Dirent } from 'fs';
+import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } from 'fs';
 import { resolve } from 'path';
 
 /** Каталог изолированных worktree относительно корня репозитория */
@@ -402,7 +402,16 @@ function safeLabel(value: string): string {
 
 /** Путь для сравнения: абсолютный, с прямыми слэшами, без регистра на Windows */
 function comparablePath(value: string): string {
-  const normalized = resolve(value).replace(/\\/g, '/');
+  let normalized = resolve(value);
+  try {
+    // git may report canonical paths (/private/var on macOS, long paths on
+    // Windows) while our candidate uses a symlinked/8.3 alias. Resolve both
+    // before comparing so a live worktree is never treated as unregistered.
+    normalized = realpathSync(normalized);
+  } catch {
+    // Path may already be removed; the resolved form is the best fallback.
+  }
+  normalized = normalized.replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
