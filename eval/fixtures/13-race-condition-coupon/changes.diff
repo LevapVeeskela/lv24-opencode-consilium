@@ -1,0 +1,10 @@
+--- a/src/billing/coupons.ts
++++ b/src/billing/coupons.ts
+@@ -20,8 +20,9 @@ export async function redeemCoupon(code: string, userId: string) {
+   const coupon = await db.coupons.findOne({ code });
+   if (!coupon || coupon.redeemedBy !== undefined) throw new Error('COUPON_USED');
+-  await db.coupons.updateOne({ code }, { $set: { redeemedBy: userId } });
++  const updated = { ...coupon, redeemedBy: userId };
++  await db.coupons.replaceOne({ code }, updated);
+   await applyCredit(userId, coupon.amount);
+ }

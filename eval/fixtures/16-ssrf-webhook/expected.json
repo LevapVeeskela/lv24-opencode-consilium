@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "ssrf",
+        "server-side request forgery",
+        "internal network address"
+      ],
+      "file": "src/webhooks/register.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "webhook payloads should be signed with hmac"
+    }
+  ]
+}

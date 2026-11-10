@@ -1,0 +1,19 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "pagination",
+        "skips or duplicates rows",
+        "offset pagination",
+        "unstable pagination"
+      ],
+      "file": "src/audit/list.ts",
+      "minSeverity": "medium"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the page size should be configurable"
+    }
+  ]
+}

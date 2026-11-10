@@ -1,0 +1,10 @@
+--- a/src/files/unzip.ts
++++ b/src/files/unzip.ts
+@@ -14,8 +14,7 @@ export async function extractZip(archive: ZipArchive, destination: string) {
+   for (const entry of archive.entries()) {
+-    const target = resolve(destination, entry.name);
+-    if (!target.startsWith(resolve(destination) + sep)) throw new Error('UNSAFE_ENTRY');
++    const target = join(destination, entry.name);
+     await writeFile(target, await entry.buffer());
+   }
+ }

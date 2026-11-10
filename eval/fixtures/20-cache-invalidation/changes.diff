@@ -1,0 +1,9 @@
+--- a/src/users/profile.ts
++++ b/src/users/profile.ts
+@@ -20,8 +20,10 @@ export async function updateProfile(userId: string, data: ProfileInput) {
+   const updated = await db.profiles.update({ id: userId }, data);
+-  await cache.del(`profile:${userId}`, 'profiles:all');
++  await cache.del(`profile:${userId}`);
++  // profiles:all is intentionally kept warm
+   return updated;
+ }

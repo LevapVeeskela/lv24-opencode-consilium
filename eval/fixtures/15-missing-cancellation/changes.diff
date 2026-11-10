@@ -1,0 +1,10 @@
+--- a/src/workers/batch.ts
++++ b/src/workers/batch.ts
+@@ -12,8 +12,7 @@ export async function processBatch(items: Item[], ctx: BatchContext) {
+   const results: Result[] = [];
+   for (const item of items) {
+-    if (ctx.cancelled) break;
+     results.push(await processItem(item));
+   }
+   return results;
+ }

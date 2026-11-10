@@ -1,0 +1,12 @@
+--- a/src/db/users.ts
++++ b/src/db/users.ts
+@@ -10,7 +10,11 @@ export async function searchUsers(term: string, sort: string, direction: string) {
+-  const rows = await db.query('SELECT * FROM users WHERE name LIKE ? ORDER BY created_at DESC', [`%${term}%`]);
++  const column = sort || 'created_at';
++  const order = direction || 'DESC';
++  const rows = await db.query(
++    `SELECT * FROM users WHERE name LIKE ? ORDER BY ${column} ${order}`,
++    [`%${term}%`]
++  );
+   return rows;
+ }

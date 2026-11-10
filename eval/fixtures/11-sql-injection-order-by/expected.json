@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "sql injection",
+        "injection via the sort parameter",
+        "untrusted order by"
+      ],
+      "file": "src/db/users.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "the default sort should remain created_at"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "mustFind": [
+    {
+      "claimIncludes": [
+        "error swallowing",
+        "swallows the notification error",
+        "silently ignores the failure"
+      ],
+      "file": "src/notifications/send.ts",
+      "minSeverity": "high"
+    }
+  ],
+  "mustNotFind": [
+    {
+      "claimIncludes": "notifications should be batched"
+    }
+  ]
+}
