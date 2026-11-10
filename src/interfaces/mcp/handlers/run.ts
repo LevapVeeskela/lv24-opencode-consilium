@@ -50,6 +50,10 @@ export function formatConsiliumResult(result: ConsiliumResult, config: Consilium
     cost: result.metadata?.cost,
     deadlineMs: config.deadlineMs ?? null,
     localOnly: config.localOnly === true,
+    safety: result.metadata?.safety ?? {
+      readOnly: config.readOnly === true,
+      isolate: config.isolate === true
+    },
     consensus:
       result.metadata?.consensus !== null && typeof result.metadata?.consensus === 'object'
         ? (() => {
@@ -133,6 +137,8 @@ export async function toolConsiliumRun(
   const timeoutMs = optionalPositiveNumber(args, 'timeout_ms');
   const deadlineMs = optionalInteger(args, 'deadline_ms', 1, Number.MAX_SAFE_INTEGER);
   const localOnly = optionalBoolean(args, 'local_only');
+  const readOnly = optionalBoolean(args, 'read_only');
+  const isolate = optionalBoolean(args, 'isolate');
   const outputFile = optionalString(args, 'output_file');
   const format: OutputFormat | undefined = optionalEnum(args, 'format', OUTPUT_FORMATS);
   const preset = optionalString(args, 'preset');
@@ -192,6 +198,8 @@ export async function toolConsiliumRun(
   if (deadlineMs !== undefined) config.deadlineMs = deadlineMs;
   if (rounds !== undefined) config.rounds = rounds;
   if (localOnly !== undefined) config.localOnly = localOnly;
+  if (readOnly !== undefined) config.readOnly = readOnly;
+  if (isolate !== undefined) config.isolate = isolate;
   if (outputPath.value !== undefined) {
     config.output.file = outputPath.value;
   }

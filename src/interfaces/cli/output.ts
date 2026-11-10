@@ -137,6 +137,16 @@ export function printSummary(result: ConsiliumResult, options: CLIOptions): void
   if (result.metadata?.costTelemetry === 'missing') {
     console.error('⚠️ Провайдер не сообщил стоимость: лимит maxCost не проверен');
   }
+
+  const safety = result.metadata?.safety;
+  if (safety !== null && typeof safety === 'object' && !Array.isArray(safety)) {
+    const readOnly = (safety as { readOnly?: unknown }).readOnly === true;
+    const isolate = (safety as { isolate?: unknown }).isolate === true;
+    if (readOnly || isolate) {
+      const parts = [readOnly ? 'read-only' : '', isolate ? 'isolate' : ''].filter(Boolean);
+      console.error(`🛡️ Безопасность: ${parts.join(', ')}`);
+    }
+  }
 }
 
 export function printAgentList(config: ConsiliumConfig): void {

@@ -77,7 +77,9 @@ export async function commandAudit(
     diff: false,
     diffStaged: false,
     diffBase: undefined,
-    artifacts: true
+    artifacts: true,
+    // Аудит — ревью: по умолчанию без права записи. --allow-write снимает запрет.
+    readOnly: options.readOnly ?? true
   };
 
   // Политика --fail-on требует находок: для audit включаем их автоматически,

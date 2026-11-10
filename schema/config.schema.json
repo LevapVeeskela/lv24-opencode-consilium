@@ -59,6 +59,8 @@
     "consensus": { "type": "boolean" },
     "findings": { "type": "boolean", "default": false },
     "localOnly": { "type": "boolean", "default": false },
+    "readOnly": { "type": "boolean", "default": false },
+    "isolate": { "type": "boolean", "default": false },
     "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 86400000 },
     "rounds": { "type": "integer", "enum": [1, 2], "default": 1 },
     "presets": {

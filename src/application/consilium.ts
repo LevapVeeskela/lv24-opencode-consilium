@@ -21,6 +21,11 @@ import {
   createRunController,
   type RunController
 } from '../infrastructure/opencode/agents.js';
+import { resolveCwd } from '../infrastructure/opencode/spawn.js';
+import {
+  applyReadOnlyOverlay,
+  type ReadOnlyOverlay
+} from '../infrastructure/opencode/read-only.js';
 import { DEFAULT_CONFIG, DEFAULT_CHAIR_PROMPT_TEMPLATE } from '../domain/defaults.js';
 import { applyPreset } from '../domain/council/presets.js';
 import { auditLocalOnly } from '../infrastructure/local-models.js';
@@ -154,6 +159,8 @@ export class Consilium {
     this.cancelRequested = false;
 
     let hooks: ConsiliumConfig['hooks'] | undefined;
+    /** Временный read-only слой; восстанавливается на любом пути выхода */
+    let readOnlyOverlay: ReadOnlyOverlay | undefined;
 
     try {
     let runConfig = cloneConfig(this.config);
@@ -185,6 +192,9 @@ export class Consilium {
     const deadlineMs = sanitizeDeadlineMs(options.deadlineMs ?? runConfig.deadlineMs);
     const requestedRounds = options.rounds ?? runConfig.rounds;
     const rounds = normalizeDebateRounds(requestedRounds);
+    const readOnly = options.readOnly ?? runConfig.readOnly === true;
+    const isolate = options.isolate ?? runConfig.isolate === true;
+    const safety = { readOnly, isolate };
 
     runConfig.consensus = consensusEnabled;
     if (options.findings !== undefined) {
@@ -192,6 +202,8 @@ export class Consilium {
     }
     runConfig.fallbackModels = fallbackModels;
     runConfig.session = session;
+    runConfig.readOnly = readOnly;
+    runConfig.isolate = isolate;
     if (maxCost !== undefined) runConfig.maxCost = maxCost;
     if (deadlineMs !== undefined) {
       runConfig.deadlineMs = deadlineMs;
@@ -284,9 +296,26 @@ export class Consilium {
         );
       }
 
+      const selectedExperts = selectExperts(runConfig, options.experts, hooks);
+
+      if (readOnly) {
+        // Слой пишется до запуска агентов и снимается в finally.
+        // Проектный .opencode/opencode.json приоритетнее прямого opencode.json,
+        // поэтому OpenCode читает эти deny-правила для каждого дочернего процесса.
+        readOnlyOverlay = await applyReadOnlyOverlay({
+          cwd: resolveCwd(runConfig),
+          agents: [
+            ...new Set([
+              ...selectedExperts.map(expert => expert.name),
+              options.chair ?? runConfig.chair.agent
+            ])
+          ],
+          onLog: (level, message) => hooks?.onLog?.(level, message)
+        });
+      }
+
       await hooks.onStart?.(task, runConfig);
 
-      const selectedExperts = selectExperts(runConfig, options.experts, hooks);
       let councilExperts = selectedExperts;
       let smartSelection: ReturnType<typeof selectSmartExperts> | undefined;
 
@@ -409,7 +438,8 @@ export class Consilium {
             options.metadata,
             costTracker.report(),
             session,
-            findingsEnabled ? collectFindings(expertResults) : undefined
+            findingsEnabled ? collectFindings(expertResults) : undefined,
+            safety
           ),
           ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
@@ -498,7 +528,8 @@ export class Consilium {
             options.metadata,
             costTracker.report(),
             session,
-            findingsSummary
+            findingsSummary,
+            safety
           ),
           ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
@@ -526,7 +557,8 @@ export class Consilium {
         findings: findingsSummary,
         smartSelection,
         session,
-        fallbackModels
+        fallbackModels,
+        safety
       });
 
       if (deadlineMetadata !== undefined) {
@@ -585,6 +617,8 @@ export class Consilium {
       });
       throw error;
     } finally {
+      // Снимаем временный слой до выхода из run: успех, ошибка и отмена.
+      readOnlyOverlay?.restore();
       if (this.controller === controller) {
         this.controller = null;
       }

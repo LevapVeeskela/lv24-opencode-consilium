@@ -24,6 +24,13 @@ inputs:
       critical, high, medium, low, info, or none.
     required: false
     default: none
+  read-only:
+    description: >-
+      Run the review with read-only expert permissions (only read/glob/grep;
+      write, edit, shell and subagent tools are denied). Set to false to pass
+      --allow-write.
+    required: false
+    default: 'true'
   comment:
     description: >-
       Post or update a single pull request review comment. Set to false to keep
@@ -113,6 +120,7 @@ runs:
         INPUT_TASK: ${{ inputs.task }}
         INPUT_BASE: ${{ inputs.base }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_READ_ONLY: ${{ inputs.read-only }}
         INPUT_MAX_COST: ${{ inputs.max-cost }}
         INPUT_SARIF: ${{ inputs.sarif }}
         GITHUB_BASE_REF: ${{ github.base_ref }}
@@ -129,6 +137,15 @@ runs:
           critical|high|medium|low|info|none) ;;
           *)
             echo "::error::Invalid fail-on value '${fail_on}'. Use critical, high, medium, low, info, or none." >&2
+            exit_code=2
+            ;;
+        esac
+
+        read_only="${INPUT_READ_ONLY:-true}"
+        case "$read_only" in
+          true|false) ;;
+          *)
+            echo "::error::Invalid read-only value '${read_only}'. Use true or false." >&2
             exit_code=2
             ;;
         esac
@@ -171,6 +188,13 @@ runs:
 
           if [ -n "${INPUT_MAX_COST:-}" ]; then
             args=(--max-cost "$INPUT_MAX_COST" "${args[@]}")
+          fi
+
+          # Review runs are read-only by default; read-only=false opts out.
+          if [ "$read_only" = "true" ]; then
+            args=(--read-only "${args[@]}")
+          else
+            args=(--allow-write "${args[@]}")
           fi
 
           echo "Running Consilium (base=${base}, fail-on=${fail_on})..."

@@ -183,6 +183,14 @@ export function validateConfig(config: ConsiliumConfig): string[] {
     warnings.push('Поле localOnly должно быть boolean.');
   }
 
+  if (config.readOnly !== undefined && typeof config.readOnly !== 'boolean') {
+    warnings.push('Поле readOnly должно быть boolean.');
+  }
+
+  if (config.isolate !== undefined && typeof config.isolate !== 'boolean') {
+    warnings.push('Поле isolate должно быть boolean.');
+  }
+
   if (config.presets !== undefined) {
     if (config.presets === null) {
       warnings.push('Поле presets должно быть объектом; значение проигнорировано.');

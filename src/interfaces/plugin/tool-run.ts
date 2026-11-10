@@ -38,6 +38,8 @@ export interface ToolRunArgs {
   maxCost?: number;
   fallbackModels?: string[];
   session?: string;
+  readOnly?: boolean;
+  isolate?: boolean;
   artifacts?: boolean | string;
   preset?: string;
 }
@@ -101,6 +103,7 @@ export function formatToolResult(result: ConsiliumResult): string {
     totalTime: result.totalTime,
     usage: result.usage,
     cost: result.metadata?.cost,
+    safety: result.metadata?.safety,
     consensus,
     models
   };
@@ -158,6 +161,8 @@ export async function runConsiliumTool(
   if (args.maxCost !== undefined) config.maxCost = args.maxCost;
   if (args.fallbackModels !== undefined) config.fallbackModels = args.fallbackModels;
   if (args.session !== undefined) config.session = args.session;
+  if (args.readOnly !== undefined) config.readOnly = args.readOnly;
+  if (args.isolate !== undefined) config.isolate = args.isolate;
 
   if (typeof args.artifacts === 'string') {
     const workspace = resolve(config.cwd ?? process.cwd());

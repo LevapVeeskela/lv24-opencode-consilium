@@ -63,6 +63,18 @@ export const CONSILIUM_TOOL_INPUT: Record<string, unknown> = {
       type: 'string',
       description: 'OpenCode session base id; each agent continues its own session.'
     },
+    read_only: {
+      type: 'boolean',
+      default: false,
+      description:
+        'Run experts and the chair read-only: only read/glob/grep are allowed; write, edit, shell, webfetch, subagent, skill, question and MCP tools are denied; .env files stay blocked.'
+    },
+    isolate: {
+      type: 'boolean',
+      default: false,
+      description:
+        'Run each agent in its own disposable OpenCode worktree (--worktree). Read-only rules apply to the main project; worktree changes never reach it.'
+    },
     artifacts: {
       type: ['boolean', 'string'],
       description: 'Save the run to .consilium/runs (true) or to the given directory.'
@@ -218,6 +230,8 @@ function parseToolArgs(input: unknown): ToolRunArgs {
     maxCost: optionalNonNegativeNumber(input, 'max_cost'),
     fallbackModels: optionalStringArray(input, 'fallback_models'),
     session: optionalString(input, 'session'),
+    readOnly: optionalBoolean(input, 'read_only'),
+    isolate: optionalBoolean(input, 'isolate'),
     artifacts: optionalArtifacts(input, 'artifacts'),
     preset: optionalPreset(input, 'preset')
   };
