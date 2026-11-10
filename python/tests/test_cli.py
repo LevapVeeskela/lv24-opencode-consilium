@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import stat
 import sys
 import tempfile
@@ -18,7 +19,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from lv24_opencode_consilium import __version__
-from lv24_opencode_consilium.cli import NPM_PACKAGE, NPM_VERSION_ENV, main
+from lv24_opencode_consilium.cli import (
+    NPM_PACKAGE,
+    NPM_VERSION_ENV,
+    _node_launcher,
+    main,
+)
 
 _FAKE_NPX = '''\
 import json
@@ -36,6 +42,23 @@ record = {
 with open(os.environ["CONSILIUM_TEST_LOG"], "a", encoding="utf-8") as handle:
     handle.write(json.dumps(record, sort_keys=True) + "\\n")
 raise SystemExit(3)
+'''
+
+_FAKE_NPX_CLI_JS = '''\
+const fs = require("node:fs");
+
+const record = {
+  argv: process.argv.slice(2),
+  env: Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.startsWith("CONSILIUM_"))
+  ),
+};
+fs.writeFileSync(
+  process.env.CONSILIUM_TEST_LOG,
+  JSON.stringify(record) + "\\n",
+  "utf8"
+);
+process.exit(3);
 '''
 
 
@@ -144,6 +167,66 @@ class MainTests(unittest.TestCase):
     def test_version_matches_expected_release(self):
         self.assertEqual(__version__, "1.10.0")
 
+    def test_node_launcher_resolves_batch_shim(self):
+        node_dir = self.root / "nodejs"
+        npm_bin = node_dir / "node_modules" / "npm" / "bin"
+        npm_bin.mkdir(parents=True)
+        shim = node_dir / "npx.cmd"
+        shim.write_text("@echo off\r\n", encoding="ascii")
+        script = npm_bin / "npx-cli.js"
+        script.write_text("", encoding="utf-8")
+        node = node_dir / "node.exe"
+        node.write_text("", encoding="utf-8")
+
+        self.assertEqual(
+            _node_launcher(str(shim), platform="nt"),
+            [str(node), str(script)],
+        )
+
+    def test_node_launcher_skips_non_windows_and_unknown_layout(self):
+        shim = self.root / "npx.cmd"
+        shim.write_text("@echo off\r\n", encoding="ascii")
+
+        self.assertIsNone(_node_launcher(str(shim), platform="posix"))
+        self.assertIsNone(_node_launcher(str(shim), platform="nt"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows .cmd shims only")
+    def test_windows_shim_preserves_cmd_metacharacters(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is not installed")
+
+        node_dir = self.root / "nodejs"
+        npm_bin = node_dir / "node_modules" / "npm" / "bin"
+        npm_bin.mkdir(parents=True)
+        # The shim itself must never run: cmd.exe would corrupt the arguments.
+        (node_dir / "npx.cmd").write_text(
+            "@echo off\r\nexit /b 1\r\n", encoding="ascii"
+        )
+        (npm_bin / "npx-cli.js").write_text(
+            _FAKE_NPX_CLI_JS, encoding="utf-8"
+        )
+        path = os.pathsep.join([str(node_dir), str(Path(node).parent)])
+
+        code, stderr = self._invoke(
+            ["review", "a&b", "100%", "x^y", "Москва"], path=path
+        )
+
+        self.assertEqual(code, 3)
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            self._calls()[0]["argv"],
+            [
+                "--yes",
+                "{0}@{1}".format(NPM_PACKAGE, __version__),
+                "review",
+                "a&b",
+                "100%",
+                "x^y",
+                "Москва",
+            ],
+        )
+
     def test_uses_env_override_and_inherits_it(self):
         code, stderr = self._invoke(
             ["--help"], env={NPM_VERSION_ENV: "latest"}
@@ -169,6 +252,18 @@ class MainTests(unittest.TestCase):
         self.assertIn("npm", stderr)
         self.assertIn("OpenCode", stderr)
         self.assertEqual(self._calls(), [])
+
+    def test_start_failure_returns_127_with_executable_name(self):
+        with mock.patch(
+            "lv24_opencode_consilium.cli.subprocess.run",
+            side_effect=OSError("permission denied"),
+        ):
+            code, stderr = self._invoke([])
+
+        self.assertEqual(code, 127)
+        self.assertIn("failed to start", stderr)
+        self.assertIn("npx", stderr)
+        self.assertIn("permission denied", stderr)
 
     def test_keyboard_interrupt_returns_130(self):
         with mock.patch(

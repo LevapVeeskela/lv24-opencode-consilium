@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lv24-opencode-consilium"
 version = "1.10.0"
-description = "Python launcher for the lv24-opencode-consilium (Consilium) Node.js CLI"
+description = "Python launcher for the Consilium multi-agent review CLI (npm: lv24-opencode-consilium)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -13,9 +13,29 @@ license-files = ["LICENSE"]
 authors = [
     { name = "LevapVeeskela" },
 ]
+keywords = [
+    "opencode",
+    "consilium",
+    "ai",
+    "agents",
+    "multi-agent",
+    "code-review",
+    "cli",
+    "launcher",
+]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 
 [project.urls]
@@ -23,6 +43,7 @@ Homepage = "https://github.com/LevapVeeskela/lv24-opencode-consilium"
 Repository = "https://github.com/LevapVeeskela/lv24-opencode-consilium"
 Issues = "https://github.com/LevapVeeskela/lv24-opencode-consilium/issues"
 Documentation = "https://github.com/LevapVeeskela/lv24-opencode-consilium/tree/master/docs"
+Changelog = "https://github.com/LevapVeeskela/lv24-opencode-consilium/releases"
 
 [project.scripts]
 consilium = "lv24_opencode_consilium.cli:main"

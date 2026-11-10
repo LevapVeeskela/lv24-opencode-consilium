@@ -49,6 +49,7 @@ first release creates the project. Details: [`docs/pypi.md`](pypi.md).
 
    ```bash
    npm test
+   python -m unittest discover -s python/tests
    git add -A
    git commit -m "*[OC] - vX.Y.Z: ..."
    git push origin master

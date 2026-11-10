@@ -1,0 +1,31 @@
+name: python-test
+
+# Manual-only tests for the Python launcher (python/).
+# No secrets, no publishing and no automatic triggers: run it from the
+# Actions tab or with `gh workflow run python-test.yml`.
+# Standard GitHub-hosted runners only; free for a public repository.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The tests add python/src to sys.path, so no install step is needed.
+      - name: Run launcher tests
+        run: python -m unittest discover -s python/tests -v

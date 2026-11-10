@@ -295,7 +295,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 2. **Не парсите человеческий текст.** Используйте `-f json` (результат + `metadata`), `consilium models --json` или MCP-инструменты.
 3. **Ошибки типизированы.** `errorCode` — одно из `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, …; коды выхода — `0/1/2/3` (`3` = policy gate).
 4. **Состояние — это файлы, а не демон.** Артефакты лежат в `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` восстанавливает запуск.
-5. **Никаких интерактивных запросов.** Каждая команда неинтерактивна; `--auto` выключен по умолчанию и включается осознанно.
+5. **Никаких интерактивных запросов.** Каждая команда неинтерактивна; `autoApprove` (флаг OpenCode `--auto`) выключен по умолчанию и включается осознанно в доверенном конфиге.
 6. **Сначала дешёвое.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; добавьте `--max-cost` для жёсткого бюджета.
 
 Готовый промпт для агента:

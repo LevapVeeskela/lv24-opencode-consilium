@@ -64,6 +64,18 @@ The input may include or omit the leading `v`. Existing versions are detected
 through the public JSON API and skipped, so re-running is safe. PyPI never
 allows re-uploading a filename; bump the version to replace a bad release.
 
+## Tests
+
+The launcher tests use only the standard library and do not need the package
+installed:
+
+```bash
+python -m unittest discover -s python/tests -v
+```
+
+`.github/workflows/python-test.yml` runs the same command on Python 3.9-3.13.
+It is manual-only (`gh workflow run python-test.yml`) and uses no secrets.
+
 ## Install and run
 
 ```bash

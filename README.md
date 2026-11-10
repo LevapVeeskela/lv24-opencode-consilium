@@ -299,7 +299,7 @@ Rules that matter when you drive it:
 2. **Do not parse human text.** Use `-f json` (result + `metadata`), `consilium models --json`, or MCP tools.
 3. **Errors are typed.** `errorCode` is one of `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, … and exit codes are `0/1/2/3` (`3` = policy gate).
 4. **State is files, not a daemon.** Artifacts live in `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` restores a run.
-5. **No interactive prompts.** Every command is non-interactive; `--auto` is off by default and must be enabled deliberately.
+5. **No interactive prompts.** Every command is non-interactive; `autoApprove` (OpenCode's `--auto`) is off by default and must be enabled deliberately in a trusted config.
 6. **Cheap first.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; add `--max-cost` for a hard budget.
 
 Copy-paste prompt for an agent:

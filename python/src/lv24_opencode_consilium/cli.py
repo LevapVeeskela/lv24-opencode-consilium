@@ -6,12 +6,17 @@ import os
 import shutil
 import subprocess
 import sys
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 from . import __version__
 
 NPM_PACKAGE = "lv24-opencode-consilium"
 NPM_VERSION_ENV = "CONSILIUM_NPM_VERSION"
+
+# The npm-generated npx.cmd shim runs this script with the bundled Node.js.
+_NPX_CLI_RELATIVE_PATH = os.path.join(
+    "node_modules", "npm", "bin", "npx-cli.js"
+)
 
 _NPX_MISSING_MESSAGE = """\
 consilium: npx was not found on PATH.
@@ -29,6 +34,34 @@ def npm_spec() -> str:
     return "{0}@{1}".format(NPM_PACKAGE, version)
 
 
+def _node_launcher(
+    npx: str, platform: Optional[str] = None
+) -> Optional[List[str]]:
+    """Return ``[node, npx-cli.js]`` for npm's Windows batch shim.
+
+    Windows runs ``.cmd``/``.bat`` shims through ``cmd.exe``, which re-parses
+    the command line: ``&`` splits the command, ``^`` is swallowed and
+    ``%NAME%`` expands environment variables. A prompt passed by the user
+    would arrive truncated or altered. Starting the npm script with Node.js
+    directly keeps every argument intact.
+    """
+    platform = os.name if platform is None else platform
+    if platform != "nt" or not npx.lower().endswith((".cmd", ".bat")):
+        return None
+
+    directory = os.path.dirname(npx)
+    script = os.path.join(directory, _NPX_CLI_RELATIVE_PATH)
+    if not os.path.isfile(script):
+        return None
+
+    node = os.path.join(directory, "node.exe")
+    if not os.path.isfile(node):
+        node = shutil.which("node") or ""
+        if not node or node.lower().endswith((".cmd", ".bat")):
+            return None
+    return [node, script]
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Run the npm CLI through npx and return its exit code."""
     args = list(sys.argv[1:] if argv is None else argv)
@@ -38,7 +71,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         sys.stderr.write(_NPX_MISSING_MESSAGE)
         return 127
 
-    command = [npx, "--yes", npm_spec(), *args]
+    launcher = _node_launcher(npx) or [npx]
+    command = [*launcher, "--yes", npm_spec(), *args]
 
     try:
         completed = subprocess.run(command, check=False)
@@ -47,6 +81,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 130
     except OSError as exc:
         sys.stderr.write(
-            "consilium: failed to start {0}: {1}\n".format(npx, exc)
+            "consilium: failed to start {0}: {1}\n".format(command[0], exc)
         )
         return 127

@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (must equal package.json and python/pyproject.toml, e.g. 1.10.0)"
+        description: "Version to publish (must equal package.json and python/pyproject.toml, e.g. X.Y.Z)"
         required: true
 
 permissions:
@@ -38,14 +38,17 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
       - name: Install build tools
         run: pip install build twine
+
+      - name: Run Python launcher tests
+        run: python -m unittest discover -s python/tests -v
 
       - name: Resolve and validate version
         id: version

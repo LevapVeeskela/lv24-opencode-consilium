@@ -153,7 +153,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 
 - **stdout 放数据，stderr 放进度。** 用 `-f json`、`consilium models --json` 或 MCP，不要解析人类文本。
 - **错误类型化。** `errorCode` 为 `RATE_LIMITED`、`MODEL_UNAVAILABLE`、`EMPTY_RESPONSE`、`AGENT_NOT_FOUND`、`COST_LIMIT`、`TIMEOUT` 等，退出码 `0/1/2/3`（`3` = 策略门禁）。
-- **状态是文件。** 产物在 `.consilium/runs/<id>/`，`--replay <id>` 复原；`--auto` 默认关闭。
+- **状态是文件。** 产物在 `.consilium/runs/<id>/`，`--replay <id>` 复原；`autoApprove`（OpenCode 的 `--auto`）默认关闭，需在可信配置中显式启用。
 
 机器索引：[`llms.txt`](../llms.txt)；内部实现：[`session-and-plugin.md`](session-and-plugin.md)。
 ## CLI 参考
