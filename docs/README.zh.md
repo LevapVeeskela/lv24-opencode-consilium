@@ -268,7 +268,7 @@ consilium audit --since origin/main --allow-write   # 显式取消只读
 consilium --isolate --read-only "Review the migration"
 ```
 
-限制通过临时 `.opencode/opencode.json` 层生效：OpenCode 在直接的项目配置之后加载该层。Consilium 先加锁、备份已有层，合并 V2 `agents.<name>.permissions` 与 V1 `agent.<name>.tools`，并在 `finally` 中按字节精确恢复（包括取消）。残留锁会在下次运行时恢复；层不可读或已存在 `.opencode/opencode.jsonc` 时 fail-closed，而不是静默地无限制运行。只读运行期间，同一项目中其他交互式 OpenCode 会话会看到临时限制。
+限制通过临时 `.opencode/opencode.json` 层生效：OpenCode 在直接的项目配置之后加载该层。Consilium 先加锁、备份已有层，合并 V2 `agents.<name>.permissions` 与 V1 `agent.<name>.tools`，并在 `finally` 中按字节精确恢复（包括取消）。残留锁会在下次运行时恢复；层不可读或已存在 `.opencode/opencode.jsonc` 时 fail-closed，而不是静默地无限制运行。使用 `--isolate --read-only` 时，`.jsonc` 检查会在创建 worktree 和启动 Agent 之前执行，CLI 以退出码 `2` 结束；将文件改为 `.opencode/opencode.json` 或使用 `--allow-write`。只读运行期间，同一项目中其他交互式 OpenCode 会话会看到临时限制。
 
 `--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree，基于 HEAD 加 tracked 工作区改动（`git stash create`）。不会复制 untracked 文件。启用 `--read-only` 时，拒绝层写入每个 worktree 内部；主项目绝不会作为 Agent 的 cwd。每次调用后（成功、出错或取消）都会删除 worktree，崩溃残留由保守清理处理。非 git 项目会在调用模型前失败。
 
@@ -456,7 +456,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
-- **1.12.1** — Python MCP 启动器：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。npm 引擎无变化；601 个 JavaScript 测试 + 16 个 Python 测试。
+- **1.12.1** — Python MCP 启动器与隔离加固：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。`--isolate --read-only` 在仓库含 `.opencode/opencode.jsonc` 时立即以退出码 `2` 失败（改为 `.opencode/opencode.json` 或使用 `--allow-write`），而不是在每个 Agent 内报错。worktree 清理会规范化路径，避免把 macOS `/private/var` 或 Windows 8.3/长路径下的活跃 worktree 误判为未注册；Linux、Windows、macOS 清理测试通过手动 `worktree-tests` workflow 运行。601 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.0** — 托管隔离与 MCP replay：`--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree（基于 HEAD + tracked 改动），在每个 worktree 内应用只读层并在调用后删除；崩溃残留由保守清理处理，非 git 项目在调用模型前失败。MCP 新增 `consilium_replay`：从已保存产物恢复 task/模型/选项并通过 progress 通知流式反馈。评估工具新增 `npm run eval:report`，校验真实 `eval --json`/`--compare-rounds --json` 并生成 `docs/eval-results.md`，不编造数字；588 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.11.0** — 只读与隔离运行、MCP 产物工具、工单报告与更大的评估语料：`--read-only` 通过带锁、备份和按字节精确恢复的临时 `.opencode/opencode.json` 层，将专家与主席限制为 read/glob/grep；`audit` 与 GitHub Action 默认只读，`--allow-write` 可取消；`--isolate` 让每个 Agent 在 OpenCode worktree 中运行；MCP 新增 `consilium_list_runs`、`consilium_get_run`、`consilium_sarif` 和 `consilium_diff_runs`；`--report jira|linear` 渲染 Jira wiki/Linear Markdown；V1 `tools`/`permission` 现在迁移为有序的 V2 规则；评估语料扩充到 22 个 fixture，基准数字由真实运行生成而不提交；561 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.10.0** — PyPI 发行与 GitHub Action 的 SARIF 上传：`pip install lv24-opencode-consilium` 安装一个无依赖的薄 `consilium` 启动器，通过 `npx` 委托给 npm CLI（仍需 Node.js >= 18 与 OpenCode；npm 仍是规范发行版）；PyPI 发布使用 `.github/workflows/pypi-publish.yml` 中的 Trusted Publishing（OIDC），GitHub release 无需令牌或 OTP 即可同时发布 npm 与 PyPI；`consilium sarif --run <id|latest> [--output <file>]` 从已保存产物导出 SARIF，无需重新运行议会；复合 Action 现在传入 `--artifacts`、导出 SARIF 并通过 `github/codeql-action/upload-sarif` 上传（`sarif`、`sarif-file`、`category` 输入；需要 `security-events: write`），SARIF 失败不会掩盖门禁；522 个 JavaScript 测试 + 5 个 Python 测试。
@@ -472,10 +472,10 @@ const top = selectCouncilModels(models, 5);
 - **1.3.0** — 运行产物、`--replay`/`--diff-runs`、`--consensus`、`--smart-experts`、`--max-cost`、`--fallback-models`、`--session` 及对应 MCP 参数。
 - **1.2.0** — 支持 V2 并保留 V1：双配置段、目录合并、始终传 `--model`、`mcp.servers`、`--native-v2`。
 ## 路线图
-- 在 22 个 fixture 上发布实测评估结果（真实提供商上的 catch/FP/p50/cost 证明；生成器已就绪，M）；为隔离只读模式增加 `.opencode/opencode.jsonc` 的 fail-fast 预检（S）；在 Windows/macOS 真实 runner 上覆盖托管 worktree 清理（M）。
-- 1.12.0 已发布托管只读 worktree、MCP replay 与自动 eval 报告生成器；上一版路线图中的 `/council` 和 Jira/Linear 导出已在 1.11.0 发布。
+- 在 22 个 fixture 上发布实测评估结果（真实提供商上的 catch/FP/p50/cost 证明；生成器已就绪，M）；支持从自定义产物目录进行 MCP replay（在相同 confinement 保证下重跑 `.consilium/runs` 之外的产物，S）。
+- 1.12.1 已发布 `.opencode/opencode.jsonc` fail-fast 预检与跨平台 worktree 清理覆盖；1.12.0 已发布托管只读 worktree、MCP replay 与自动 eval 报告生成器。
 
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，588 个测试）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（9 个启动器测试）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，601 个测试，2 个平台跳过）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（16 个启动器测试）。
 ## 许可证
 [MIT](../LICENSE)

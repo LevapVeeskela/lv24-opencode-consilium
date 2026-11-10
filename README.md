@@ -535,7 +535,7 @@ consilium audit --since origin/main --fail-on high   # audit is read-only by def
 consilium audit --since origin/main --allow-write   # explicit opt-out
 ```
 
-The restriction is enforced through a temporary `.opencode/opencode.json` layer, which OpenCode loads after the direct project config. Consilium takes a lock, backs up an existing layer, merges V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, and restores the original bytes in `finally` (including cancellation). A stale lock is recovered on the next run; an unreadable layer or an existing `.opencode/opencode.jsonc` fails closed instead of silently running without enforcement. While a read-only run is active, other interactive OpenCode sessions in the same project see the temporary restrictions.
+The restriction is enforced through a temporary `.opencode/opencode.json` layer, which OpenCode loads after the direct project config. Consilium takes a lock, backs up an existing layer, merges V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, and restores the original bytes in `finally` (including cancellation). A stale lock is recovered on the next run; an unreadable layer or an existing `.opencode/opencode.jsonc` fails closed instead of silently running without enforcement. With `--isolate --read-only`, the `.jsonc` check runs before any worktree or agent and exits `2`; rename it to `.opencode/opencode.json` or use `--allow-write`. While a read-only run is active, other interactive OpenCode sessions in the same project see the temporary restrictions.
 
 `--isolate` creates a managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked working-tree changes (`git stash create`). Untracked files are not copied. With `--read-only`, the deny overlay is applied inside each worktree; the main project is never used as the agent cwd. Worktrees are removed after every call (success, error or cancellation), and a conservative stale cleanup handles crashed runs. A non-git project fails before any model call.
 
@@ -812,7 +812,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
-**1.12.1** — Python MCP launcher. `pip install lv24-opencode-consilium` now also installs the `consilium-mcp` console script, which starts the same stdio MCP server through `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; arguments, environment and exit codes are forwarded, and `python -m lv24_opencode_consilium.mcp` is supported. No changes to the npm engine. 601 JavaScript tests + 16 Python tests.
+**1.12.1** — Python MCP launcher and isolation hardening. `pip install lv24-opencode-consilium` now also installs the `consilium-mcp` console script, which starts the same stdio MCP server through `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; arguments, environment and exit codes are forwarded, and `python -m lv24_opencode_consilium.mcp` is supported. `--isolate --read-only` now fails fast with CLI exit `2` when the repository has `.opencode/opencode.jsonc` (rename it to `.opencode/opencode.json` or use `--allow-write`) instead of failing inside every agent. Worktree cleanup is canonicalized and never treats a live worktree as unregistered when git reports a macOS `/private/var` or Windows 8.3/long path; Linux, Windows and macOS cleanup tests run via the manual `worktree-tests` workflow. 601 JavaScript tests (2 platform-skipped) + 16 Python tests.
 
 **1.12.0** — managed isolation and MCP replay. `--isolate` now creates a Consilium-managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked changes, applies the read-only overlay inside each worktree, and removes it after every call; stale worktrees are cleaned conservatively and non-git projects fail before any model call. MCP gains `consilium_replay`, restoring a saved task/models/options and streaming progress through `progressToken`. The eval harness gets `npm run eval:report`, which validates recorded `eval --json`/`--compare-rounds --json` output and renders `docs/eval-results.md` without inventing numbers. 588 JavaScript tests + 9 Python tests.
 
@@ -847,19 +847,18 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 | Idea | Value | Size |
 | --- | --- | --- |
 | Publish measured eval results for the 22 fixtures | Catch/FP/p50/cost proof on a real provider; generator is ready | M |
-| Fail-fast preflight for `.opencode/opencode.jsonc` in isolated read-only | Surface the limitation before any agent spawn, not as per-agent failures | S |
-| Windows/macOS integration coverage for managed worktree cleanup | Catch file-lock and path edge cases on real runners | M |
+| MCP replay from custom artifact roots | Re-run artifacts saved outside `.consilium/runs` with the same confinement guarantees | S |
 
-1.12.0 shipped managed read-only worktrees, MCP replay, and the automated eval report generator. The previous `/council` and Jira/Linear roadmap items shipped in 1.11.0.
+1.12.1 shipped the `.opencode/opencode.jsonc` fail-fast preflight and cross-platform worktree cleanup coverage; 1.12.0 shipped managed read-only worktrees, MCP replay and the eval report generator.
 
 ## Development
 
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (588 tests)
+npm test            # build + node:test (601 tests, 2 platform-skipped)
 npm run typecheck   # tsc --noEmit
-python -m unittest discover -s python/tests   # 9 launcher tests
+python -m unittest discover -s python/tests   # 16 launcher tests
 ```
 
 Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / config key): [`docs/architecture.md`](docs/architecture.md). Release process (Trusted Publishing, tags, GHCR): [`docs/releasing.md`](docs/releasing.md).

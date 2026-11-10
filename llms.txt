@@ -8,7 +8,7 @@ Version: 1.12.1 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 - `npm install -g lv24-opencode-consilium`
 - `npx -y lv24-opencode-consilium --help`
-- `pip install lv24-opencode-consilium` — thin Python launcher that delegates to the npm CLI via `npx` (still needs Node.js >= 18 and OpenCode; npm is canonical).
+- `pip install lv24-opencode-consilium` — thin Python launcher with `consilium`/`consilium-mcp` console scripts that delegate to the npm package via `npx` (still needs Node.js >= 18 and OpenCode; npm is canonical).
 - Container: `docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1`
 - Requires the OpenCode CLI (`npm install -g opencode-ai`), authenticated; V1 or V2.
 
@@ -50,7 +50,7 @@ Version: 1.12.1 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 ## Safety
 
-- `--read-only` writes a temporary `.opencode/opencode.json` layer with V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, holds `.consilium/read-only.lock`, backs up an existing layer and restores it on success/error/cancel/exit. Invalid JSON, an existing `.opencode/opencode.jsonc` or symlinked layer fails closed.
+- `--read-only` writes a temporary `.opencode/opencode.json` layer with V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, holds `.consilium/read-only.lock`, backs up an existing layer and restores it on success/error/cancel/exit. Invalid JSON, an existing `.opencode/opencode.jsonc` or symlinked layer fails closed. With `--isolate --read-only`, the `.jsonc` check happens before any agent and exits CLI `2`.
 - `metadata.safety = { readOnly, isolate }` records the effective policy in results/artifacts.
 - `--isolate` creates a managed git worktree per agent under `.consilium/worktrees`, includes tracked uncommitted changes, does not copy untracked files, applies the read-only overlay inside each worktree, and removes it after the call; stale cleanup handles crashed runs.
 

@@ -535,7 +535,7 @@ consilium audit --since origin/main --allow-write   # явный отказ от
 consilium --isolate --read-only "Review the migration"
 ```
 
-Ограничение применяется через временный слой `.opencode/opencode.json`, который OpenCode загружает после прямого проектного конфига. Consilium берёт блокировку, делает резервную копию существующего слоя, сливает V2 `agents.<name>.permissions` и V1 `agent.<name>.tools` и восстанавливает исходные байты в `finally` (включая отмену). Устаревшая блокировка восстанавливается при следующем запуске; нечитаемый слой или существующий `.opencode/opencode.jsonc` приводят к fail-closed, а не к тихому запуску без ограничений. Пока read-only-запуск активен, другие интерактивные сессии OpenCode в этом же проекте видят временные ограничения.
+Ограничение применяется через временный слой `.opencode/opencode.json`, который OpenCode загружает после прямого проектного конфига. Consilium берёт блокировку, делает резервную копию существующего слоя, сливает V2 `agents.<name>.permissions` и V1 `agent.<name>.tools` и восстанавливает исходные байты в `finally` (включая отмену). Устаревшая блокировка восстанавливается при следующем запуске; нечитаемый слой или существующий `.opencode/opencode.jsonc` приводят к fail-closed, а не к тихому запуску без ограничений. При `--isolate --read-only` проверка `.jsonc` выполняется до создания worktree и агентов и завершает CLI с кодом `2`; переименуйте файл в `.opencode/opencode.json` или используйте `--allow-write`. Пока read-only-запуск активен, другие интерактивные сессии OpenCode в этом же проекте видят временные ограничения.
 
 `--isolate` создаёт управляемый git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения рабочего дерева (`git stash create`). Untracked-файлы не копируются. С `--read-only` deny-слой применяется внутри каждого worktree; основной проект никогда не используется как cwd агента. Worktree удаляется после каждого вызова (успех, ошибка, отмена), а консервативная очистка убирает осиротевшие каталоги после падений. Проект без git падает до вызова моделей.
 
@@ -811,7 +811,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
-**1.12.1** — MCP-лаунчер для Python. `pip install lv24-opencode-consilium` теперь также устанавливает консольный скрипт `consilium-mcp`, который запускает тот же stdio MCP-сервер через `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; аргументы, окружение и код выхода передаются, поддерживается `python -m lv24_opencode_consilium.mcp`. Движок npm не менялся. 601 тест JavaScript + 16 тестов Python.
+**1.12.1** — MCP-лаунчер для Python и усиление изоляции. `pip install lv24-opencode-consilium` теперь также устанавливает консольный скрипт `consilium-mcp`, который запускает тот же stdio MCP-сервер через `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; аргументы, окружение и код выхода передаются, поддерживается `python -m lv24_opencode_consilium.mcp`. `--isolate --read-only` теперь падает сразу с exit `2`, если в репозитории есть `.opencode/opencode.jsonc` (переименуйте в `.opencode/opencode.json` или используйте `--allow-write`), вместо ошибки в каждом агенте. Очистка worktree канонизирует пути и не принимает живой worktree за незарегистрированный, когда git отдаёт macOS `/private/var` или Windows 8.3/длинный путь; тесты очистки идут на Linux, Windows и macOS через manual workflow `worktree-tests`. 601 тест JavaScript (2 платформенных skip) + 16 тестов Python.
 
 **1.12.0** — управляемая изоляция и MCP replay. `--isolate` создаёт управляемый Consilium git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения, применяет read-only-слой внутри каждого worktree и удаляет его после каждого вызова; осиротевшие worktree очищаются консервативно, а проект без git падает до вызова моделей. В MCP добавлен `consilium_replay`: восстановление task/моделей/опций сохранённого артефакта и progress-уведомления. Eval-харнесс получил `npm run eval:report`, который валидирует записанный `eval --json`/`--compare-rounds --json` и рендерит `docs/eval-results.md` без выдуманных цифр. 588 тестов JavaScript + 9 тестов Python.
 
@@ -846,19 +846,18 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Идея | Ценность | Размер |
 | --- | --- | --- |
 | Опубликовать измеренные результаты eval на 22 фикстурах | Доказательство catch/FP/p50/cost на реальном провайдере; генератор готов | M |
-| Fail-fast preflight для `.opencode/opencode.jsonc` в изолированном read-only | Показать ограничение до запуска агентов, а не как ошибку каждого агента | S |
-| Интеграционное покрытие очистки worktree на Windows/macOS | Поймать file-lock и path edge cases на реальных runner | M |
+| MCP replay из произвольных каталогов артефактов | Перезапуск артефактов вне `.consilium/runs` с теми же гарантиями confinement | S |
 
-1.12.0 выпустил управляемые read-only worktree, MCP replay и автогенератор eval-отчёта. Пункты `/council` и Jira/Linear из прошлых планов вышли в 1.11.0.
+1.12.1 выпустил fail-fast preflight для `.opencode/opencode.jsonc` и кросс-платформенное покрытие очистки worktree; 1.12.0 — управляемые read-only worktree, MCP replay и генератор eval-отчёта.
 
 ## Разработка
 
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (588 тестов)
+npm test            # build + node:test (601 тест, 2 платформенных skip)
 npm run typecheck   # tsc --noEmit
-python -m unittest discover -s python/tests   # 9 тестов лаунчера
+python -m unittest discover -s python/tests   # 16 тестов лаунчера
 ```
 
 ## Лицензия
