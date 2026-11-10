@@ -1,0 +1,42 @@
+name: worktree-tests
+
+# Manual-only cross-platform smoke test for Consilium-managed git worktrees
+# (--isolate): worktree creation and cleanup on Linux, Windows and macOS.
+#
+# No automatic triggers, no secrets and no publishing: run it from the Actions
+# tab or with `gh workflow run worktree-tests.yml`.
+# Standard GitHub-hosted runners only; the repository is public, so manual runs
+# are covered by the free Actions allowance. Before enabling this workflow,
+# verify that account/org budgets and overage settings keep extra spend at zero.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worktrees:
+    name: worktree cleanup (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Platform-specific cases skip cleanly; each OS executes its own block.
+      - name: Run worktree tests
+        run: node --test test/isolate.test.mjs test/isolate-platform.test.mjs
