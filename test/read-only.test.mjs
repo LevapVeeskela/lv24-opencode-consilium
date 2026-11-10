@@ -346,6 +346,27 @@ test('битый .opencode/opencode.json: fail closed и файл не трон�
   }
 });
 
+test('.opencode/opencode.jsonc: fail closed без изменения файла', async t => {
+  const dir = mkTemp();
+  try {
+    mkdirSync(join(dir, '.opencode'), { recursive: true });
+    const jsonc = join(dir, '.opencode', 'opencode.jsonc');
+    const original = '{ // project config\n  "agents": {}\n}\n';
+    writeFileSync(jsonc, original, 'utf8');
+
+    await assert.rejects(
+      () => applyReadOnlyOverlay({ cwd: dir, agents: ['arch'] }),
+      /opencode\.jsonc/
+    );
+
+    assert.equal(readFileSync(jsonc, 'utf8'), original);
+    assert.equal(existsSync(join(dir, '.opencode', 'opencode.json')), false);
+    assert.equal(existsSync(lockPath(dir)), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
 test('ошибка запуска восстанавливает слой и снимает lock', async t => {
   const dir = mkTemp();
   try {

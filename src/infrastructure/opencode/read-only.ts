@@ -14,6 +14,7 @@ import { createHash } from 'crypto';
 import {
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -54,6 +55,7 @@ export const READ_ONLY_PERMISSIONS: readonly PermissionRule[] = Object.freeze([
 const READ_ONLY_V1_TOOLS: Readonly<Record<string, false>> = Object.freeze({
   write: false,
   edit: false,
+  patch: false,
   bash: false,
   webfetch: false,
   task: false
@@ -64,7 +66,7 @@ const READ_ONLY_V1_TOOLS: Readonly<Record<string, false>> = Object.freeze({
  * при AGENT_NOT_FOUND OpenCode повторяет запуск default-агентом; эти записи
  * не дают read-only прогону потерять ограничения на таком фолбэке.
  */
-const BUILTIN_DEFAULT_AGENTS = ['build', 'plan'];
+const BUILTIN_DEFAULT_AGENTS = ['build', 'plan', 'general', 'explore'];
 
 /** Копия правил read-only (без общего изменяемого массива) */
 export function buildReadOnlyPermissions(): PermissionRule[] {
@@ -85,7 +87,13 @@ export function buildReadOnlyOverlayConfig(
   const agents = cloneRecordField(overlay, 'agents');
   const agent = cloneRecordField(overlay, 'agent');
 
-  for (const name of [...new Set([...BUILTIN_DEFAULT_AGENTS, ...agentNames])]) {
+  const names = new Set([
+    ...BUILTIN_DEFAULT_AGENTS,
+    ...agentNames,
+    ...Object.keys(agents),
+    ...Object.keys(agent)
+  ]);
+  for (const name of names) {
     const v2Entry = recordOf(agents[name]);
     agents[name] = { ...v2Entry, permissions: buildReadOnlyPermissions() };
 
@@ -266,6 +274,19 @@ async function acquireLock(
         await sleep(LOCK_WAIT_SLICE_MS);
         continue;
       }
+      // Частично записанный свежий lock может принадлежать живому процессу:
+      // не отбираем его сразу, даём владельцу дописать JSON.
+      if (state === null) {
+        try {
+          const age = Date.now() - statSync(lockPath).mtimeMs;
+          if (age < 2000 && Date.now() < deadline) {
+            await sleep(LOCK_WAIT_SLICE_MS);
+            continue;
+          }
+        } catch {
+          // Lock уже удалён — пробуем создать заново.
+        }
+      }
       // Мёртвый/битый lock: сначала возвращаем проект в исходное состояние.
       recoverStaleState(cwd, lockPath, state, onLog);
     }
@@ -291,6 +312,30 @@ export async function applyReadOnlyOverlay(
   const lockPath = resolve(configDir, 'read-only.lock');
   const target = resolve(cwd, READ_ONLY_OVERLAY_RELATIVE_PATH);
 
+  const jsoncTarget = resolve(cwd, '.opencode/opencode.jsonc');
+  if (existsSync(jsoncTarget)) {
+    throw new Error(
+      'Не удалось включить read-only: .opencode/opencode.jsonc не поддерживается, ' +
+        'потому что временный слой пишется в .opencode/opencode.json. ' +
+        'Переименуйте файл в .opencode/opencode.json или запустите без --read-only.'
+    );
+  }
+  for (const [candidate, label] of [
+    [dirname(target), '.opencode'],
+    [target, READ_ONLY_OVERLAY_RELATIVE_PATH]
+  ] as const) {
+    try {
+      if (lstatSync(candidate).isSymbolicLink()) {
+        throw new Error(
+          `Не удалось включить read-only: ${label} — символическая ссылка, ` +
+            'запись через неё может выйти за пределы проекта.'
+        );
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+
   mkdirSync(configDir, { recursive: true });
   mkdirSync(dirname(target), { recursive: true });
 
@@ -306,18 +351,25 @@ export async function applyReadOnlyOverlay(
 
   const restore = (): void => {
     if (restored) return;
-    restored = true;
-    process.removeListener('exit', onExit);
     try {
       if (originalBytes !== undefined) {
         writeFileSync(target, originalBytes);
       } else if (existsSync(target)) {
         unlinkSync(target);
       }
-    } finally {
-      rmSync(state.backupPath, { force: true });
-      rmSync(lockPath, { force: true });
+    } catch (error) {
+      // Не удаляем backup/lock: следующий запуск восстановит слой по stale lock.
+      options.onLog?.(
+        'warn',
+        `Не удалось восстановить ${READ_ONLY_OVERLAY_RELATIVE_PATH}: ` +
+          `${(error as Error).message}. Бэкап оставлен в .consilium/read-only.backup.`
+      );
+      return;
     }
+    restored = true;
+    process.removeListener('exit', onExit);
+    rmSync(state.backupPath, { force: true });
+    rmSync(lockPath, { force: true });
   };
 
   // Последний рубеж: process.exit()/SIGINT-обработчик CLI завершает процесс,
