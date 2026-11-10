@@ -101,9 +101,9 @@ pip install lv24-opencode-consilium
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.11.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.11.0
+# consilium v1.12.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -271,12 +271,13 @@ Any MCP client with stdio JSON-RPC 2.0 works. Logs go to **stderr**; stdout carr
 | `consilium_free_models` | `limit`, `available_only`, `refresh`, `local_only`, `probe_local` | Ranked free models table + local provider probe |
 | `consilium_doctor` | — | Environment/config diagnostics |
 | `consilium_init_free` | `apply`, `force`, `confirm`, `verify` | Proposal (default) or writes `opencode.json` + `consilium.config.json` |
+| `consilium_replay` | `run` (id or `latest`), optional `read_only`, `isolate`, `artifacts`, `output_file`, `max_cost`, `deadline_ms`, `rounds`, `findings`, `session`, `timeout_ms` | Re-run a saved artifact with its task/models/options and stream progress like `consilium_run` |
 | `consilium_list_runs` | `limit` (1–100, default 10) | Saved runs newest first: id, time, task, success, finding counts |
 | `consilium_get_run` | `run` (id or `latest`, default `latest`) | Full `run.json` as JSON |
 | `consilium_sarif` | `run` (id or `latest`), optional `output_file` | SARIF 2.1.0 JSON, or an atomic workspace-confined file |
 | `consilium_diff_runs` | `left`, `right` (ids or `latest`) | Markdown comparison of two saved runs |
 
-`consilium_init_free` is dry-run by default - pass `"apply": true` to write files; `force: true` also requires `"confirm": true` and creates `.bak` copies. `consilium_run` reports live progress when the client sends a `progressToken`, and its response includes `cost`, a consensus summary and an `**Artifacts:**` line when artifacts are enabled. The four artifact tools are read-only, never call a model, and are confined to `.consilium/runs` and the workspace.
+`consilium_init_free` is dry-run by default - pass `"apply": true` to write files; `force: true` also requires `"confirm": true` and creates `.bak` copies. `consilium_run` and `consilium_replay` report live progress when the client sends a `progressToken`; their responses include `cost`, a consensus summary and an `**Artifacts:**` line when artifacts are enabled. The artifact inspection tools are read-only, never call a model, and are confined to `.consilium/runs` and the workspace.
 
 ## For AI agents
 
@@ -285,7 +286,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -293,6 +294,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
   "safety": { "read_only": "--read-only", "isolate": "--isolate", "metadata": "metadata.safety" },
   "report_formats": ["html", "pr", "markdown", "sarif", "jira", "linear"],
   "artifact_tools": ["consilium_list_runs", "consilium_get_run", "consilium_sarif", "consilium_diff_runs"],
+  "replay_tool": "consilium_replay",
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
@@ -357,7 +359,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--local-only` | Require an explicit local model for every agent; reject non-local providers before running |
 | `--read-only` | Experts and chair may only read/glob/grep; write/edit/patch/shell/webfetch/subagent/MCP tools are denied |
 | `--allow-write` | Opt out of read-only (mutually exclusive with `--read-only`); `audit` is read-only by default |
-| `--isolate` | Run each agent in a separate OpenCode-managed git worktree (`--worktree`) |
+| `--isolate` | Run each agent in a Consilium-managed git worktree under `.consilium/worktrees`; requires a git repo, includes tracked changes, removes the worktree after the call |
 | `--expert-timeout`, `--chair-timeout` | Timeouts in ms (per attempt) |
 | `-r, --retries <n>` | Retry count (0 = single attempt) |
 | `-o, --output <file>` | Save the result (text/markdown/json by `-f`) |
@@ -535,7 +537,7 @@ consilium audit --since origin/main --allow-write   # explicit opt-out
 
 The restriction is enforced through a temporary `.opencode/opencode.json` layer, which OpenCode loads after the direct project config. Consilium takes a lock, backs up an existing layer, merges V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, and restores the original bytes in `finally` (including cancellation). A stale lock is recovered on the next run; an unreadable layer or an existing `.opencode/opencode.jsonc` fails closed instead of silently running without enforcement. While a read-only run is active, other interactive OpenCode sessions in the same project see the temporary restrictions.
 
-`--isolate` adds `--worktree` to every `opencode run`, so each agent gets its own git worktree. Worktree lifecycle is managed by OpenCode; read-only applies to the main project, while writes inside a disposable worktree cannot touch the main tree.
+`--isolate` creates a managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked working-tree changes (`git stash create`). Untracked files are not copied. With `--read-only`, the deny overlay is applied inside each worktree; the main project is never used as the agent cwd. Worktrees are removed after every call (success, error or cancellation), and a conservative stale cleanup handles crashed runs. A non-git project fails before any model call.
 
 Both flags are recorded in `metadata.safety` (`readOnly`, `isolate`) and in the run artifacts. The GitHub Action enables `read-only` by default and exposes `read-only: false` for opt-out.
 
@@ -580,7 +582,11 @@ consilium eval --max-cost 0.50        # stop when the budget is exhausted
 
 Each fixture is a task, a small diff with a planted bug, and an `expected.json` (`mustFind` / `mustNotFind` claim substrings, optional `file`, `category`, `minSeverity`). Matching is a normalized claim substring check — no LLM judge — so results are reproducible. The report shows per-fixture caught/missed/false positives, aggregate catch and FP rates, p50 latency and cost. **Twenty-two seed fixtures** ship in [`eval/fixtures`](eval/fixtures), covering injection, authorization, concurrency, reliability, SSRF/path traversal, data integrity, pagination/caching and prompt injection; add your own next to them.
 
-The corpus is production; benchmark numbers must come from a real model run (CI has no model credentials). [`eval/README.md`](eval/README.md#results) documents the exact commands and deliberately ships no invented table; [`docs/eval-results.md`](docs/eval-results.md) is the reporting template for a measured run.
+The corpus is production; benchmark numbers must come from a real model run (CI has no model credentials). [`eval/README.md`](eval/README.md#results) documents the exact commands and deliberately ships no invented table; [`docs/eval-results.md`](docs/eval-results.md) is the reporting template for a measured run. Generate the report from recorded JSON with:
+
+```bash
+npm run eval:report -- --compare eval-compare.json --date 2026-11-10 --commit <sha>
+```
 
 Compare a single pass with debate rounds on the same fixtures:
 
@@ -653,7 +659,7 @@ permissions:
   pull-requests: write
   security-events: write   # required for the SARIF upload
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.11.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -731,7 +737,7 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `rounds` | `1` | `2` = anonymized peer-review round; doubles model calls |
 | `localOnly` | `false` | Require an explicit local model for every agent |
 | `readOnly` | `false` | Restrict experts/chair to read/glob/grep; `audit` forces it unless `--allow-write` |
-| `isolate` | `false` | Run each agent in an OpenCode-managed worktree (`--worktree`) |
+| `isolate` | `false` | Run each agent in a managed git worktree under `.consilium/worktrees` (requires git) |
 | `presets` | — | Custom presets merged over the built-in set |
 | `opencodePath` | `opencode` | Custom CLI path (ignored from project config unless `-c`) |
 | `cwd` | current | Working directory for OpenCode (ignored from project config unless `-c`) |
@@ -766,10 +772,10 @@ const top = selectCouncilModels(models, 5);
 For every expert and the chair, Consilium spawns:
 
 ```text
-opencode run --standalone --format json [--auto] [--worktree] [--agent=NAME] [--model=provider/model]
+opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provider/model]
 ```
 
-The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe and never hits shell or command-line limits. NDJSON events are decoded incrementally (`text`, `step_finish` usage/cost, `error` with `type`/`status`/`retryAfterMs`). The model is always passed as `--model`, so behavior is identical on V1 and V2 where `--agent` does not apply the configured model. Exit codes, stderr tails and structured errors become typed `errorCode`s (`RATE_LIMITED`, `MODEL_UNAVAILABLE`, `AGENT_NOT_FOUND`, …). If an agent name is missing, the call is retried once with the same model on the default agent — the run keeps working without persona agents. Read-only runs temporarily add a project `.opencode/opencode.json` layer with deny permissions; isolated runs add `--worktree`.
+The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe and never hits shell or command-line limits. NDJSON events are decoded incrementally (`text`, `step_finish` usage/cost, `error` with `type`/`status`/`retryAfterMs`). The model is always passed as `--model`, so behavior is identical on V1 and V2 where `--agent` does not apply the configured model. Exit codes, stderr tails and structured errors become typed `errorCode`s (`RATE_LIMITED`, `MODEL_UNAVAILABLE`, `AGENT_NOT_FOUND`, …). If an agent name is missing, the call is retried once with the same model on the default agent — the run keeps working without persona agents. Read-only runs temporarily add a project `.opencode/opencode.json` layer with deny permissions; isolated runs execute the child with the cwd set to a managed worktree.
 
 ## Security
 
@@ -777,7 +783,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 - Agent names and model IDs are validated before use.
 - **Project config is untrusted by default.** A repo's `consilium.config.json` may define models, experts, prompts and presets, but process/path keys — `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath`, string `output.file`, `reportFile`, string `artifacts` — are ignored with a warning. Pass the file explicitly with `-c` to trust it.
 - **Read-only runs** write a temporary `.opencode/opencode.json` layer with deny permissions, hold `.consilium/read-only.lock`, and restore the original bytes on success, error, cancellation and `process.exit`. Invalid JSON, an existing `.opencode/opencode.jsonc`, or a symlinked layer fails closed. Other interactive sessions in the same project see the temporary restrictions while the run is active.
-- **`--isolate`** uses OpenCode-managed worktrees; the main project remains untouched, but worktrees can persist according to OpenCode's own lifecycle.
+- **`--isolate`** creates a managed git worktree per agent under `.consilium/worktrees`, includes tracked uncommitted changes, does not copy untracked files, and removes the worktree after the call; read-only rules are applied inside each worktree. A conservative stale cleanup handles crashed runs.
 - **Windows:** `.cmd`/`.bat` shims run through `cmd.exe` only after every argument passes a strict allowlist (no quotes, `%`, `!`, `^`, `&`, `|`, `<`, `>`, whitespace); `.exe` and POSIX binaries are spawned directly.
 - **MCP:** `tools/call` requires an `id`, the queue is capped at 16, `output_file` and artifact paths are confined to the workspace, and `consilium_init_free` writes `.bak` files and requires `confirm: true` together with `force`.
 - `autoApprove` (auto-approve permissions) is **off** by default; never enable it for untrusted prompts or tools.
@@ -805,6 +811,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 | Empty result | `consilium doctor`, then rerun with `-V` |
 
 ## Changelog
+
+**1.12.0** — managed isolation and MCP replay. `--isolate` now creates a Consilium-managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked changes, applies the read-only overlay inside each worktree, and removes it after every call; stale worktrees are cleaned conservatively and non-git projects fail before any model call. MCP gains `consilium_replay`, restoring a saved task/models/options and streaming progress through `progressToken`. The eval harness gets `npm run eval:report`, which validates recorded `eval --json`/`--compare-rounds --json` output and renders `docs/eval-results.md` without inventing numbers. 588 JavaScript tests + 9 Python tests.
 
 **1.11.0** — read-only and isolated runs, MCP artifact tools, ticket reports and a larger eval corpus. `--read-only` restricts experts and the chair to read/glob/grep through a temporary `.opencode/opencode.json` layer with lock, backup and byte-exact restore; `audit` and the GitHub Action are read-only by default, and `--allow-write` opts out. `--isolate` runs each agent in an OpenCode worktree. MCP gains `consilium_list_runs`, `consilium_get_run`, `consilium_sarif` and `consilium_diff_runs`; `--report jira|linear` renders Jira wiki/Linear Markdown. V1 `tools`/`permission` now migrate to ordered V2 rules. The eval corpus grows to 22 fixtures; benchmark numbers are generated by a real run, not committed. 561 JavaScript tests + 9 Python tests.
 
@@ -836,18 +844,18 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 | Idea | Value | Size |
 | --- | --- | --- |
-| Publish measured eval results for the 22 fixtures | Catch/FP/p50/cost proof on a real provider | M |
-| Read-only inside isolated worktrees + worktree cleanup | Defense in depth for `--isolate` | M |
-| MCP replay/streaming | Run or stream a council from a remote harness | M |
+| Publish measured eval results for the 22 fixtures | Catch/FP/p50/cost proof on a real provider; generator is ready | M |
+| Fail-fast preflight for `.opencode/opencode.jsonc` in isolated read-only | Surface the limitation before any agent spawn, not as per-agent failures | S |
+| Windows/macOS integration coverage for managed worktree cleanup | Catch file-lock and path edge cases on real runners | M |
 
-The `/council` slash command and Jira/Linear export from the previous roadmap shipped in 1.11.0.
+1.12.0 shipped managed read-only worktrees, MCP replay, and the automated eval report generator. The previous `/council` and Jira/Linear roadmap items shipped in 1.11.0.
 
 ## Development
 
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (561 tests)
+npm test            # build + node:test (588 tests)
 npm run typecheck   # tsc --noEmit
 python -m unittest discover -s python/tests   # 9 launcher tests
 ```

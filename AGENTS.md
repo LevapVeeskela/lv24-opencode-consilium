@@ -21,6 +21,7 @@ npm install
 npm run build       # tsc -> dist
 npm test            # build + node:test
 npm run typecheck   # tsc --noEmit
+npm run eval:report -- --compare eval-compare.json   # render a measured eval report
 python -m unittest discover -s python/tests
 python -m build     # in python/, for PyPI
 ```

@@ -97,9 +97,9 @@ pip install lv24-opencode-consilium
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.11.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.11.0
+# consilium v1.12.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -263,6 +263,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 | Инструмент | Аргументы | Результат |
 | --- | --- | --- |
 | `consilium_run` | `task` (обязателен), `experts`, `chair`, `timeout_ms`, `deadline_ms`, `local_only`, `read_only`, `isolate`, `rounds`, `format`, `preset`, `output_file`, `consensus`, `smart_experts`, `max_cost`, `fallback_models`, `session`, `artifacts`, `findings` | Синтез от председателя + мнения экспертов + JSON-метаданные (время, usage, стоимость, модели, находки, safety, дедлайн, дебаты) |
+| `consilium_replay` | `run` (id или `latest`), опционально `read_only`, `isolate`, `artifacts`, `output_file`, `max_cost`, `deadline_ms`, `rounds`, `findings`, `session`, `timeout_ms` | Повторный запуск сохранённого артефакта с его task/моделями/опциями и progress-уведомлениями |
 | `consilium_list_agents` | — | Настроенные эксперты, модели, председатель, пресеты, путь конфига |
 | `consilium_free_models` | `limit`, `available_only`, `refresh`, `local_only`, `probe_local` | Таблица рейтинга бесплатных моделей + проверка локальных провайдеров |
 | `consilium_doctor` | — | Диагностика окружения и конфига |
@@ -272,7 +273,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 | `consilium_sarif` | `run` (id или `latest`), опционально `output_file` | SARIF 2.1.0 JSON или атомарный файл внутри workspace |
 | `consilium_diff_runs` | `left`, `right` (id или `latest`) | Markdown-сравнение двух сохранённых запусков |
 
-`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы; `force: true` дополнительно требует `"confirm": true` и создаёт `.bak`-копии. `consilium_run` показывает прогресс в реальном времени, если клиент прислал `progressToken`, а его ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены. Четыре инструмента артефактов только читают, никогда не вызывают модель и ограничены `.consilium/runs` и workspace.
+`consilium_init_free` по умолчанию работает как dry-run — передайте `"apply": true`, чтобы записать файлы; `force: true` дополнительно требует `"confirm": true` и создаёт `.bak`-копии. `consilium_run` и `consilium_replay` показывают прогресс в реальном времени, если клиент прислал `progressToken`, а их ответ содержит `cost`, сводку консенсуса и строку `**Artifacts:**`, когда артефакты включены. Инструменты инспекции артефактов только читают, никогда не вызывают модель и ограничены `.consilium/runs` и workspace.
 
 ## Для ИИ-агентов
 
@@ -281,7 +282,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -289,6 +290,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
   "safety": { "read_only": "--read-only", "isolate": "--isolate", "metadata": "metadata.safety" },
   "report_formats": ["html", "pr", "markdown", "sarif", "jira", "linear"],
   "artifact_tools": ["consilium_list_runs", "consilium_get_run", "consilium_sarif", "consilium_diff_runs"],
+  "replay_tool": "consilium_replay",
   "models_json": "consilium models --json",
   "config_files": ["consilium.config.json", "consilium.json", ".consiliumrc", ".consiliumrc.json"],
   "config_schema": "schema/config.schema.json",
@@ -353,7 +355,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--local-only` | Требовать явную локальную модель для каждого агента; отклонять нелокальных провайдеров до запуска |
 | `--read-only` | Эксперты и председатель могут только read/glob/grep; write/edit/patch/shell/webfetch/subagent/question/MCP-инструменты запрещены |
 | `--allow-write` | Отказ от read-only (взаимоисключающе с `--read-only`); `audit` по умолчанию работает в read-only |
-| `--isolate` | Запускать каждого агента в отдельном git worktree под управлением OpenCode (`--worktree`) |
+| `--isolate` | Запускать каждого агента в управляемом Consilium git worktree в `.consilium/worktrees`; нужен git, учитываются tracked-изменения, worktree удаляется после вызова |
 | `--expert-timeout`, `--chair-timeout` | Таймауты в мс (на попытку) |
 | `-r, --retries <n>` | Число повторов (0 = одна попытка) |
 | `-o, --output <file>` | Сохранить результат (text/markdown/json по `-f`) |
@@ -535,7 +537,7 @@ consilium --isolate --read-only "Review the migration"
 
 Ограничение применяется через временный слой `.opencode/opencode.json`, который OpenCode загружает после прямого проектного конфига. Consilium берёт блокировку, делает резервную копию существующего слоя, сливает V2 `agents.<name>.permissions` и V1 `agent.<name>.tools` и восстанавливает исходные байты в `finally` (включая отмену). Устаревшая блокировка восстанавливается при следующем запуске; нечитаемый слой или существующий `.opencode/opencode.jsonc` приводят к fail-closed, а не к тихому запуску без ограничений. Пока read-only-запуск активен, другие интерактивные сессии OpenCode в этом же проекте видят временные ограничения.
 
-`--isolate` добавляет `--worktree` в каждый `opencode run`, поэтому каждый агент получает свой git worktree. Жизненным циклом worktree управляет OpenCode: read-only действует на основной проект, а запись внутри одноразового worktree не может затронуть основное дерево.
+`--isolate` создаёт управляемый git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения рабочего дерева (`git stash create`). Untracked-файлы не копируются. С `--read-only` deny-слой применяется внутри каждого worktree; основной проект никогда не используется как cwd агента. Worktree удаляется после каждого вызова (успех, ошибка, отмена), а консервативная очистка убирает осиротевшие каталоги после падений. Проект без git падает до вызова моделей.
 
 Оба флага записываются в `metadata.safety` (`readOnly`, `isolate`) и в артефакты запуска. GitHub Action включает `read-only` по умолчанию и позволяет отключить его через `read-only: false`.
 
@@ -580,7 +582,7 @@ consilium eval --max-cost 0.50        # остановиться при исче
 
 Каждая фикстура — это задача, небольшой diff с посаженным багом и `expected.json` (`mustFind` / `mustNotFind` — подстроки `claim`, опционально `file`, `category`, `minSeverity`). Сопоставление — нормализованная проверка подстроки `claim`, без LLM-судьи, поэтому результаты воспроизводимы. Отчёт показывает по каждой фикстуре caught/missed/false positives, агрегированные catch и FP rates, p50-латентность и стоимость. **Двадцать две (22) стартовых фикстуры** лежат в [`eval/fixtures`](../eval/fixtures) и покрывают инъекции, авторизацию, конкурентность, надёжность, SSRF/path traversal, целостность данных, пагинацию/кэширование и prompt injection; свои можно добавлять рядом.
 
-Корпус — production; числа бенчмарка должны приходить из реального запуска модели (в CI нет доступов к моделям). В [`eval/README.md`](../eval/README.md#results) описаны точные команды и намеренно нет выдуманной таблицы; [`eval-results.md`](eval-results.md) — шаблон отчёта для измеренного запуска.
+Корпус — production; числа бенчмарка должны приходить из реального запуска модели (в CI нет доступов к моделям). В [`eval/README.md`](../eval/README.md#results) описаны точные команды и намеренно нет выдуманной таблицы; [`eval-results.md`](eval-results.md) — шаблон отчёта для измеренного запуска. Сгенерировать отчёт из записанного JSON: `npm run eval:report -- --compare eval-compare.json`.
 
 Сравните одиночный проход с раундами дебатов на тех же фикстурах:
 
@@ -656,7 +658,7 @@ permissions:
   pull-requests: write
   security-events: write   # нужно для загрузки SARIF
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.11.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -734,7 +736,7 @@ permissions:
 | `rounds` | `1` | `2` = раунд анонимизированного peer-review; удваивает вызовы моделей |
 | `localOnly` | `false` | Требовать явную локальную модель для каждого агента |
 | `readOnly` | `false` | Только read/glob/grep для экспертов и председателя; `audit` включает принудительно без `--allow-write` |
-| `isolate` | `false` | Каждый агент в отдельном worktree OpenCode (`--worktree`) |
+| `isolate` | `false` | Каждый агент в управляемом git worktree в `.consilium/worktrees` (нужен git) |
 | `presets` | — | Свои пресеты, сливаются поверх встроенных |
 | `opencodePath` | `opencode` | Свой путь к CLI (игнорируется из проектного конфига без `-c`) |
 | `cwd` | текущая | Рабочая директория для OpenCode (игнорируется из проектного конфига без `-c`) |
@@ -780,7 +782,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 - Имена агентов и id моделей валидируются перед использованием.
 - **Конфиг проекта недоверенный по умолчанию.** `consilium.config.json` в репозитории может задавать модели, экспертов, промпты и пресеты, но process/path-ключи — `opencodePath`, `opencodeArgs`, `autoApprove`, `cwd`, `opencodeConfigPath`, строковый `output.file`, `reportFile`, строковый `artifacts` — игнорируются с предупреждением. Чтобы доверять им, передайте файл явно через `-c`.
 - **Read-only-запуски** пишут временный слой `.opencode/opencode.json` с deny-разрешениями, держат `.consilium/read-only.lock` и восстанавливают исходные байты при успехе, ошибке, отмене и `process.exit`. Битый JSON, существующий `.opencode/opencode.jsonc` или слой-симлинк приводят к fail-closed. Другие интерактивные сессии в этом же проекте видят временные ограничения, пока запуск активен.
-- **`--isolate`** использует worktree под управлением OpenCode; основной проект остаётся нетронутым, но worktree могут сохраняться по жизненному циклу самого OpenCode.
+- **`--isolate`** создаёт управляемый git worktree на каждого агента в `.consilium/worktrees`, включает tracked-изменения, не копирует untracked-файлы и удаляет worktree после вызова; read-only-правила применяются внутри каждого worktree, а консервативная очистка убирает осиротевшие каталоги.
 - **Windows:** `.cmd`/`.bat`-шимы запускаются через `cmd.exe` только после строгой проверки каждого аргумента (без кавычек, `%`, `!`, `^`, `&`, `|`, `<`, `>`, пробелов); `.exe` и POSIX-бинарники запускаются напрямую.
 - **MCP:** `tools/call` требует `id`, очередь ограничена 16, `output_file` и пути артефактов удерживаются внутри workspace, а `consilium_init_free` делает `.bak` и требует `confirm: true` вместе с `force`.
 - `autoApprove` (авто-подтверждение разрешений) **выключен** по умолчанию; не включайте его для недоверенных промптов и инструментов.
@@ -808,6 +810,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 | Пустой результат | `consilium doctor`, затем повторный запуск с `-V` |
 
 ## История изменений
+
+**1.12.0** — управляемая изоляция и MCP replay. `--isolate` создаёт управляемый Consilium git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения, применяет read-only-слой внутри каждого worktree и удаляет его после каждого вызова; осиротевшие worktree очищаются консервативно, а проект без git падает до вызова моделей. В MCP добавлен `consilium_replay`: восстановление task/моделей/опций сохранённого артефакта и progress-уведомления. Eval-харнесс получил `npm run eval:report`, который валидирует записанный `eval --json`/`--compare-rounds --json` и рендерит `docs/eval-results.md` без выдуманных цифр. 588 тестов JavaScript + 9 тестов Python.
 
 **1.11.0** — read-only- и изолированные запуски, MCP-инструменты артефактов, отчёты для тикетов и расширенный eval-корпус. `--read-only` ограничивает экспертов и председателя инструментами read/glob/grep через временный слой `.opencode/opencode.json` с блокировкой, резервной копией и побайтовым восстановлением; `audit` и GitHub Action по умолчанию работают в read-only, а `--allow-write` отменяет ограничение. `--isolate` запускает каждого агента в worktree OpenCode. В MCP добавлены `consilium_list_runs`, `consilium_get_run`, `consilium_sarif` и `consilium_diff_runs`; `--report jira|linear` рендерит Jira wiki/Linear Markdown. V1 `tools`/`permission` теперь мигрируют в упорядоченные правила V2. Eval-корпус вырос до 22 фикстур; числа бенчмарка получаются реальным запуском моделей и не коммитятся. 561 тест JavaScript + 9 тестов Python.
 
@@ -839,18 +843,18 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 | Идея | Ценность | Размер |
 | --- | --- | --- |
-| Опубликовать измеренные результаты eval на 22 фикстурах | Доказательство catch/FP/p50/cost на реальном провайдере | M |
-| Read-only внутри изолированных worktree + очистка worktree | Глубина защиты для `--isolate` | M |
-| MCP replay/streaming | Запуск или стрим совета из удалённого харнесса | M |
+| Опубликовать измеренные результаты eval на 22 фикстурах | Доказательство catch/FP/p50/cost на реальном провайдере; генератор готов | M |
+| Fail-fast preflight для `.opencode/opencode.jsonc` в изолированном read-only | Показать ограничение до запуска агентов, а не как ошибку каждого агента | S |
+| Интеграционное покрытие очистки worktree на Windows/macOS | Поймать file-lock и path edge cases на реальных runner | M |
 
-Slash-команда `/council` и экспорт в Jira/Linear из прошлых планов вышли в 1.11.0.
+1.12.0 выпустил управляемые read-only worktree, MCP replay и автогенератор eval-отчёта. Пункты `/council` и Jira/Linear из прошлых планов вышли в 1.11.0.
 
 ## Разработка
 
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (561 тест)
+npm test            # build + node:test (588 тестов)
 npm run typecheck   # tsc --noEmit
 python -m unittest discover -s python/tests   # 9 тестов лаунчера
 ```

@@ -12,6 +12,7 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { getMcpTools, handleMcpRequest } from '../dist/mcp.js';
@@ -187,6 +188,15 @@ function tempProject(t) {
     'utf8'
   );
   mkdirSync(join(project, '.consilium', 'runs'), { recursive: true });
+  // --isolate requires a real git repository with a commit; the worktree must
+  // also contain the OpenCode agent definitions used by the fake runner.
+  const git = (args) =>
+    execFileSync('git', args, { cwd: project, stdio: 'ignore' });
+  git(['init']);
+  git(['config', 'user.email', 'consilium-test@example.com']);
+  git(['config', 'user.name', 'Consilium Test']);
+  git(['add', '.']);
+  git(['commit', '-m', 'fixture']);
   return project;
 }
 
@@ -318,7 +328,8 @@ test('consilium_replay: восстанавливает артефакт и ст�
       ['arch', 'consilium', 'sec']
     );
     for (const capture of captures) {
-      assert.ok(capture.args.includes('--worktree'), JSON.stringify(capture.args));
+      const cwd = capture.cwd.replace(/\\/g, '/');
+      assert.match(cwd, /\.consilium\/worktrees\//, JSON.stringify(capture.args));
       assert.match(capture.prompt, /Replay the saved auth review/);
       assert.ok(capture.overlay, 'read_only должен включить временный слой');
       assert.deepEqual(capture.overlay.agents.arch.permissions[0], {

@@ -62,7 +62,7 @@ installation hint. An interrupted run exits with code `130`.
 ## Version pinning
 
 By default the launcher runs the npm package version matching its own version
-(currently `1.11.0`). Override it with `CONSILIUM_NPM_VERSION` to use any npm
+(currently `1.12.0`). Override it with `CONSILIUM_NPM_VERSION` to use any npm
 version or tag:
 
 ```bash

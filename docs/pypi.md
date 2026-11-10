@@ -57,7 +57,7 @@ metadata files differ, and `test/version-consistency.test.mjs` checks all three.
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=1.11.0
+gh workflow run pypi-publish.yml -f version=1.12.0
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -89,10 +89,10 @@ Set `CONSILIUM_NPM_VERSION` to pin the npm CLI version the wrapper invokes
 (default: the wrapper's own version):
 
 ```bash
-CONSILIUM_NPM_VERSION=1.11.0 consilium "Review the API"
+CONSILIUM_NPM_VERSION=1.12.0 consilium "Review the API"
 ```
 
-On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.11.0"`.
+On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.12.0"`.
 
 Upgrade with `pip install --upgrade lv24-opencode-consilium`. The PyPI version is
 kept in lockstep with npm, so either installation route gives the same engine.
@@ -123,7 +123,7 @@ python -m twine upload --repository-url https://test.pypi.org/legacy/ python/dis
 The committed workflow publishes to PyPI only and never handles tokens. For a CI
 dry run, add a separate job that passes
 `repository-url: https://test.pypi.org/legacy/` to the publish action. Use a
-throwaway version such as `1.11.0rc1` and never reuse it for a real release.
+throwaway version such as `1.12.0rc1` and never reuse it for a real release.
 
 ## Cost
 

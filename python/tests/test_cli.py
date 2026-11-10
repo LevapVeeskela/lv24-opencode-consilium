@@ -167,7 +167,7 @@ class MainTests(unittest.TestCase):
         )
 
     def test_version_matches_expected_release(self):
-        self.assertEqual(__version__, "1.11.0")
+        self.assertEqual(__version__, "1.12.0")
 
     def test_node_launcher_resolves_batch_shim(self):
         node_dir = self.root / "nodejs"
