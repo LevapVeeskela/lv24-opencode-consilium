@@ -154,6 +154,39 @@ Record the date, fixture count, configured experts and model ids next to the
 JSON output. Re-run on the target machine instead of reusing another machine's
 numbers.
 
+## Generating the report
+
+[`scripts/eval-report.mjs`](../scripts/eval-report.mjs) turns those JSON files
+into the markdown report. It reads `eval/fixtures` for the coverage table and
+refuses to write when a required field is missing, so it cannot silently publish
+placeholder numbers.
+
+```bash
+# Full single-vs-debate report; writes docs/eval-results.md by default.
+node scripts/eval-report.mjs --compare eval-compare.json
+
+# Single-run report.
+node scripts/eval-report.mjs --single eval-single.json
+
+# Validate the inputs and print a summary without writing anything.
+node scripts/eval-report.mjs --check --compare eval-compare.json
+
+# Equivalent npm script (arguments after -- are passed through).
+npm run eval:report -- --compare eval-compare.json
+```
+
+Useful options: `--out <file>` (default `docs/eval-results.md`),
+`--date <YYYY-MM-DD>`, `--commit <sha>`, `--version <version>` and
+`--fixtures <dir>` (default `eval/fixtures`). The generated file contains the
+exact commands, the aggregate single/debate/delta table, per-fixture metrics,
+missed findings, false positives, errors and the on-disk fixture count (22 in
+the current corpus).
+
+The JSON does not contain model or provider ids, so keep the configured expert
+set next to the report. Do not compare runs with different fixtures or models.
+The generator lives in the repository checkout; `scripts/` is not part of the
+published npm package, so run it from a clone.
+
 ## Adding a fixture
 
 1. Create a directory named `<number>-<short-category>` under `eval/fixtures/`.
