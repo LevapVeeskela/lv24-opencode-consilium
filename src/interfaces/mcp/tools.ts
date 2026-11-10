@@ -50,6 +50,18 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: 'boolean',
           description: 'Allow only local model providers (Ollama, LM Studio, vLLM, llama.cpp, ...).'
         },
+        read_only: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Run experts and the chair read-only: only read/glob/grep are allowed; write, edit, shell, webfetch, subagent, skill, question and MCP tools are denied; .env files stay blocked.'
+        },
+        isolate: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Run each agent in its own disposable OpenCode worktree (--worktree). Read-only rules apply to the main project; worktree changes never reach it.'
+        },
         output_file: {
           type: 'string',
           description: 'Optional path for saving the result (must stay inside the workspace).'

@@ -57,6 +57,9 @@ export function applyCliOverrides(config: ConsiliumConfig, options: CLIOptions):
   if (options.findings === true) result.findings = true;
   if (options.noFindings) result.findings = false;
   if (options.smartExperts) result.smartExperts = true;
+  // readOnly: true — --read-only, false — --allow-write; undefined сохраняет конфиг.
+  if (options.readOnly !== undefined) result.readOnly = options.readOnly;
+  if (options.isolate === true) result.isolate = true;
   if (options.maxCost !== undefined) result.maxCost = options.maxCost;
   if (options.fallbackModels !== undefined) result.fallbackModels = options.fallbackModels;
   if (options.session !== undefined) result.session = options.session;

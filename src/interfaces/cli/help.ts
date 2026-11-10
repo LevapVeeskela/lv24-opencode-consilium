@@ -22,7 +22,7 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   consilium history [--limit N] [--json]
   consilium stats [--json] [--html <файл>]
   consilium audit --since <ref> [--dry-run] [--json] [--findings|--no-findings]
-                   [--fail-on <уровень>] [--max-cost <usd>]
+                   [--allow-write] [--fail-on <уровень>] [--max-cost <usd>]
   consilium sarif [--run <id|latest>] [--output <файл>]
 
 КОДЫ ВЫХОДА:
@@ -51,6 +51,15 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
                           фикстурах; взаимоисключающе с --rounds
   --local-only            Только локальные модели (ollama/lmstudio/vllm/…);
                           завершиться с кодом 2, если модель внешняя
+  --read-only             Только чтение: экспертам и председателю разрешены
+                          read/glob/grep; write/edit/shell/webfetch/subagent,
+                          skill/question и MCP-инструменты запрещены;
+                          .env-файлы закрыты (audit включает по умолчанию)
+  --allow-write           Разрешить запись (отключает --read-only);
+                          взаимоисключающе с --read-only
+  --isolate               Каждый агент — в отдельном одноразовом worktree
+                          OpenCode (--worktree); read-only применяется к
+                          основному проекту, правки worktree в него не попадают
   -r, --retries <число>   Повторные попытки
 
   -o, --output <файл>     Сохранить результат в файл
@@ -124,8 +133,10 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   stats [--json] [--html <файл>]
                           Сводная статистика запусков; --html — автономный HTML-отчёт
   audit --since <ref> [--dry-run] [--json] [--findings|--no-findings]
-        [--fail-on <уровень>] [--max-cost <usd>] [-c <файл>] [-s] [--artifacts]
+        [--allow-write] [--fail-on <уровень>] [--max-cost <usd>]
+        [-c <файл>] [-s] [--artifacts]
                           Аудит изменений с git ref: ревью diff, баги, безопасность и тесты;
+                          по умолчанию работает read-only; --allow-write разрешает запись;
                           --dry-run — показать запрос без вызова моделей
                           --fail-on автоматически включает находки
   sarif [--run <id|latest>] [--output <файл>]
@@ -174,6 +185,9 @@ MCP (OpenCode V1/V2, Claude Desktop, Codex, любой MCP-харнесс):
   consilium eval --compare-rounds --fail-under 80
   consilium init --local --dry-run
   consilium audit --since HEAD~1 --fail-on high
+  consilium audit --since HEAD~1 --allow-write
+  consilium --read-only "Проверить безопасность API"
+  consilium --isolate --read-only "Оценить архитектуру проекта"
   consilium sarif --run latest --output consilium.sarif
   consilium --rounds 2 "Оценить архитектуру проекта"
   consilium doctor

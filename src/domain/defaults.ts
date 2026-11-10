@@ -107,6 +107,8 @@ export const DEFAULT_CONFIG: ConsiliumConfig = {
   autoDiscoverAgents: true,
   findings: false,
   localOnly: false,
+  readOnly: false,
+  isolate: false,
   context: 'off',
   debounceMs: 400
 };

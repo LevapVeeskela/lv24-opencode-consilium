@@ -117,6 +117,8 @@ export function parseArgs(argv: string[]): CLIOptions {
   const options: CLIOptions = { task: '', failOn: 'none' };
   const taskParts: string[] = [];
   let afterTerminator = false;
+  let sawReadOnly = false;
+  let sawAllowWrite = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? '';
@@ -244,6 +246,17 @@ export function parseArgs(argv: string[]): CLIOptions {
         break;
       case '--local-only':
         options.localOnly = true;
+        break;
+      case '--read-only':
+        sawReadOnly = true;
+        options.readOnly = true;
+        break;
+      case '--allow-write':
+        sawAllowWrite = true;
+        options.readOnly = false;
+        break;
+      case '--isolate':
+        options.isolate = true;
         break;
       case '--probe-local':
         options.probeLocal = true;
@@ -411,6 +424,12 @@ export function parseArgs(argv: string[]): CLIOptions {
   if (options.compareRounds === true && options.rounds !== undefined) {
     throw new UsageError(
       'Флаги --compare-rounds и --rounds взаимоисключающие: выберите один.'
+    );
+  }
+
+  if (sawReadOnly && sawAllowWrite) {
+    throw new UsageError(
+      'Флаги --read-only и --allow-write взаимоисключающие: выберите один.'
     );
   }
 

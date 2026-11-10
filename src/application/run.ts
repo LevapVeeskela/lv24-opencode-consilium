@@ -248,6 +248,12 @@ export function createCancelledResult(
   };
 }
 
+/** Фактически применённые ограничения безопасности запуска */
+export interface RunSafetyMetadata {
+  readOnly: boolean;
+  isolate: boolean;
+}
+
 /** Дополняет метаданные отменённого запуска */
 export function buildCancelledMetadata(
   experts: AgentResult[],
@@ -255,7 +261,8 @@ export function buildCancelledMetadata(
   metadata: ConsiliumMetadata | undefined,
   cost: CostReport,
   session: string | undefined,
-  findings?: FindingsSummary
+  findings?: FindingsSummary,
+  safety?: RunSafetyMetadata
 ): ConsiliumMetadata {
   const results = chair ? [...experts, chair] : experts;
   return {
@@ -264,7 +271,8 @@ export function buildCancelledMetadata(
     sessions: collectSessions(results),
     cost,
     ...(session ? { session } : {}),
-    ...(findings ? { findings } : {})
+    ...(findings ? { findings } : {}),
+    ...(safety ? { safety: { ...safety } } : {})
   };
 }
 
@@ -282,6 +290,8 @@ export interface BuildCompletedResultInput {
   smartSelection?: SmartExpertSelection;
   session?: string;
   fallbackModels: string[];
+  /** Фактически применённые read-only/isolate */
+  safety?: RunSafetyMetadata;
 }
 
 /** Собирает итоговый результат запуска с согласием, стоимостью и метаданными */
@@ -323,7 +333,8 @@ export function buildCompletedResult(input: BuildCompletedResultInput): Consiliu
         : {}),
       ...(input.session ? { session: input.session } : {}),
       ...(Object.keys(sessions).length > 0 ? { sessions } : {}),
-      ...(input.fallbackModels.length > 0 ? { fallbackModels: input.fallbackModels } : {})
+      ...(input.fallbackModels.length > 0 ? { fallbackModels: input.fallbackModels } : {}),
+      ...(input.safety ? { safety: { ...input.safety } } : {})
     }
   };
 }

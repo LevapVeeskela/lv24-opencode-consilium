@@ -63,12 +63,17 @@ export function buildRunArgs(opts: {
   agent?: string;
   model?: string;
   session?: string;
-  config?: Pick<ConsiliumConfig, 'standalone' | 'autoApprove'>;
+  config?: Pick<ConsiliumConfig, 'standalone' | 'autoApprove' | 'isolate'>;
 }): string[] {
   const args: string[] = ['run'];
 
   if (opts.config?.standalone !== false) {
     args.push('--standalone');
+  }
+
+  if (opts.config?.isolate === true) {
+    // Нативный флаг OpenCode: каждый агент получает одноразовый worktree.
+    args.push('--worktree');
   }
 
   args.push('--format', 'json');

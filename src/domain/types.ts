@@ -70,6 +70,13 @@ export interface AgentResult {
 export interface ConsiliumMetadata extends Record<string, unknown> {
   /** Сводка структурированных находок (только при findings: true) */
   findings?: FindingsSummary;
+  /** Фактически применённые ограничения безопасности запуска */
+  safety?: {
+    /** Эксперты и председатель работали без права записи/вызова опасных инструментов */
+    readOnly: boolean;
+    /** Каждый агент запускался в отдельном worktree OpenCode */
+    isolate: boolean;
+  };
 }
 
 /**
@@ -242,6 +249,13 @@ export interface ConsiliumConfig {
   fallbackModels?: string[];
   /** Переиспользовать сессию OpenCode (`run --session`) между запусками */
   session?: string;
+  /**
+   * Read-only: экспертам и председателю разрешены только read/glob/grep.
+   * Write/edit/shell/webfetch/subagent и MCP-инструменты запрещены.
+   */
+  readOnly?: boolean;
+  /** Запускать каждого агента в отдельном worktree OpenCode (`--worktree`) */
+  isolate?: boolean;
   /** Формат отчёта после запуска */
   report?: ReportFormat;
   /** Файл отчёта (по умолчанию stdout) */
@@ -308,6 +322,10 @@ export interface RunOptions {
   fallbackModels?: string[];
   /** Сессия OpenCode для продолжения контекста */
   session?: string;
+  /** Переопределить read-only режим (true — только чтение, false — разрешить запись) */
+  readOnly?: boolean;
+  /** Запускать каждого агента в отдельном worktree OpenCode */
+  isolate?: boolean;
 }
 
 /**
@@ -447,6 +465,10 @@ export interface CLIOptions {
   fallbackModels?: string[];
   /** Сессия OpenCode для продолжения контекста */
   session?: string;
+  /** Read-only режим: только read/glob/grep; флаг --read-only */
+  readOnly?: boolean;
+  /** Запуск каждого агента в отдельном worktree OpenCode; флаг --isolate */
+  isolate?: boolean;
   /** Формат отчёта после запуска */
   report?: ReportFormat;
   /** Файл отчёта (по умолчанию stdout) */
