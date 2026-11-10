@@ -89,4 +89,20 @@ jobs:
       # short-lived publish credential. No NODE_AUTH_TOKEN is set.
       - name: Publish with provenance
         if: steps.check.outputs.skip == 'false'
-        run: npm publish --provenance --access public
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(npm publish --provenance --access public 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            # A release can race a manual bootstrap: npm view may not see the
+            # version yet, but the registry already has it. Treat this exact
+            # conflict as success so an already-published release is green.
+            if printf '%s\n' "$output" | grep -Eq 'E409|EPUBLISHCONFLICT|previously staged version|Cannot publish over'; then
+              echo "::notice::Version is already published on npm; skipping publish."
+              exit 0
+            fi
+            exit "$status"
+          fi
