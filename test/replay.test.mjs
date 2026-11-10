@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { planReplay } from '../dist/replay.js';
+import { applyReplayPlan } from '../dist/application/replay.js';
+import { mergeWithDefaults } from '../dist/config.js';
 
 function makeRun(overrides = {}) {
   return {
@@ -24,6 +26,40 @@ function makeRun(overrides = {}) {
     ...overrides
   };
 }
+
+test('applyReplayPlan переносит план в конфигурацию (общая семантика CLI и MCP)', () => {
+  const config = mergeWithDefaults({
+    experts: [{ name: 'arch' }, { name: 'ux' }],
+    chair: { agent: 'general' }
+  });
+  const applied = applyReplayPlan(
+    config,
+    makeRun({ chairAgent: 'consilium' }),
+    { chairAgent: config.chair.agent }
+  );
+
+  assert.deepEqual(config.experts.map(expert => expert.name), ['arch', 'sec']);
+  assert.equal(config.experts[0].model, 'a/model1');
+  assert.equal(config.experts[1].model, 's/model2');
+  assert.equal(config.chair.agent, 'consilium');
+  assert.equal(config.chair.model, 'c/model3');
+  assert.equal(config.consensus, true);
+  assert.equal(config.smartExperts, true);
+  assert.deepEqual(config.fallbackModels, ['f/m1', 'f/m2']);
+  assert.equal(config.session, 'ses_123');
+  assert.equal(config.artifacts, true);
+  assert.deepEqual(applied.missing, []);
+  assert.equal(applied.emptySelection, false);
+
+  const filteredConfig = mergeWithDefaults({
+    experts: [{ name: 'arch' }, { name: 'sec' }],
+    chair: { agent: 'consilium' }
+  });
+  const filtered = applyReplayPlan(filteredConfig, makeRun(), { experts: ['arch'] });
+  assert.deepEqual(filteredConfig.experts.map(expert => expert.name), ['arch']);
+  assert.deepEqual(filtered.missing, []);
+  assert.equal(filtered.emptySelection, false);
+});
 
 test('полные метаданные: все поля плана и пустые warnings', () => {
   const plan = planReplay(makeRun({ chairAgent: 'consilium' }));

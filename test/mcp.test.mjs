@@ -14,6 +14,7 @@ test('getMcpTools содержит все инструменты', () => {
     'consilium_init_free',
     'consilium_list_agents',
     'consilium_list_runs',
+    'consilium_replay',
     'consilium_run',
     'consilium_sarif'
   ]);

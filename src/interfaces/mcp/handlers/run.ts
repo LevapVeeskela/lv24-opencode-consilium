@@ -1,129 +1,32 @@
 // consilium_run tool handler.
 import { canonicalizePath, resolveInside } from '../../../shared/paths.js';
-import { Consilium, loadConfig } from '../../../application/consilium.js';
-import { selectExperts } from '../../../application/run.js';
+import { loadConfig } from '../../../application/consilium.js';
 import { applyPreset, listPresets } from '../../../domain/council/presets.js';
-import { selectSmartExperts } from '../../../domain/council/smart-experts.js';
 import { auditLocalOnly } from '../../../infrastructure/local-models.js';
-import type {
-  ConsiliumConfig,
-  ConsiliumResult,
-  ProgressEvent,
-  RunOptions
-} from '../../../domain/types.js';
-import { truncateText } from '../format.js';
-import { emitNotification } from '../protocol.js';
+import type { ConsiliumConfig, RunOptions } from '../../../domain/types.js';
 import type { ProgressToken, RequestId } from '../protocol.js';
 import { OUTPUT_FORMATS } from '../tools.js';
 import type { OutputFormat } from '../tools.js';
+import { runConsiliumWithProgress } from './execution.js';
 import {
   ToolInputError,
-  clearActiveConsilium,
-  describeError,
   optionalBoolean,
   optionalEnum,
   optionalInteger,
+  optionalNonNegativeNumber,
   optionalPositiveNumber,
   optionalString,
   optionalStringArray,
   requireNonEmptyString,
   resolveWorkspaceOutput,
-  setActiveConsilium,
   toolError
 } from './shared.js';
 import type { McpToolResult } from './shared.js';
 
-export function formatConsiliumResult(result: ConsiliumResult, config: ConsiliumConfig): string {
-  const sections: string[] = [result.text, '---', '## Мнения экспертов'];
-
-  for (const expert of result.experts) {
-    sections.push(`### ${expert.agent} (${expert.model ?? 'default'})`);
-    sections.push(truncateText(expert.text, 4000));
-  }
-
-  sections.push('---');
-  const summary = {
-    success: result.success,
-    totalTime: result.totalTime,
-    parallelTime: result.parallelTime,
-    usage: result.usage,
-    cost: result.metadata?.cost,
-    deadlineMs: config.deadlineMs ?? null,
-    localOnly: config.localOnly === true,
-    safety: result.metadata?.safety ?? {
-      readOnly: config.readOnly === true,
-      isolate: config.isolate === true
-    },
-    consensus:
-      result.metadata?.consensus !== null && typeof result.metadata?.consensus === 'object'
-        ? (() => {
-            const report = result.metadata.consensus as {
-              agreement?: unknown;
-              averageSimilarity?: unknown;
-            };
-            return {
-              agreement: report.agreement,
-              averageSimilarity: report.averageSimilarity
-            };
-          })()
-        : undefined,
-    findings: result.metadata?.findings,
-    experts: result.experts.map((expert) => ({
-      agent: expert.agent,
-      model: expert.model,
-      success: expert.success,
-      duration: expert.duration,
-      errorCode: expert.errorCode,
-      usage: expert.usage
-    }))
-  };
-  sections.push('```json');
-  sections.push(JSON.stringify(summary, null, 2));
-  sections.push('```');
-
-  const savedFile = result.metadata?.savedFile;
-  const saveError = result.metadata?.saveError;
-  if (typeof savedFile === 'string') {
-    sections.push(`**Saved to:** \`${savedFile}\``);
-  } else if (typeof saveError === 'string') {
-    sections.push(`**Save failed:** ${saveError}`);
-  }
-
-  const artifacts = result.metadata?.artifacts;
-  if (artifacts !== null && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
-    const dir = (artifacts as { dir?: unknown }).dir;
-    if (typeof dir === 'string') {
-      sections.push(`**Artifacts:** \`${dir}\``);
-    }
-  }
-
-  return sections.join('\n\n');
-}
+export { computeProgressTotal, formatConsiliumResult } from './execution.js';
 
 function applyPresetFor(config: ConsiliumConfig, name: string): ConsiliumConfig {
   return applyPreset(config, name, config.presets);
-}
-
-/**
- * Считает фактический размер совета для прогресса: явные эксперты, disabled
- * и smart-выбор уже применены. Возвращает число экспертов + председатель.
- */
-export function computeProgressTotal(
-  config: ConsiliumConfig,
-  requestedExperts: string[] | undefined,
-  task: string
-): number {
-  try {
-    const selected = selectExperts(config, requestedExperts, undefined);
-    const council =
-      config.smartExperts === true
-        ? selectSmartExperts(selected, task, { onLog: () => {} }).experts
-        : selected;
-    return Math.max(1, council.length) + 1;
-  } catch {
-    const enabled = config.experts.filter((expert) => expert.enabled !== false).length;
-    return Math.max(1, enabled) + 1;
-  }
 }
 
 export async function toolConsiliumRun(
@@ -146,14 +49,7 @@ export async function toolConsiliumRun(
   const findings = optionalBoolean(args, 'findings');
   const smartExperts = optionalBoolean(args, 'smart_experts');
   const rounds = optionalInteger(args, 'rounds', 1, 2);
-  const maxCostRaw = args['max_cost'];
-  if (
-    maxCostRaw !== undefined &&
-    (typeof maxCostRaw !== 'number' || !Number.isFinite(maxCostRaw) || maxCostRaw < 0)
-  ) {
-    throw new ToolInputError('"max_cost" must be a number >= 0');
-  }
-  const maxCost = maxCostRaw as number | undefined;
+  const maxCost = optionalNonNegativeNumber(args, 'max_cost');
   const fallbackModels = optionalStringArray(args, 'fallback_models');
   const session = optionalString(args, 'session');
   const workspace = canonicalizePath(process.cwd());
@@ -229,57 +125,13 @@ export async function toolConsiliumRun(
   if (timeoutMs !== undefined) runOptions.timeout = timeoutMs;
   if (outputPath.value !== undefined) runOptions.outputFile = outputPath.value;
 
-  const total = computeProgressTotal(config, experts, task);
-
-  const consilium = new Consilium(config);
-  let unsubscribe: (() => void) | undefined;
-  let startedExperts = 0;
-
-  if (progressToken !== undefined) {
-    unsubscribe = consilium.onProgress((event: ProgressEvent) => {
-      let progress: number;
-      let message: string;
-      if (event.type === 'expert_start') {
-        startedExperts += 1;
-        progress = Math.min(startedExperts, total - 1);
-        message = `Expert ${event.agent ?? ''} started`.trim();
-      } else if (event.type === 'chair_start') {
-        progress = Math.max(1, total - 1);
-        message = 'Chair is synthesizing the final answer';
-      } else if (event.type === 'chair_end') {
-        progress = total;
-        message = 'Consilium completed';
-      } else {
-        return;
-      }
-      emitNotification({
-        jsonrpc: '2.0',
-        method: 'notifications/progress',
-        params: {
-          progressToken,
-          progress,
-          total,
-          message
-        }
-      });
-    });
-  }
-
-  setActiveConsilium(consilium, requestId);
-  try {
-    const result = await consilium.run(task, runOptions);
-    let text = formatConsiliumResult(result, config);
-    if (loaded.warnings.length > 0) {
-      text += `\n\n---\n\n**Config warnings**\n${loaded.warnings.map(w => `- ${w}`).join('\n')}`;
-    }
-    return {
-      content: [{ type: 'text', text }],
-      isError: result.success === false
-    };
-  } catch (error) {
-    return toolError(`Consilium run failed: ${describeError(error)}`);
-  } finally {
-    if (unsubscribe !== undefined) unsubscribe();
-    clearActiveConsilium(consilium);
-  }
+  return runConsiliumWithProgress({
+    config,
+    task,
+    runOptions,
+    progressToken,
+    requestId,
+    warningSections: [{ heading: 'Config warnings', items: loaded.warnings }],
+    errorPrefix: 'Consilium run'
+  });
 }

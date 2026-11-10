@@ -55,6 +55,18 @@ export function optionalPositiveNumber(
   return value;
 }
 
+export function optionalNonNegativeNumber(
+  args: Record<string, unknown>,
+  key: string
+): number | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new ToolInputError(`"${key}" must be a number >= 0`);
+  }
+  return value;
+}
+
 export function optionalInteger(
   args: Record<string, unknown>,
   key: string,

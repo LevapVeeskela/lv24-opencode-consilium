@@ -18,7 +18,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'consilium_run',
     description:
-      'Run a council of expert AI agents through the OpenCode CLI. Experts analyze the task in parallel and the chair synthesizes the final answer.',
+      'Run a council of expert AI agents through the OpenCode CLI. Experts analyze the task in parallel and the chair synthesizes the final answer. Progress is streamed as MCP notifications/progress when the caller supplies _meta.progressToken; only the final tool result is returned (no partial result chunks).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -117,6 +117,75 @@ export const MCP_TOOLS: McpToolDef[] = [
         }
       },
       required: ['task']
+    }
+  },
+  {
+    name: 'consilium_replay',
+    description:
+      'Replay a saved council run: load a run from .consilium/runs (id or "latest"), restore its task, expert/chair models and replayable options (consensus, smart experts, fallback models, session, artifacts), then run the council again through the OpenCode CLI. Safety flags are not inferred from the artifact: pass read_only/isolate explicitly. Returns the chair synthesis, expert opinions and JSON metadata like consilium_run. Progress is streamed as MCP notifications/progress when the caller supplies _meta.progressToken; only the final tool result is returned (no partial result chunks).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run: {
+          type: 'string',
+          default: 'latest',
+          description: 'Saved run id or "latest".'
+        },
+        read_only: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Run experts and the chair read-only: only read/glob/grep are allowed; write, edit, shell, webfetch, subagent, skill, question and MCP tools are denied; .env files stay blocked.'
+        },
+        isolate: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Run each agent in its own disposable OpenCode worktree (--worktree). Read-only rules apply to the main project; worktree changes never reach it.'
+        },
+        artifacts: {
+          type: ['boolean', 'string'],
+          description:
+            'Save the replayed run to .consilium/runs (true) or to the given directory inside the workspace (false disables saving).'
+        },
+        output_file: {
+          type: 'string',
+          description: 'Optional path for saving the replay result (must stay inside the workspace).'
+        },
+        max_cost: {
+          type: 'number',
+          minimum: 0,
+          description: 'Maximum replay cost in USD. When exceeded, the chair is not started.'
+        },
+        deadline_ms: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Overall wall-clock deadline for the replay expert phase in milliseconds.'
+        },
+        rounds: {
+          type: 'integer',
+          enum: [1, 2],
+          minimum: 1,
+          maximum: 2,
+          description:
+            'Debate rounds: 1 (single expert round) or 2 (anonymous peer review before the chair).'
+        },
+        findings: {
+          type: 'boolean',
+          description:
+            'Collect structured findings into metadata.findings instead of the saved settings.'
+        },
+        session: {
+          type: 'string',
+          description: 'OpenCode session base id; overrides the session saved in the artifact.'
+        },
+        timeout_ms: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          description: 'Timeout per expert in milliseconds; overrides the configured timeout.'
+        }
+      },
+      required: []
     }
   },
   {
