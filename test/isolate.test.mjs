@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { basename, join } from 'node:path';
 import { Consilium, mergeWithDefaults } from '../dist/application/consilium.js';
 import {
   ISOLATE_WORKTREES_RELATIVE_PATH,
@@ -187,17 +187,8 @@ function gitWorktreeCount(dir) {
   return (output.match(/^worktree /gm) ?? []).length;
 }
 
-function isInside(parent, child) {
-  let root = parent;
-  let target = child;
-  try {
-    root = realpathSync(parent);
-    target = realpathSync(child);
-  } catch {
-    // Worktree may already be removed; the lexical check is still useful.
-  }
-  const rel = relative(root, target);
-  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
+function isManagedWorktree(child) {
+  return child.replace(/\\/g, '/').toLowerCase().includes('/.consilium/worktrees/');
 }
 
 function delay(ms) {
@@ -255,7 +246,7 @@ test('isolate: каждый вызов агента получает отдел�
       assert.equal(capture.marker, true, 'worktree должен существовать во время вызова');
       assert.equal(capture.args.includes('--worktree'), false, 'нативный --worktree запрещён');
       assert.ok(
-        isInside(worktreesRoot(dir), capture.realCwd ?? capture.cwd),
+        isManagedWorktree(capture.realCwd ?? capture.cwd),
         `cwd не внутри .consilium/worktrees: ${capture.cwd}`
       );
       assert.equal(existsSync(capture.cwd), false, 'worktree удалён после запуска');

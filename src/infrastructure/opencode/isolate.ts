@@ -13,7 +13,7 @@
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } from 'fs';
-import { join, resolve } from 'path';
+import { basename, join, resolve } from 'path';
 
 /** Каталог изолированных worktree относительно корня репозитория */
 export const ISOLATE_WORKTREES_RELATIVE_PATH = '.consilium/worktrees';
@@ -278,8 +278,10 @@ export function cleanupStaleWorktrees(options: CleanupStaleWorktreesOptions): st
   const staleAfterMs = options.staleAfterMs ?? DEFAULT_STALE_WORKTREE_MS;
   const now = options.now ?? Date.now();
   const registered = new Map<string, RegisteredWorktree>();
+  const registeredByName = new Map<string, RegisteredWorktree>();
   for (const entry of listRegisteredWorktrees(root)) {
     registered.set(comparablePath(entry.path), entry);
+    registeredByName.set(basename(comparablePath(entry.path)), entry);
   }
 
   const removed: string[] = [];
@@ -301,7 +303,9 @@ export function cleanupStaleWorktrees(options: CleanupStaleWorktreesOptions): st
     }
     if (age < staleAfterMs) continue;
 
-    const registration = registered.get(comparablePath(candidate));
+    const registration =
+      registered.get(comparablePath(candidate)) ??
+      registeredByName.get(basename(comparablePath(candidate)));
     if (registration === undefined) {
       // A live worktree can look unregistered when git reports a canonical
       // path (macOS /private/var, Windows long/8.3 aliases). Never delete a
