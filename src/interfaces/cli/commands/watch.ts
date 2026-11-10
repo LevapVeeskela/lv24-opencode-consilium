@@ -11,6 +11,7 @@ import { createProjectWatcher } from '../../../infrastructure/watch.js';
 import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
+import { assertCliIsolatedReadOnlyPreflight } from '../preflight.js';
 import { READ_ONLY_OVERLAY_RELATIVE_PATH } from '../../../infrastructure/opencode/read-only.js';
 import { ISOLATE_WORKTREES_RELATIVE_PATH } from '../../../infrastructure/opencode/isolate.js';
 import { readTaskFromFile, appendTaskContext } from '../task.js';
@@ -48,6 +49,15 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
     return 0;
   }
   const cwd = config.cwd ?? process.cwd();
+  // Watch не должен приниматься к наблюдению в заведомо нерабочей
+  // конфигурации: падаем один раз до первого прогона (exit 2).
+  if (options.dryRun !== true) {
+    assertCliIsolatedReadOnlyPreflight({
+      cwd,
+      readOnly: config.readOnly === true,
+      isolate: config.isolate === true
+    });
+  }
   const task =
     options.task.trim().length > 0 ? options.task.trim() : 'Сделай ревью текущих изменений';
   const debounceMs = config.debounceMs ?? 400;

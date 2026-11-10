@@ -18,6 +18,36 @@ import { resolve } from 'path';
 /** Каталог изолированных worktree относительно корня репозитория */
 export const ISOLATE_WORKTREES_RELATIVE_PATH = '.consilium/worktrees';
 
+/** Стабильный код: `.opencode/opencode.jsonc` несовместим с isolate+read-only */
+export const ISOLATION_JSONC_UNSUPPORTED = 'ISOLATION_JSONC_UNSUPPORTED';
+
+/** Коды ошибок конфигурации изоляции */
+export type IsolationConfigErrorCode = typeof ISOLATION_JSONC_UNSUPPORTED;
+
+/**
+ * Ошибка конфигурации изоляции: запуск невозможен без правки проекта или флагов.
+ * CLI отображает её как ошибку использования (код 2), library/MCP/plugin
+ * получают типизированную ошибку со стабильным `code`.
+ */
+export class IsolationConfigError extends Error {
+  /** Стабильный машинно-читаемый код */
+  readonly code: IsolationConfigErrorCode;
+  /** Путь, из-за которого запуск отклонён */
+  readonly path?: string;
+
+  constructor(code: IsolationConfigErrorCode, message: string, path?: string) {
+    super(message);
+    this.name = 'IsolationConfigError';
+    this.code = code;
+    this.path = path;
+  }
+}
+
+/** Сужает неизвестное значение до IsolationConfigError */
+export function isIsolationConfigError(error: unknown): error is IsolationConfigError {
+  return error instanceof IsolationConfigError;
+}
+
 /** Через сколько считать каталог worktree устаревшим (1 час) */
 const DEFAULT_STALE_WORKTREE_MS = 60 * 60 * 1000;
 
@@ -102,6 +132,55 @@ export function resolveIsolateRoot(cwd: string): string {
     );
   }
   return resolve(top);
+}
+
+export interface IsolatedReadOnlyPreflightOptions {
+  /** Рабочая директория проекта (как у дочернего opencode) */
+  cwd: string;
+  /** Включён ли read-only (--read-only) */
+  readOnly: boolean;
+  /** Включена ли изоляция worktree (--isolate) */
+  isolate: boolean;
+}
+
+/**
+ * Проверяет, что `--isolate --read-only` не столкнётся с
+ * `.opencode/opencode.jsonc` в корне репозитория.
+ *
+ * В изолированном worktree read-only слой пишется в `.opencode/opencode.json`.
+ * Если в корне лежит `opencode.jsonc`, OpenCode предпочитает его, временный
+ * слой не действует, и каждый агент падал бы с SPAWN_ERROR. Проверка выполняется
+ * один раз до создания worktree, хуков и вызова моделей.
+ *
+ * Untracked-файлы не копируются в worktree, но проверка намеренно fail closed:
+ * `.jsonc` может стать отслеживаемым между проверкой и запуском, а молча
+ * ослаблять read-only нельзя. Файлы вне корня репозитория не проверяются.
+ *
+ * @throws IsolationConfigError (ISOLATION_JSONC_UNSUPPORTED) если файл найден
+ * @throws Error если каталог не git-репозиторий (как у `resolveIsolateRoot`)
+ */
+export function assertIsolatedReadOnlyPreflight(
+  options: IsolatedReadOnlyPreflightOptions
+): void {
+  if (options.readOnly !== true || options.isolate !== true) {
+    return;
+  }
+
+  const root = resolveIsolateRoot(options.cwd);
+  const jsoncPath = resolve(root, '.opencode/opencode.jsonc');
+  if (!existsSync(jsoncPath)) {
+    return;
+  }
+
+  throw new IsolationConfigError(
+    ISOLATION_JSONC_UNSUPPORTED,
+    `--isolate с --read-only не поддерживает .opencode/opencode.jsonc: "${jsoncPath}". ` +
+      'Файл попадает в каждый worktree и перекрывает временный read-only слой, ' +
+      'поэтому агенты завершались бы с SPAWN_ERROR. ' +
+      'Переименуйте .opencode/opencode.jsonc в .opencode/opencode.json ' +
+      'или запустите без --read-only (например, с --allow-write).',
+    jsoncPath
+  );
 }
 
 /**

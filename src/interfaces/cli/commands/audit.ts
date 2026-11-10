@@ -10,6 +10,7 @@ import {
   type AuditRequest
 } from '../../../application/audit.js';
 import { EXIT_CODES, UsageError } from '../args.js';
+import { assertCliIsolatedReadOnlyPreflight } from '../preflight.js';
 import { commandRun } from './run.js';
 
 /** Зависимости команды audit, подменяемые в тестах */
@@ -81,6 +82,14 @@ export async function commandAudit(
     // Аудит — ревью: по умолчанию без права записи. --allow-write снимает запрет.
     readOnly: options.readOnly ?? true
   };
+
+  // Аудит по умолчанию read-only: с --isolate JSONC в корне репозитория
+  // сломал бы per-worktree слой — это ошибка использования (exit 2).
+  assertCliIsolatedReadOnlyPreflight({
+    cwd: process.cwd(),
+    readOnly: runOptions.readOnly === true,
+    isolate: options.isolate === true
+  });
 
   // Политика --fail-on требует находок: для audit включаем их автоматически,
   // иначе commandRun отклонит запуск без явного --findings.
