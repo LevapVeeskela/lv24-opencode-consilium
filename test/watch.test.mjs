@@ -430,7 +430,7 @@ test('resolveHooksDir в реальном git worktree — общий hooks ос
     } catch {
       // ignore cleanup
     }
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -524,7 +524,7 @@ test('commandWatch: правка во время прогона даёт оди�
     signals.shutdown();
     signals.restore();
     process.chdir(previousCwd);
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -561,7 +561,7 @@ test('commandWatch: после прогона правки не глотаютс
     signals.shutdown();
     signals.restore();
     process.chdir(previousCwd);
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -604,7 +604,7 @@ test('commandWatch: SIGINT во время первого прогона отм�
     signals.shutdown();
     signals.restore();
     process.chdir(previousCwd);
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -637,7 +637,7 @@ test('commandWatch передаёт --chair в RunOptions', async (t) => {
     signals.shutdown();
     signals.restore();
     process.chdir(previousCwd);
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -668,6 +668,6 @@ test('commandWatch: --list-agents печатает состав и не запу
     assert.match(output, /arch/);
   } finally {
     process.chdir(previousCwd);
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
