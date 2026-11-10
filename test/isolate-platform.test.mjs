@@ -33,7 +33,7 @@ import { READ_ONLY_OVERLAY_RELATIVE_PATH } from '../dist/infrastructure/opencode
 
 const TRUSTED_PROJECT_CONFIG = Symbol.for('lv24-opencode-consilium.trustedProjectConfig');
 
-const FAKE_OPENCODE = `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+const FAKE_OPENCODE = `import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -46,12 +46,14 @@ if (args.includes('--version')) {
 }
 
 const cwd = process.cwd();
+const realCwd = realpathSync(cwd);
 const overlayPath = join(cwd, '.opencode', 'opencode.json');
 const overlay = existsSync(overlayPath) ? JSON.parse(readFileSync(overlayPath, 'utf8')) : null;
 const trackedPath = join(cwd, 'note.txt');
 const capture = {
   args,
   cwd,
+  realCwd,
   overlay,
   tracked: existsSync(trackedPath) ? readFileSync(trackedPath, 'utf8') : null,
   untrackedExists: existsSync(join(cwd, 'untracked.txt')),
@@ -438,7 +440,7 @@ test(
       for (const capture of captures) {
         assert.equal(capture.marker, true, 'worktree существовал во время вызова');
         assert.ok(
-          isInside(worktreesRoot(dir), capture.cwd),
+          isInside(worktreesRoot(dir), capture.realCwd ?? capture.cwd),
           `cwd не внутри .consilium/worktrees: ${capture.cwd}`
         );
         assert.equal(existsSync(capture.cwd), false, 'worktree удалён после запуска');

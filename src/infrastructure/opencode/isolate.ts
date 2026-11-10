@@ -13,7 +13,7 @@
 import { execFileSync } from 'child_process';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, type Dirent } from 'fs';
-import { resolve } from 'path';
+import { join, resolve } from 'path';
 
 /** Каталог изолированных worktree относительно корня репозитория */
 export const ISOLATE_WORKTREES_RELATIVE_PATH = '.consilium/worktrees';
@@ -303,6 +303,11 @@ export function cleanupStaleWorktrees(options: CleanupStaleWorktreesOptions): st
 
     const registration = registered.get(comparablePath(candidate));
     if (registration === undefined) {
+      // A live worktree can look unregistered when git reports a canonical
+      // path (macOS /private/var, Windows long/8.3 aliases). Never delete a
+      // directory that still contains a worktree .git marker; only true
+      // crumb directories are age-collected.
+      if (existsSync(join(candidate, '.git'))) continue;
       if (removeDirectory(candidate)) removed.push(candidate);
       continue;
     }

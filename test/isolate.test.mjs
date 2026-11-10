@@ -27,7 +27,7 @@ import { shouldIgnore } from '../dist/watch.js';
 
 const TRUSTED_PROJECT_CONFIG = Symbol.for('lv24-opencode-consilium.trustedProjectConfig');
 
-const FAKE_OPENCODE = `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+const FAKE_OPENCODE = `import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const args = process.argv.slice(2);
@@ -40,12 +40,14 @@ if (args.includes('--version')) {
 }
 
 const cwd = process.cwd();
+const realCwd = realpathSync(cwd);
 const overlayPath = join(cwd, '.opencode', 'opencode.json');
 const overlay = existsSync(overlayPath) ? JSON.parse(readFileSync(overlayPath, 'utf8')) : null;
 const trackedPath = join(cwd, 'note.txt');
 const capture = {
   args,
   cwd,
+  realCwd,
   overlay,
   tracked: existsSync(trackedPath) ? readFileSync(trackedPath, 'utf8') : null,
   untrackedExists: existsSync(join(cwd, 'untracked.txt')),
@@ -253,7 +255,7 @@ test('isolate: каждый вызов агента получает отдел�
       assert.equal(capture.marker, true, 'worktree должен существовать во время вызова');
       assert.equal(capture.args.includes('--worktree'), false, 'нативный --worktree запрещён');
       assert.ok(
-        isInside(worktreesRoot(dir), capture.cwd),
+        isInside(worktreesRoot(dir), capture.realCwd ?? capture.cwd),
         `cwd не внутри .consilium/worktrees: ${capture.cwd}`
       );
       assert.equal(existsSync(capture.cwd), false, 'worktree удалён после запуска');
@@ -486,12 +488,18 @@ test('очистка: осиротевшие worktree удаляются, жив
     });
     utimesSync(stale, old, old);
 
+    const unregisteredLive = join(worktreesRoot(dir), 'live-alias');
+    mkdirSync(unregisteredLive, { recursive: true });
+    writeFileSync(join(unregisteredLive, '.git'), 'gitdir: elsewhere\n', 'utf8');
+    utimesSync(unregisteredLive, old, old);
+
     const removed = cleanupStaleWorktrees({ root: dir, staleAfterMs: 60 * 1000 });
     const removedNames = removed.map(path => basename(path)).sort();
     assert.deepEqual(removedNames, ['orphan-dead', 'stale-registered']);
     assert.equal(existsSync(live.path), true, 'живой worktree не удаляется');
     assert.equal(existsSync(orphan), false);
     assert.equal(existsSync(stale), false);
+    assert.equal(existsSync(unregisteredLive), true, 'worktree-маркер без регистрации не удаляется');
     assert.equal(gitWorktreeCount(dir), 2, 'основной и живой worktree');
   } finally {
     live.remove();
