@@ -73,7 +73,7 @@ export const CONSILIUM_TOOL_INPUT: Record<string, unknown> = {
       type: 'boolean',
       default: false,
       description:
-        'Run each agent in its own disposable OpenCode worktree (--worktree). Read-only rules apply to the main project; worktree changes never reach it.'
+        'Run each agent in its own disposable git worktree under .consilium/worktrees. Requires a git repository; HEAD plus tracked uncommitted changes are visible, untracked files are not copied. Read-only rules apply inside the worktree and the worktree is removed after the run.'
     },
     artifacts: {
       type: ['boolean', 'string'],

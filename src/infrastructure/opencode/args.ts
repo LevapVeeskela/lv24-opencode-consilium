@@ -58,22 +58,21 @@ export function validateWindowsArg(argument: string): string {
 /**
  * Формирует аргументы `opencode run`.
  * Невалидные agent/model отбрасываются.
+ *
+ * Изоляция в worktree выполняется самим Consilium через `cwd` дочернего
+ * процесса: нативный `--worktree` не передаётся, иначе OpenCode создал бы
+ * вложенный worktree, который Consilium не может убрать.
  */
 export function buildRunArgs(opts: {
   agent?: string;
   model?: string;
   session?: string;
-  config?: Pick<ConsiliumConfig, 'standalone' | 'autoApprove' | 'isolate'>;
+  config?: Pick<ConsiliumConfig, 'standalone' | 'autoApprove'>;
 }): string[] {
   const args: string[] = ['run'];
 
   if (opts.config?.standalone !== false) {
     args.push('--standalone');
-  }
-
-  if (opts.config?.isolate === true) {
-    // Нативный флаг OpenCode: каждый агент получает одноразовый worktree.
-    args.push('--worktree');
   }
 
   args.push('--format', 'json');

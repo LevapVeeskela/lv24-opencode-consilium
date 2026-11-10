@@ -12,6 +12,7 @@ import { resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js'
 import { UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { READ_ONLY_OVERLAY_RELATIVE_PATH } from '../../../infrastructure/opencode/read-only.js';
+import { ISOLATE_WORKTREES_RELATIVE_PATH } from '../../../infrastructure/opencode/isolate.js';
 import { readTaskFromFile, appendTaskContext } from '../task.js';
 import {
   printAgentList,
@@ -73,6 +74,10 @@ export async function commandWatch(options: CLIOptions): Promise<number> {
   // без ignore watch зациклится на собственных изменениях.
   if (config.readOnly === true) {
     ignore.push(READ_ONLY_OVERLAY_RELATIVE_PATH);
+  }
+  // Изолированные worktree создаются и удаляются на каждом вызове агента.
+  if (config.isolate === true) {
+    ignore.push(ISOLATE_WORKTREES_RELATIVE_PATH);
   }
 
   if (!options.silent) {

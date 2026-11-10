@@ -31,11 +31,14 @@ import {
   sanitizeTimeout
 } from './retry.js';
 import { defaultController, type RunController } from './controller.js';
+import { createIsolatedWorktree, type IsolatedWorktree } from './isolate.js';
+import { applyReadOnlyOverlay, type ReadOnlyOverlay } from './read-only.js';
 import {
   errorToMessage,
   invokeErrorHook,
   invokeHook,
   logWarn,
+  resolveCwd,
   runAgentProcess
 } from './spawn.js';
 import { recordModelAttempt } from '../models/reliability.js';
@@ -89,6 +92,8 @@ interface AgentAttemptOptions {
   attempt: number;
   controller: RunController;
   config: ConsiliumConfig;
+  /** Рабочий каталог изолированного worktree для этого вызова */
+  cwdOverride?: string;
 }
 
 /** Известная (конечная) стоимость usage, если провайдер её сообщил */
@@ -171,7 +176,7 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     try {
       const resolved = resolveOpenCodeAgent(agentName, {
         opencodeConfigPath: options.config.opencodeConfigPath,
-        cwd: options.config.cwd
+        cwd: options.cwdOverride ?? options.config.cwd
       });
       agentExists = resolved.exists;
       if (
@@ -217,7 +222,8 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
     timeoutMs: options.timeoutMs,
     attempt: options.attempt,
     controller: options.controller,
-    config: options.config
+    config: options.config,
+    cwdOverride: options.cwdOverride
   });
   recordAttemptBestEffort(
     options.config,
@@ -243,7 +249,8 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
       timeoutMs: options.timeoutMs,
       attempt: options.attempt,
       controller: options.controller,
-      config: options.config
+      config: options.config,
+      cwdOverride: options.cwdOverride
     });
     recordAttemptBestEffort(
       options.config,
@@ -273,7 +280,8 @@ async function callAgentOnce(options: AgentAttemptOptions): Promise<AgentResult>
       timeoutMs: options.timeoutMs,
       attempt: options.attempt,
       controller: options.controller,
-      config: options.config
+      config: options.config,
+      cwdOverride: options.cwdOverride
     });
     recordAttemptBestEffort(
       options.config,
@@ -385,31 +393,41 @@ export async function callAgent(
   let lastResult: AgentResult | undefined;
   let mergedUsage: AgentUsage | undefined;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (controller.isCancelled()) {
-      return finalizeResult(
-        cancelledResult(agentName, attempt, options.model),
-        startedAt,
-        totalCost,
-        hasCost,
-        mergedUsage
-      );
+  const onLog = (level: 'info' | 'warn', message: string): void => {
+    try {
+      config.hooks?.onLog?.(level, message);
+    } catch {
+      // Хук логов не должен ломать запуск
+    }
+  };
+
+  // Изоляция создаётся один раз на вызов агента: повторы, AGENT_NOT_FOUND и
+  // fallback-модели переиспользуют тот же worktree. Снимается на любом пути.
+  let isolation: IsolatedWorktree | undefined;
+  let overlay: ReadOnlyOverlay | undefined;
+
+  try {
+    if (config.isolate === true) {
+      const tree = createIsolatedWorktree({
+        cwd: resolveCwd(config),
+        label: agentName.length > 0 ? agentName : isChair ? 'chair' : 'default',
+        onLog
+      });
+      isolation = tree;
+
+      if (config.readOnly === true) {
+        // Слой пишется внутри worktree: основной проект не меняется, а
+        // дочерний opencode читает запреты из своего рабочего каталога.
+        overlay = await applyReadOnlyOverlay({
+          cwd: tree.path,
+          agents: agentName.length > 0 ? [agentName] : [],
+          onLog
+        });
+      }
     }
 
-    if (attempt > 0) {
-      const rateLimitDelay =
-        lastResult?.errorCode === 'RATE_LIMITED' ? lastResult.retryAfterMs : undefined;
-      const delay =
-        rateLimitDelay !== undefined
-          ? Math.min(rateLimitDelay, RATE_LIMIT_RETRY_WINDOW_MS)
-          : calculateRetryDelay(
-              attempt - 1,
-              delayMs,
-              exponential,
-              config.retry?.jitter === true
-            );
-      const ready = await delayWithCancel(delay, controller);
-      if (!ready) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (controller.isCancelled()) {
         return finalizeResult(
           cancelledResult(agentName, attempt, options.model),
           startedAt,
@@ -418,54 +436,92 @@ export async function callAgent(
           mergedUsage
         );
       }
+
+      if (attempt > 0) {
+        const rateLimitDelay =
+          lastResult?.errorCode === 'RATE_LIMITED' ? lastResult.retryAfterMs : undefined;
+        const delay =
+          rateLimitDelay !== undefined
+            ? Math.min(rateLimitDelay, RATE_LIMIT_RETRY_WINDOW_MS)
+            : calculateRetryDelay(
+                attempt - 1,
+                delayMs,
+                exponential,
+                config.retry?.jitter === true
+              );
+        const ready = await delayWithCancel(delay, controller);
+        if (!ready) {
+          return finalizeResult(
+            cancelledResult(agentName, attempt, options.model),
+            startedAt,
+            totalCost,
+            hasCost,
+            mergedUsage
+          );
+        }
+      }
+
+      const result = await callAgentOnce({
+        agentName,
+        prompt,
+        model: options.model,
+        sessionBase,
+        isChair,
+        fallbackModels,
+        timeoutMs,
+        attempt,
+        controller,
+        config,
+        cwdOverride: isolation?.path
+      });
+
+      const cost = knownCost(result.usage);
+      if (cost !== undefined) {
+        totalCost += cost;
+        hasCost = true;
+      }
+
+      lastResult = result;
+      mergedUsage = sumUsagePair(mergedUsage, result.usage);
+
+      if (result.success) {
+        return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
+      }
+
+      await invokeErrorHook(config, isChair, result);
+
+      if (!isRetryable(result.errorCode, result.retryAfterMs, delayMs)) {
+        return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
+      }
     }
 
-    const result = await callAgentOnce({
-      agentName,
-      prompt,
-      model: options.model,
-      sessionBase,
-      isChair,
-      fallbackModels,
-      timeoutMs,
-      attempt,
-      controller,
-      config
-    });
-
-    const cost = knownCost(result.usage);
-    if (cost !== undefined) {
-      totalCost += cost;
-      hasCost = true;
+    return finalizeResult(
+      lastResult ?? {
+        agent: agentName,
+        text: '',
+        success: false,
+        errorCode: 'EXIT_ERROR',
+        errorMessage: 'Все попытки исчерпаны'
+      },
+      startedAt,
+      totalCost,
+      hasCost,
+      mergedUsage
+    );
+  } finally {
+    // Сначала возвращаем исходный слой worktree, затем удаляем сам worktree:
+    // backup/lock не должны пережить изолированный вызов.
+    try {
+      overlay?.restore();
+    } catch (error) {
+      logWarn(config, `Не удалось восстановить read-only слой worktree: ${errorToMessage(error)}`);
     }
-
-    lastResult = result;
-    mergedUsage = sumUsagePair(mergedUsage, result.usage);
-
-    if (result.success) {
-      return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
-    }
-
-    await invokeErrorHook(config, isChair, result);
-
-    if (!isRetryable(result.errorCode, result.retryAfterMs, delayMs)) {
-      return finalizeResult(result, startedAt, totalCost, hasCost, mergedUsage);
+    try {
+      isolation?.remove();
+    } catch (error) {
+      logWarn(config, `Не удалось удалить изолированный worktree: ${errorToMessage(error)}`);
     }
   }
-
-  return finalizeResult(
-    lastResult ?? {
-      agent: agentName,
-      text: '',
-      success: false,
-      errorCode: 'EXIT_ERROR',
-      errorMessage: 'Все попытки исчерпаны'
-    },
-    startedAt,
-    totalCost,
-    hasCost,
-    mergedUsage
-  );
 }
 
 /**

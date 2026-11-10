@@ -410,31 +410,10 @@ test('отмена восстанавливает слой и снимает loc
   }
 });
 
-test('--isolate добавляет --worktree в аргументы дочернего opencode', async t => {
-  const dir = mkTemp();
-  const captureDir = join(dir, 'captures');
-  mkdirSync(captureDir, { recursive: true });
-  const previousCapture = process.env.FAKE_CAPTURE_DIR;
-  process.env.FAKE_CAPTURE_DIR = captureDir;
-  try {
-    const config = makeConfig(dir, createFakeOpenCode(dir), {
-      readOnly: false,
-      isolate: true
-    });
-    const result = await new Consilium(config).run('проверь задачу');
-    assert.equal(result.success, true);
-    assert.deepEqual(result.metadata?.safety, { readOnly: false, isolate: true });
-    assert.ok(readRunCapture(captureDir).args.includes('--worktree'));
-    assert.equal(existsSync(overlayPath(dir)), false, 'без read-only слой не пишется');
-  } finally {
-    if (previousCapture === undefined) delete process.env.FAKE_CAPTURE_DIR;
-    else process.env.FAKE_CAPTURE_DIR = previousCapture;
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  }
-});
-
-test('buildRunArgs: --worktree только при isolate', () => {
-  assert.ok(buildRunArgs({ config: { isolate: true } }).includes('--worktree'));
+test('--isolate больше не добавляет нативный --worktree в аргументы opencode', () => {
+  // Worktree создаёт и удаляет сам Consilium; нативный флаг дал бы вложенный
+  // worktree, который нельзя убрать детерминированно.
+  assert.equal(buildRunArgs({ config: { isolate: true } }).includes('--worktree'), false);
   assert.equal(buildRunArgs({ config: { isolate: false } }).includes('--worktree'), false);
   assert.equal(buildRunArgs({}).includes('--worktree'), false);
 });

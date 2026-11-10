@@ -16,6 +16,7 @@ import {
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { writeFileAtomic } from '../shared/fs.js';
+import { ISOLATE_WORKTREES_RELATIVE_PATH } from './opencode/isolate.js';
 
 /** Опции createProjectWatcher */
 export interface WatchOptions {
@@ -34,6 +35,9 @@ export const DEFAULT_IGNORE_PATTERNS: readonly string[] = [
   'node_modules',
   'dist',
   '.consilium',
+  // Изолированные worktree создаются и удаляются на каждом вызове агента:
+  // без явного игнора watch мог бы зациклиться на собственной уборке.
+  ISOLATE_WORKTREES_RELATIVE_PATH,
   'coverage',
   '*.tmp',
   '*.log',
