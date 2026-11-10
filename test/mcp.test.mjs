@@ -4,14 +4,18 @@ import { handleMcpRequest, getMcpTools } from '../dist/mcp.js';
 import { mergeWithDefaults } from '../dist/config.js';
 import { computeProgressTotal } from '../dist/interfaces/mcp/handlers/run.js';
 
-test('getMcpTools содержит все пять инструментов', () => {
+test('getMcpTools содержит все инструменты', () => {
   const names = getMcpTools().map(tool => tool.name).sort();
   assert.deepEqual(names, [
+    'consilium_diff_runs',
     'consilium_doctor',
     'consilium_free_models',
+    'consilium_get_run',
     'consilium_init_free',
     'consilium_list_agents',
-    'consilium_run'
+    'consilium_list_runs',
+    'consilium_run',
+    'consilium_sarif'
   ]);
 });
 

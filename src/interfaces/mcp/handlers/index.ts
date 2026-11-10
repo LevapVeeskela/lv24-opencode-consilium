@@ -10,4 +10,5 @@ export { toolListAgents } from './agents.js';
 export { toolFreeModels } from './models.js';
 export { toolDoctor } from './doctor.js';
 export { toolInitFree } from './init-free.js';
+export { toolDiffRuns, toolGetRun, toolListRuns, toolSarif } from './artifacts.js';
 export { executeTool, handleMcpRequest } from './dispatch.js';

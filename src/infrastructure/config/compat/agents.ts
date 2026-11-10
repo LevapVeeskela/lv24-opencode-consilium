@@ -134,7 +134,217 @@ function pickAgentFieldStyle(section: 'agent' | 'agents'): 'v1' | 'v2' {
 }
 
 /** Поля V1, которые нельзя однозначно перевести в V2 при миграции */
-const MIGRATION_UNSAFE_FIELDS = ['tools', 'permission', 'temperature', 'top_p', 'maxSteps', 'max_steps'];
+const MIGRATION_UNSAFE_FIELDS = ['temperature', 'top_p', 'maxSteps', 'max_steps'];
+
+/** V1-инструменты, переименованные в V2-действия. */
+const V1_TO_V2_ACTION: Record<string, string> = {
+  bash: 'shell',
+  task: 'subagent',
+  write: 'edit',
+  patch: 'edit'
+};
+
+type PermissionEffect = 'allow' | 'ask' | 'deny';
+
+/** Правило V2 `agents.<name>.permissions`. */
+interface V2PermissionRule {
+  action: string;
+  resource: string;
+  effect: PermissionEffect;
+}
+
+function toV2Action(action: string): string {
+  return V1_TO_V2_ACTION[action] ?? action;
+}
+
+function parseEffect(value: unknown): PermissionEffect | undefined {
+  return value === 'allow' || value === 'ask' || value === 'deny' ? value : undefined;
+}
+
+function dedupeRules(rules: readonly V2PermissionRule[]): V2PermissionRule[] {
+  const seen = new Set<string>();
+  const result: V2PermissionRule[] = [];
+  for (const rule of rules) {
+    const key = `${rule.action}\u0000${rule.resource}\u0000${rule.effect}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(rule);
+  }
+  return result;
+}
+
+/** Переводит V1 `tools` в deny-правила; null — форма не распознана. */
+function translateTools(tools: unknown): V2PermissionRule[] | null {
+  if (!isRecord(tools)) return null;
+  const rules: V2PermissionRule[] = [];
+  for (const [tool, enabled] of Object.entries(tools)) {
+    // `true` не создаёт allow: иначе правило агента перекрыло бы глобальный deny.
+    if (enabled === true) continue;
+    if (enabled !== false) return null;
+    rules.push({ action: toV2Action(tool), resource: '*', effect: 'deny' });
+  }
+  return rules;
+}
+
+/** Разбирает массив внутри V1 `permission.<action>`: tuple или список правил. */
+function translatePermissionArray(
+  action: string,
+  value: readonly unknown[]
+): V2PermissionRule[] | null {
+  // Короткая форма ресурса: ["git push *", "ask"].
+  if (value.length === 2 && typeof value[0] === 'string') {
+    const effect = parseEffect(value[1]);
+    if (effect !== undefined) return [{ action, resource: value[0], effect }];
+  }
+
+  const rules: V2PermissionRule[] = [];
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const effect = parseEffect(item);
+      if (effect === undefined) return null;
+      rules.push({ action, resource: '*', effect });
+      continue;
+    }
+    if (Array.isArray(item)) {
+      if (item.length !== 2 || typeof item[0] !== 'string') return null;
+      const effect = parseEffect(item[1]);
+      if (effect === undefined) return null;
+      rules.push({ action, resource: item[0], effect });
+      continue;
+    }
+    if (isRecord(item)) {
+      const resource =
+        typeof item.resource === 'string'
+          ? item.resource
+          : typeof item.pattern === 'string'
+            ? item.pattern
+            : undefined;
+      const effect = parseEffect(item.effect);
+      if (resource === undefined || effect === undefined) return null;
+      const itemAction = typeof item.action === 'string' ? toV2Action(item.action) : action;
+      rules.push({ action: itemAction, resource, effect });
+      continue;
+    }
+    return null;
+  }
+  return rules;
+}
+
+/** Разбирает V1 `permission`, если он задан массивом правил. */
+function translatePermissionList(items: readonly unknown[]): V2PermissionRule[] | null {
+  const rules: V2PermissionRule[] = [];
+  for (const item of items) {
+    if (isRecord(item)) {
+      const rawAction =
+        typeof item.action === 'string'
+          ? item.action
+          : typeof item.tool === 'string'
+            ? item.tool
+            : undefined;
+      const resource =
+        typeof item.resource === 'string'
+          ? item.resource
+          : typeof item.pattern === 'string'
+            ? item.pattern
+            : '*';
+      const effect = parseEffect(item.effect);
+      if (rawAction === undefined || effect === undefined) return null;
+      rules.push({ action: toV2Action(rawAction), resource, effect });
+      continue;
+    }
+    if (Array.isArray(item)) {
+      if (item.length === 3 && typeof item[0] === 'string' && typeof item[1] === 'string') {
+        const effect = parseEffect(item[2]);
+        if (effect === undefined) return null;
+        rules.push({ action: toV2Action(item[0]), resource: item[1], effect });
+        continue;
+      }
+      if (item.length === 2 && typeof item[0] === 'string') {
+        const effect = parseEffect(item[1]);
+        if (effect === undefined) return null;
+        rules.push({ action: '*', resource: item[0], effect });
+        continue;
+      }
+    }
+    return null;
+  }
+  return rules;
+}
+
+/** Переводит V1 `permission` в правила V2; null — форма не распознана. */
+function translatePermission(permission: unknown): V2PermissionRule[] | null {
+  if (Array.isArray(permission)) return translatePermissionList(permission);
+  if (!isRecord(permission)) return null;
+
+  const rules: V2PermissionRule[] = [];
+  for (const [rawAction, value] of Object.entries(permission)) {
+    const action = toV2Action(rawAction);
+    if (typeof value === 'string') {
+      const effect = parseEffect(value);
+      if (effect === undefined) return null;
+      rules.push({ action, resource: '*', effect });
+      continue;
+    }
+    if (Array.isArray(value)) {
+      const translated = translatePermissionArray(action, value);
+      if (translated === null) return null;
+      rules.push(...translated);
+      continue;
+    }
+    if (isRecord(value)) {
+      for (const [resource, rawEffect] of Object.entries(value)) {
+        const effect = parseEffect(rawEffect);
+        if (effect === undefined) return null;
+        rules.push({ action, resource, effect });
+      }
+      continue;
+    }
+    return null;
+  }
+  return rules;
+}
+
+/** Собирает ограничения V1 в правила V2; нераспознанные формы блокируют миграцию. */
+function translateLegacyPermissions(entry: Record<string, unknown>): {
+  rules: V2PermissionRule[];
+  unsupported: string[];
+} {
+  const rules: V2PermissionRule[] = [];
+  const unsupported: string[] = [];
+
+  if ('tools' in entry) {
+    const translated = translateTools(entry.tools);
+    if (translated === null) unsupported.push('tools');
+    else rules.push(...translated);
+  }
+  if ('permission' in entry) {
+    const translated = translatePermission(entry.permission);
+    if (translated === null) unsupported.push('permission');
+    else rules.push(...translated);
+  }
+
+  return { rules: dedupeRules(rules), unsupported };
+}
+
+/**
+ * Готовит V1-запись к переносу в `agents`: V1 `tools`/`permission` заменяются
+ * упорядоченными V2-правилами, существующие `permissions` сохраняются после
+ * переведённых (в V2 побеждает последнее правило).
+ */
+function buildMigratedBase(
+  v1Entry: Record<string, unknown>,
+  v2Entry: Record<string, unknown> | undefined,
+  rules: readonly V2PermissionRule[]
+): Record<string, unknown> {
+  const base: Record<string, unknown> = { ...v1Entry, ...(v2Entry ?? {}) };
+  delete base.tools;
+  delete base.permission;
+  if (rules.length > 0) {
+    const existing = Array.isArray(base.permissions) ? base.permissions : [];
+    base.permissions = [...rules, ...existing];
+  }
+  return base;
+}
 
 /** Собирает запись агента в выбранном стиле */
 function buildAgentEntry(
@@ -225,15 +435,23 @@ export function upsertAgents(
     const inV1 = Object.prototype.hasOwnProperty.call(v1, name);
     const inV2 = Object.prototype.hasOwnProperty.call(v2, name);
 
-    // Не переносим агентов, у которых есть V1-ограничения: в V2 их нельзя
-    // перевести без потери смысла, а смешивать поля в одной записи нельзя.
+    const legacy =
+      migrate && inV1
+        ? translateLegacyPermissions(v1[name]!)
+        : { rules: [] as V2PermissionRule[], unsupported: [] as string[] };
+
+    // Не переносим агентов, у которых есть V1-поля без однозначного
+    // V2-эквивалента: смешивать V1- и V2-поля в одной записи нельзя.
     if (migrate && inV1) {
-      const unsafe = MIGRATION_UNSAFE_FIELDS.filter(field => field in v1[name]!);
+      const unsafe = [
+        ...MIGRATION_UNSAFE_FIELDS.filter(field => field in v1[name]!),
+        ...legacy.unsupported
+      ];
       if (unsafe.length > 0) {
         v1[name] = buildAgentEntry(v1[name]!, write, 'v1');
         warnings.push(
           `Агент "${name}" не перенесён в agents: поля ${unsafe.join(', ')} нельзя однозначно ` +
-            'перевести в V2 (ограничения инструментов/сэмплинга). Запись в agent обновлена и оставлена.'
+            'перевести в V2. Запись в agent обновлена и оставлена.'
         );
         written[name] = 'agent';
         continue;
@@ -262,7 +480,7 @@ export function upsertAgents(
       // mode/description/disable и другие поля, которых нет в definitions.
       const base =
         target === 'agents' && migrate
-          ? { ...(v1[name] ?? {}), ...(v2[name] ?? {}) }
+          ? buildMigratedBase(v1[name]!, v2[name], legacy.rules)
           : targetMap[name] ?? {};
       const style = pickAgentFieldStyle(target);
       targetMap[name] = buildAgentEntry(base, write, style);
@@ -271,6 +489,12 @@ export function upsertAgents(
     if (migrate && inV1) {
       delete v1[name];
       warnings.push(`Агент "${name}" перенесён из agent в agents (native V2).`);
+      if (legacy.rules.length > 0) {
+        warnings.push(
+          `Агент "${name}": ограничения tools/permission переведены в permissions ` +
+            `(${legacy.rules.length} правил).`
+        );
+      }
     }
 
     written[name] = targets.length === 2 ? 'both' : targets[0]!;

@@ -181,15 +181,15 @@ test('upsertAgents переносит disable в disabled при миграци�
   assert.equal(back.config.agents.arch.disabled, true);
 });
 
-test('upsertAgents не мигрирует агента с V1-ограничениями', () => {
+test('upsertAgents переводит V1 tools/permission в V2 permissions', () => {
   const result = upsertAgents(
     {
       agent: {
         arch: {
           model: 'old',
           prompt: 'p',
-          tools: { write: false },
-          permission: { edit: 'deny' }
+          tools: { write: false, edit: false, bash: false, webfetch: false, task: false },
+          permission: { read: 'allow', bash: { 'git push *': 'ask' }, edit: 'deny' }
         }
       }
     },
@@ -197,12 +197,137 @@ test('upsertAgents не мигрирует агента с V1-ограничен
     { flavor: 'v2', migrate: true }
   );
 
+  const arch = result.config.agents.arch;
+  assert.equal(result.written.arch, 'agents');
+  assert.equal(result.config.agent, undefined);
+  assert.equal('tools' in arch, false);
+  assert.equal('permission' in arch, false);
+  assert.equal(arch.system, 'p');
+
+  const rules = arch.permissions;
+  assert.ok(Array.isArray(rules));
+  const has = (action, resource, effect) =>
+    rules.some(rule => rule.action === action && rule.resource === resource && rule.effect === effect);
+
+  assert.ok(has('edit', '*', 'deny'), 'write/edit -> edit deny');
+  assert.ok(has('shell', '*', 'deny'), 'bash -> shell deny');
+  assert.ok(has('webfetch', '*', 'deny'));
+  assert.ok(has('subagent', '*', 'deny'), 'task -> subagent deny');
+  assert.ok(has('read', '*', 'allow'));
+  assert.ok(has('shell', 'git push *', 'ask'));
+  assert.equal(
+    rules.filter(rule => rule.action === 'edit' && rule.resource === '*' && rule.effect === 'deny')
+      .length,
+    1,
+    'duplicate edit deny is deduped'
+  );
+
+  assert.ok(result.warnings.some(warning => warning.includes('permissions')));
+  assert.ok(!result.warnings.some(warning => warning.includes('не перенесён')));
+});
+
+test('upsertAgents переводит массивы V1 permission', () => {
+  const result = upsertAgents(
+    {
+      agent: {
+        arch: {
+          model: 'old',
+          permission: {
+            bash: [
+              ['git push *', 'deny'],
+              ['git status *', 'allow']
+            ],
+            edit: ['*.env', 'ask']
+          }
+        }
+      }
+    },
+    { arch: { model: 'new' } },
+    { flavor: 'v2', migrate: true }
+  );
+
+  const rules = result.config.agents.arch.permissions;
+  assert.ok(Array.isArray(rules));
+  const has = (action, resource, effect) =>
+    rules.some(rule => rule.action === action && rule.resource === resource && rule.effect === effect);
+
+  assert.ok(has('shell', 'git push *', 'deny'));
+  assert.ok(has('shell', 'git status *', 'allow'));
+  assert.ok(has('edit', '*.env', 'ask'));
+});
+
+test('upsertAgents переводит permission, заданный массивом правил', () => {
+  const result = upsertAgents(
+    {
+      agent: {
+        arch: {
+          model: 'old',
+          permission: [
+            { action: 'bash', resource: 'rm *', effect: 'deny' },
+            ['task', 'reviewer', 'ask']
+          ]
+        }
+      }
+    },
+    { arch: { model: 'new' } },
+    { flavor: 'v2', migrate: true }
+  );
+
+  const rules = result.config.agents.arch.permissions;
+  assert.ok(Array.isArray(rules));
+  assert.deepEqual(rules, [
+    { action: 'shell', resource: 'rm *', effect: 'deny' },
+    { action: 'subagent', resource: 'reviewer', effect: 'ask' }
+  ]);
+});
+
+test('upsertAgents сохраняет нативные V2 permissions после переведённых', () => {
+  const result = upsertAgents(
+    {
+      agent: { arch: { model: 'old', tools: { bash: false } } },
+      agents: {
+        arch: {
+          model: 'old',
+          system: 's',
+          permissions: [{ action: 'shell', resource: 'git status *', effect: 'allow' }]
+        }
+      }
+    },
+    { arch: { model: 'new' } },
+    { flavor: 'v2', migrate: true }
+  );
+
+  const rules = result.config.agents.arch.permissions;
+  assert.deepEqual(rules[0], { action: 'shell', resource: '*', effect: 'deny' });
+  assert.deepEqual(rules[1], { action: 'shell', resource: 'git status *', effect: 'allow' });
+});
+
+test('upsertAgents не мигрирует агента с temperature и предупреждает', () => {
+  const result = upsertAgents(
+    { agent: { arch: { model: 'old', prompt: 'p', temperature: 0.2 } } },
+    { arch: { model: 'new' } },
+    { flavor: 'v2', migrate: true }
+  );
+
   assert.equal(result.written.arch, 'agent');
   assert.equal(result.config.agents, undefined);
   assert.equal(result.config.agent.arch.model, 'new');
-  assert.deepEqual(result.config.agent.arch.tools, { write: false });
-  assert.deepEqual(result.config.agent.arch.permission, { edit: 'deny' });
+  assert.equal(result.config.agent.arch.temperature, 0.2);
   assert.ok(result.warnings.some(warning => warning.includes('не перенесён')));
+  assert.ok(result.warnings.some(warning => warning.includes('temperature')));
+});
+
+test('upsertAgents не мигрирует нераспознанную форму tools', () => {
+  const result = upsertAgents(
+    { agent: { arch: { model: 'old', tools: { write: 'no' } } } },
+    { arch: { model: 'new' } },
+    { flavor: 'v2', migrate: true }
+  );
+
+  assert.equal(result.written.arch, 'agent');
+  assert.equal(result.config.agents, undefined);
+  assert.deepEqual(result.config.agent.arch.tools, { write: 'no' });
+  assert.ok(result.warnings.some(warning => warning.includes('tools')));
 });
 
 test('upsertAgents не мутирует исходный конфиг', () => {

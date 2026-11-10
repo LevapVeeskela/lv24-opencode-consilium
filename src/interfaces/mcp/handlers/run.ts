@@ -27,6 +27,7 @@ import {
   optionalString,
   optionalStringArray,
   requireNonEmptyString,
+  resolveWorkspaceOutput,
   setActiveConsilium,
   toolError
 } from './shared.js';
@@ -93,25 +94,6 @@ export function formatConsiliumResult(result: ConsiliumResult, config: Consilium
   }
 
   return sections.join('\n\n');
-}
-
-function resolveOutputFile(
-  outputFile: string | undefined,
-  workspace: string
-): { value?: string; error?: string } {
-  if (outputFile === undefined || outputFile.trim().length === 0) {
-    return {};
-  }
-  try {
-    const resolved = resolveInside(workspace, outputFile, 'output_file');
-    if (resolved === workspace) {
-      return { error: '"output_file" must stay inside the workspace' };
-    }
-    return { value: resolved };
-  } catch {
-    // Не показываем абсолютные пути за пределами workspace.
-    return { error: '"output_file" must stay inside the workspace' };
-  }
 }
 
 function applyPresetFor(config: ConsiliumConfig, name: string): ConsiliumConfig {
@@ -183,7 +165,7 @@ export async function toolConsiliumRun(
     throw new ToolInputError('"artifacts" must be a boolean or a string path');
   }
 
-  const outputPath = resolveOutputFile(outputFile, workspace);
+  const outputPath = resolveWorkspaceOutput(outputFile, 'output_file');
   if (outputPath.error !== undefined) {
     return toolError(outputPath.error);
   }

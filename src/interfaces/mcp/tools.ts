@@ -200,6 +200,79 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: []
     }
+  },
+  {
+    name: 'consilium_list_runs',
+    description:
+      'List saved council runs from .consilium/runs, newest first, with id, creation time, task, success and finding counts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 100,
+          default: 10,
+          description: 'Maximum number of runs to return.'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'consilium_get_run',
+    description:
+      'Read one saved council run (run.json) as JSON. Use "latest" for the newest run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run: {
+          type: 'string',
+          default: 'latest',
+          description: 'Saved run id or "latest".'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'consilium_sarif',
+    description:
+      'Build a SARIF 2.1.0 report from a saved run. Returns JSON text, or writes it atomically to output_file inside the workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run: {
+          type: 'string',
+          default: 'latest',
+          description: 'Saved run id or "latest".'
+        },
+        output_file: {
+          type: 'string',
+          description: 'Optional file path for the SARIF report (must stay inside the workspace).'
+        }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'consilium_diff_runs',
+    description:
+      'Compare two saved council runs and return the markdown diff (task, status, models, experts and final text).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        left: {
+          type: 'string',
+          description: 'Saved run id or "latest" for the left side.'
+        },
+        right: {
+          type: 'string',
+          description: 'Saved run id or "latest" for the right side.'
+        }
+      },
+      required: ['left', 'right']
+    }
   }
 ];
 

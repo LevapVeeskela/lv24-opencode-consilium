@@ -236,9 +236,8 @@ function normalizeCounts(value: unknown, items: Finding[]): Record<FindingSeveri
   return total === items.length ? parsed : derived;
 }
 
-/** Извлекает валидную сводку находок из `metadata.findings` или возвращает null. */
-export function findingsSummaryOf(result: ConsiliumResult): FindingsSummary | null {
-  const metadata = result.metadata;
+/** Извлекает валидную сводку находок из произвольного `metadata` или возвращает null. */
+export function findingsSummaryFromMetadata(metadata: unknown): FindingsSummary | null {
   if (!isRecord(metadata)) return null;
   const raw = metadata['findings'];
   if (!isRecord(raw) || !Array.isArray(raw['items'])) return null;
@@ -256,6 +255,11 @@ export function findingsSummaryOf(result: ConsiliumResult): FindingsSummary | nu
     rejected,
     parseErrors: strArray(raw['parseErrors'])
   };
+}
+
+/** Извлекает валидную сводку находок из результата запуска или возвращает null. */
+export function findingsSummaryOf(result: ConsiliumResult): FindingsSummary | null {
+  return findingsSummaryFromMetadata(result.metadata);
 }
 
 /** Форматирует счётчики серьёзности: `critical: 0, high: 1, ...`. */

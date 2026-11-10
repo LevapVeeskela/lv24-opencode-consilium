@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { CLIOptions } from '../../../domain/types.js';
 import type { FindingsSummary } from '../../../domain/council/findings.js';
 import { buildSarifReport } from '../../../domain/artifacts/sarif.js';
+import { findingsSummaryFromMetadata } from '../../../domain/artifacts/report.js';
 import type { ArtifactRef, ArtifactRun } from '../../../domain/artifacts/artifacts/types.js';
 import {
   listArtifacts,
@@ -17,7 +18,6 @@ import {
 } from '../../../infrastructure/artifacts/store.js';
 import { writeFileAtomic } from '../../../shared/fs.js';
 import { errorMessage } from '../../../shared/errors.js';
-import { isRecord } from '../../../shared/record.js';
 import { EXIT_CODES, UsageError } from '../args.js';
 
 /** Зависимости команды sarif, подменяемые в тестах. */
@@ -77,10 +77,7 @@ function latestArtifact(root: string): ArtifactRef {
 
 /** Достаёт `metadata.findings`, если оно похоже на FindingsSummary. */
 function readFindings(artifact: ArtifactRun): FindingsSummary | undefined {
-  if (!isRecord(artifact.metadata)) return undefined;
-  const findings = artifact.metadata['findings'];
-  if (!isRecord(findings) || !Array.isArray(findings['items'])) return undefined;
-  return findings as unknown as FindingsSummary;
+  return findingsSummaryFromMetadata(artifact.metadata) ?? undefined;
 }
 
 function assertNoPositionals(options: CLIOptions): void {

@@ -18,6 +18,7 @@ import type {
 import { MCP_TOOL_NAMES, getMcpTools } from '../tools.js';
 import { isRecord } from '../validation.js';
 import { toolListAgents } from './agents.js';
+import { toolDiffRuns, toolGetRun, toolListRuns, toolSarif } from './artifacts.js';
 import { toolDoctor } from './doctor.js';
 import { toolInitFree } from './init-free.js';
 import { toolFreeModels } from './models.js';
@@ -43,6 +44,14 @@ export async function executeTool(
         return await toolDoctor();
       case 'consilium_init_free':
         return await toolInitFree(args);
+      case 'consilium_list_runs':
+        return await toolListRuns(args);
+      case 'consilium_get_run':
+        return await toolGetRun(args);
+      case 'consilium_sarif':
+        return await toolSarif(args);
+      case 'consilium_diff_runs':
+        return await toolDiffRuns(args);
       default:
         return toolError(`Unknown tool: ${name}`);
     }
@@ -71,7 +80,7 @@ function buildInitializeResult(
     },
     serverInfo: { name: SERVER_NAME, version },
     instructions:
-      'lv24-opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration.'
+      'lv24-opencode-consilium runs a council of expert AI agents through the OpenCode CLI. Use consilium_run to ask the council a task, consilium_list_agents to inspect configured experts, consilium_free_models to discover free models, consilium_doctor to diagnose setup issues, and consilium_init_free to propose or apply a free-model configuration. Saved runs are read-only: consilium_list_runs, consilium_get_run, consilium_sarif and consilium_diff_runs inspect them without calling a model.'
   };
 }
 
