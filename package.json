@@ -43,6 +43,7 @@
     "bin",
     "schema",
     "docs",
+    "!docs/plans",
     "examples/logic-review",
     "eval",
     "llms.txt",

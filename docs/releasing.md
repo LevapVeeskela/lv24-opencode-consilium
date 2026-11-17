@@ -51,7 +51,8 @@ first release creates the project. Details: [`docs/pypi.md`](pypi.md).
    ```bash
    npm test
    python -m unittest discover -s python/tests
-   git add -A
+   git status --short            # review every path first
+   git add <the files of this release>   # explicit paths, not "git add -A"
    git commit -m "*[OC] - vX.Y.Z: ..."
    git push origin master
    git tag vX.Y.Z
@@ -61,7 +62,10 @@ first release creates the project. Details: [`docs/pypi.md`](pypi.md).
 4. Create a GitHub release and publish it. Publishing the release triggers
    `.github/workflows/npm-publish.yml` and `.github/workflows/pypi-publish.yml`,
    which build, test and publish the same version with provenance / OIDC.
-   Already-published versions are skipped.
+   Already-published versions are skipped. The PyPI workflow waits (up to 30
+   minutes) until npm serves the version and does not publish if it never
+   appears, so a failed npm release cannot leave a launcher on PyPI that points
+   at a missing npm version. npm may need several minutes to process a publish.
 
    > The release event runs the workflows from the tagged commit, so both
    > workflow files must already exist at that tag. Tag releases created after

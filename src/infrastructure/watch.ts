@@ -218,6 +218,12 @@ export function createProjectWatcher(options: WatchOptions): { close(): void } {
   try {
     watcher = watch(cwd, { recursive: true }, (_event, filename) => onFilename(filename));
   } catch {
+    // Рекурсивный watch недоступен (Linux на Node < 20): раньше откат был
+    // молчаливым, и изменения во вложенных каталогах просто не замечались.
+    console.error(
+      '⚠️ Recursive file watching is not supported here (Linux needs Node.js 20+): ' +
+        'only the top-level directory is watched.'
+    );
     watcher = watch(cwd, (_event, filename) => onFilename(filename));
   }
   watcher.on('error', (error: unknown) => {

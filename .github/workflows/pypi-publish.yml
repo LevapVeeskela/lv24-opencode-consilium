@@ -33,7 +33,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Includes up to 30 minutes of waiting for the npm version (see below).
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -148,6 +149,30 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"skip={skip}\n")
           PY
+
+      # The launcher is pinned to the npm package of the same version. A release
+      # starts npm-publish and this workflow in parallel; if npm tests fail, a
+      # PyPI upload would ship a launcher that points at a version that does not
+      # exist, and PyPI versions cannot be replaced. Publish only after npm
+      # serves the version (npm can take several minutes to process a publish).
+      - name: Wait for the npm version
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          url="https://registry.npmjs.org/lv24-opencode-consilium/${VERSION}"
+          for attempt in $(seq 1 60); do
+            status="$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)"
+            if [ "$status" = "200" ]; then
+              echo "lv24-opencode-consilium@${VERSION} is available on npm."
+              exit 0
+            fi
+            echo "npm does not serve ${VERSION} yet (HTTP ${status}); attempt ${attempt}/60."
+            sleep 30
+          done
+          echo "::error::lv24-opencode-consilium@${VERSION} did not appear on npm within 30 minutes. PyPI was not published; fix the npm release and re-run this workflow."
+          exit 1
 
       # Trusted Publishing: the action exchanges the GitHub OIDC token for a
       # short-lived PyPI upload credential. No password or API token is set.

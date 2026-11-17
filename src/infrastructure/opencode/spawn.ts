@@ -505,6 +505,16 @@ export async function runAgentProcess(options: ProcessCallOptions): Promise<Agen
     controller: options.controller
   });
 
+  if (outcome.stdout.length >= MAX_CAPTURE_LENGTH) {
+    // Хвост потока потерян: вместе с ним могли пропасть часть ответа и события
+    // usage/cost, поэтому расход и лимит --max-cost для этого вызова занижены.
+    logWarn(
+      options.config,
+      `Вывод агента ${options.agentName} обрезан на ${MAX_CAPTURE_LENGTH} символах: ` +
+        'ответ может быть неполным, а стоимость вызова — заниженной.'
+    );
+  }
+
   const decoder = createEventDecoder();
   decoder.push(outcome.stdout);
   const parsed = decoder.end();
