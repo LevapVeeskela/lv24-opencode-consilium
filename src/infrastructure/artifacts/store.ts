@@ -18,7 +18,7 @@ import {
   canonicalizePath,
   resolveInside
 } from '../../shared/paths.js';
-import { redactSecrets } from '../../shared/redact.js';
+import { redactDeep, redactSecrets } from '../../shared/redact.js';
 import { isRecord } from '../../shared/record.js';
 import { formatArtifact } from '../../domain/artifacts/artifacts/format.js';
 import { ID_PATTERN, type ArtifactRef, type ArtifactRun } from '../../domain/artifacts/artifacts/types.js';
@@ -120,7 +120,11 @@ function redactRun(run: ArtifactRun): ArtifactRun {
       text: redactSecrets(expert.text),
       errorMessage:
         expert.errorMessage === undefined ? undefined : redactSecrets(expert.errorMessage)
-    }))
+    })),
+    // Находки (claim/evidence) и согласие цитируют код и ответы моделей:
+    // маскируем и их, иначе секрет попадал в run.json в обход полей выше.
+    ...(run.metadata === undefined ? {} : { metadata: redactDeep(run.metadata, redactSecrets) }),
+    ...(run.consensus === undefined ? {} : { consensus: redactDeep(run.consensus, redactSecrets) })
   };
 }
 

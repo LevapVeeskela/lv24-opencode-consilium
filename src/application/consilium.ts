@@ -48,6 +48,7 @@ import {
   applyCostTelemetryWarning,
   buildCancelledMetadata,
   buildCompletedResult,
+  redactResultSecrets,
   buildDeadlineChairNote,
   buildDeadlineFailureChair,
   buildDeadlineMetadata,
@@ -468,6 +469,7 @@ export class Consilium {
           ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
+        redactResultSecrets(result);
         this.status = 'cancelled';
         saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
         await hooks.onEnd?.(result);
@@ -558,6 +560,7 @@ export class Consilium {
           ...(debate !== undefined ? { debate: debate.metadata } : {}),
           ...(deadlineMetadata !== undefined ? { deadline: deadlineMetadata } : {})
         };
+        redactResultSecrets(result);
         this.status = 'cancelled';
         saveArtifactRun(result, task, artifactsSetting, runConfig, hooks);
         await hooks.onEnd?.(result);
@@ -584,6 +587,7 @@ export class Consilium {
         fallbackModels,
         safety
       });
+      redactResultSecrets(result);
 
       if (deadlineMetadata !== undefined) {
         result.metadata = { ...result.metadata, deadline: deadlineMetadata };

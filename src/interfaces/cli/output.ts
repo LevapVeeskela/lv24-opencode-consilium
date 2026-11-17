@@ -10,11 +10,14 @@ import { Consilium } from '../../application/consilium.js';
 import { listPresets } from '../../domain/council/presets.js';
 import { formatFindingsCounts, findingsSummaryOf, renderReport, type ReportFormat } from '../../domain/artifacts/report.js';
 import { writeFileAtomic } from '../../shared/fs.js';
-import { stripControlSequences } from '../../shared/redact.js';
+import { redactHighConfidenceSecrets, stripControlSequences } from '../../shared/redact.js';
 
-/** Убирает ANSI/OSC-последовательности из недоверенных терминальных полей */
+/**
+ * Убирает ANSI/OSC-последовательности из недоверенных терминальных полей и
+ * маскирует секреты: сообщения об ошибках провайдера попадают в логи CI.
+ */
 function safeText(value: string): string {
-  return stripControlSequences(value);
+  return redactHighConfidenceSecrets(stripControlSequences(value));
 }
 
 export function log(options: CLIOptions, message: string): void {

@@ -26,6 +26,7 @@ import {
   saveArtifact
 } from '../infrastructure/artifacts/store.js';
 import { collectModels, collectSessions, consensusInputs, sumUsage } from './helpers.js';
+import { redactDeep, redactHighConfidenceSecrets } from '../shared/redact.js';
 
 /** Выбирает экспертов с учётом явного запроса и включённости */
 export function selectExperts(
@@ -337,6 +338,32 @@ export function buildCompletedResult(input: BuildCompletedResultInput): Consiliu
       ...(input.safety ? { safety: { ...input.safety } } : {})
     }
   };
+}
+
+function redactAgentResult(result: AgentResult): AgentResult {
+  return {
+    ...result,
+    text: redactHighConfidenceSecrets(result.text),
+    ...(result.errorMessage === undefined
+      ? {}
+      : { errorMessage: redactHighConfidenceSecrets(result.errorMessage) })
+  };
+}
+
+/**
+ * Маскирует секреты в результате запуска до того, как он попадёт в любой
+ * вывод: stdout/JSON, файл `-o`, отчёты (PR, HTML, SARIF, Jira, Linear),
+ * артефакты, MCP и плагин. Ответы моделей могут цитировать токены из кода или
+ * stderr провайдера; PR-комментарий и SARIF при этом публичны.
+ * Применяются только правила с высокой уверенностью, чтобы не портить текст ревью.
+ */
+export function redactResultSecrets(result: ConsiliumResult): void {
+  result.text = redactHighConfidenceSecrets(result.text);
+  result.experts = result.experts.map(redactAgentResult);
+  result.chair = redactAgentResult(result.chair);
+  if (result.metadata !== undefined) {
+    result.metadata = redactDeep(result.metadata, redactHighConfidenceSecrets);
+  }
 }
 
 /** Предупреждает, что провайдер не сообщил стоимость и лимит не проверить */
