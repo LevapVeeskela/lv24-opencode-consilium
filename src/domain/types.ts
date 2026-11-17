@@ -283,7 +283,19 @@ export interface ConsiliumConfig {
   debounceMs?: number;
   /** Автосбор контекста проекта: off (по умолчанию) или auto */
   context?: 'off' | 'auto';
+  /**
+   * Профиль промптов по умолчанию: `advice` — краткое мнение по задаче,
+   * `review` — ревью кода с файлами/строками. `auto` (по умолчанию) выбирает
+   * `review`, когда включены находки или к задаче добавлен diff.
+   */
+  promptProfile?: PromptProfileSetting;
 }
+
+/** Профиль встроенных промптов */
+export type PromptProfile = 'advice' | 'review';
+
+/** Настройка профиля промптов */
+export type PromptProfileSetting = PromptProfile | 'auto';
 
 /**
  * Плагин

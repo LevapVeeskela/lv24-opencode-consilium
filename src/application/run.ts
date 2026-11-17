@@ -13,7 +13,11 @@ import type {
   ConsiliumMetadata
 } from '../domain/types.js';
 import { analyzeConsensus, formatConsensusReport } from '../domain/council/consensus.js';
-import { appendFindingsInstruction, buildChairPrompt } from '../domain/council/prompts.js';
+import {
+  appendFindingsInstruction,
+  buildChairPrompt,
+  resolvePromptProfile
+} from '../domain/council/prompts.js';
 import type { FindingsSummary } from '../domain/council/findings.js';
 import type { SmartExpertSelection } from '../domain/council/smart-experts.js';
 import type { CostReport } from '../domain/council/fallback.js';
@@ -164,7 +168,14 @@ export function withDeadlineChairNote(config: ConsiliumConfig, note: string): Co
       promptTemplate: (task, experts) => {
         let prompt = template
           ? template(task, experts)
-          : buildChairPrompt(task, experts, maxExpertTextLength, consensus, findings);
+          : buildChairPrompt(
+              task,
+              experts,
+              maxExpertTextLength,
+              consensus,
+              findings,
+              resolvePromptProfile(config)
+            );
         if (findings) prompt = appendFindingsInstruction(prompt, 'chair');
         return `${prompt}\n\n${note}`;
       }

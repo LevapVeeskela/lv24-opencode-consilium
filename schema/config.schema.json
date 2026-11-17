@@ -68,6 +68,10 @@
       "additionalProperties": { "$ref": "#/definitions/preset" }
     },
     "smartExperts": { "type": "boolean" },
+    "promptProfile": {
+      "enum": ["auto", "advice", "review"],
+      "description": "Built-in prompt profile: advice (short opinion) or review (code review with file/line evidence). auto picks review when findings are on or a diff is attached."
+    },
     "maxCost": { "type": "number", "minimum": 0 },
     "fallbackModels": { "type": "array", "items": { "type": "string" } },
     "session": { "type": "string", "minLength": 1 },

@@ -40,7 +40,12 @@ import { applyPreset } from '../domain/council/presets.js';
 import { auditLocalOnly } from '../infrastructure/local-models.js';
 import { selectSmartExperts } from '../domain/council/smart-experts.js';
 import { createCostTracker } from '../domain/council/fallback.js';
-import { appendFindingsInstruction, buildExpertPrompt } from '../domain/council/prompts.js';
+import {
+  appendFindingsInstruction,
+  buildChairPrompt,
+  buildExpertPrompt,
+  resolvePromptProfile
+} from '../domain/council/prompts.js';
 import { collectFindings } from './findings.js';
 import {
   normalizeDebateRounds,
@@ -683,11 +688,12 @@ export class Consilium {
   } {
     const experts = this.config.experts.filter(expert => expert.enabled !== false);
     const findingsEnabled = this.config.findings === true;
+    const profile = resolvePromptProfile(this.config);
 
     const expertPrompts = experts.map(expert => ({
       agent: expert.name,
       model: expert.model,
-      prompt: buildExpertPrompt(expert, task, findingsEnabled)
+      prompt: buildExpertPrompt(expert, task, findingsEnabled, profile)
     }));
 
     const placeholderResults: AgentResult[] = experts.map(expert => ({
@@ -699,7 +705,16 @@ export class Consilium {
 
     const baseChairPrompt = this.config.chair.promptTemplate
       ? this.config.chair.promptTemplate(task, placeholderResults)
-      : DEFAULT_CHAIR_PROMPT_TEMPLATE(task, placeholderResults);
+      : profile === 'review'
+        ? buildChairPrompt(
+            task,
+            placeholderResults,
+            this.config.chair.maxExpertTextLength ?? 3000,
+            false,
+            false,
+            profile
+          )
+        : DEFAULT_CHAIR_PROMPT_TEMPLATE(task, placeholderResults);
     const chairPromptTemplate = findingsEnabled
       ? appendFindingsInstruction(baseChairPrompt, 'chair')
       : baseChairPrompt;

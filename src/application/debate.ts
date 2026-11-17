@@ -14,6 +14,7 @@ import type { CostTracker } from '../domain/council/fallback.js';
 import {
   appendFindingsInstruction,
   buildChairPrompt,
+  resolvePromptProfile,
   buildDebatePrompt,
   hasPositionChanged,
   normalizeDebateText
@@ -268,7 +269,14 @@ export function withDebateChairNote(
       promptTemplate: (task, experts) => {
         let prompt = template
           ? template(task, experts)
-          : buildChairPrompt(task, experts, maxExpertTextLength, consensus, findings);
+          : buildChairPrompt(
+              task,
+              experts,
+              maxExpertTextLength,
+              consensus,
+              findings,
+              resolvePromptProfile(config)
+            );
         if (findings) prompt = appendFindingsInstruction(prompt, 'chair');
         return `${prompt}\n\n${note}`;
       }

@@ -198,6 +198,12 @@ export async function commandRun(options: CLIOptions): Promise<number> {
     diffInfo = built.diff ?? diffInfo;
   }
 
+  // Задача с diff — это ревью кода: совещательные промпты («3–5 предложений,
+  // не читай файлы») для неё не подходят. Явная настройка профиля сохраняется.
+  if (diffInfo !== undefined && (config.promptProfile ?? 'auto') === 'auto') {
+    config.promptProfile = 'review';
+  }
+
   if (options.dryRun) {
     printDryRun(task, config);
     return EXIT_CODES.success;

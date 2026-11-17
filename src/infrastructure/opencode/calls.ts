@@ -14,7 +14,8 @@ import { buildFallbackChain, shouldFallback } from '../../domain/council/fallbac
 import {
   appendFindingsInstruction,
   buildChairPrompt,
-  buildExpertPrompt
+  buildExpertPrompt,
+  resolvePromptProfile
 } from '../../domain/council/prompts.js';
 import { buildAgentSession, buildChairSession } from '../../domain/council/sessions.js';
 import { isValidAgentName, isValidModelName } from './args.js';
@@ -543,7 +544,12 @@ export async function callExpertsParallel(
 
   const runExpert = async (expert: ExpertConfig): Promise<AgentResult> => {
     try {
-      const prompt = buildExpertPrompt(expert, task, config.findings === true);
+      const prompt = buildExpertPrompt(
+        expert,
+        task,
+        config.findings === true,
+        resolvePromptProfile(config)
+      );
 
       await invokeHook(
         config,
@@ -637,7 +643,8 @@ export async function callChair(
       expertResults,
       maxExpertTextLength,
       config.consensus === true,
-      findings
+      findings,
+      resolvePromptProfile(config)
     );
   }
 
