@@ -49,7 +49,7 @@ pip install lv24-opencode-consilium     # PyPI 薄启动器（仍需 Node.js + O
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；PyPI 启动器需要 Python 3.9+；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.13.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.14.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.14.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -143,7 +143,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -377,7 +377,7 @@ permissions:
   pull-requests: write
   security-events: write   # SARIF 上传所需
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.14.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -477,7 +477,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
-- **未发布** — 基于对 1.12.1 的审计加固审查。*提示词：*启用发现或附带 diff 时自动使用 `review` 配置（每条发现给出文件和行号、允许读取文件、不再限制 3–5 句、主席给出合并结论）；`promptProfile: advice` 保留旧提示词。*安全：*结果在任何输出前脱敏（PR 评论、HTML、SARIF、Jira/Linear、JSON、MCP），新增 `gho_`/`ghs_`、`glpat-`、Slack、Google、PEM、JWT 和 JSON 密钥字段的模式；只读运行会警告项目 `opencode.json` 中的 `mcp`/`plugins`/`provider`。*GitHub Action：*审查配置、baseline 与 OpenCode 配置取自 base 分支（`config-from-base`），固定到标签的 action 安装对应的 npm 版本，`opencode-version` 固定 OpenCode。*Diff：*空 diff 以 `0` 退出且不调用模型；被截断的 diff 记录在 `metadata.diff`、显示在报告中并使门禁未完成。*Eval：*新增 `precision` 与 `unexpected` 发现。*发布：*PyPI workflow 等待 npm 版本可用。另外：pre-commit hook 固定已安装版本，npm 包不再包含 `docs/plans`，新增逻辑审查手册（[`logic-review.md`](logic-review.md)）。664 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
+- **1.14.0** — 基于对 1.12.1 的审计加固审查。*提示词：*启用发现或附带 diff 时自动使用 `review` 配置（每条发现给出文件和行号、允许读取文件、不再限制 3–5 句、主席给出合并结论）；`promptProfile: advice` 保留旧提示词。*安全：*结果在任何输出前脱敏（PR 评论、HTML、SARIF、Jira/Linear、JSON、MCP），新增 `gho_`/`ghs_`、`glpat-`、Slack、Google、PEM、JWT 和 JSON 密钥字段的模式；只读运行会警告项目 `opencode.json` 中的 `mcp`/`plugins`/`provider`。*GitHub Action：*审查配置、baseline 与 OpenCode 配置取自 base 分支（`config-from-base`），固定到标签的 action 安装对应的 npm 版本，`opencode-version` 固定 OpenCode。*Diff：*空 diff 以 `0` 退出且不调用模型；被截断的 diff 记录在 `metadata.diff`、显示在报告中并使门禁未完成。*Eval：*新增 `precision` 与 `unexpected` 发现。*发布：*PyPI workflow 等待 npm 版本可用。另外：pre-commit hook 固定已安装版本，npm 包不再包含 `docs/plans`，新增逻辑审查手册（[`logic-review.md`](logic-review.md)）。664 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.13.0** — Apache-2.0 许可证与故障时关闭的策略门禁：自 1.13.0 起项目采用 Apache-2.0 许可证（`LICENSE`、`NOTICE`；npm 包、PyPI 启动器与容器镜像使用同一许可证），1.12.1 及更早版本仍按 MIT 授权。**行为变更：**使用 `--fail-on` 时，如果某位已配置的专家没有给出可用回答（错误、超时、空响应、限流）或发现块无法解析，门禁视为*未完成*（inconclusive）——退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <reasons>`；此前退出 `0`。`--gate-allow-partial`（GitHub Action 输入 `gate-allow-partial`，默认关闭）恢复原有退出码，并把未完成的门禁降为警告。状态记录在 `metadata.policyGate`，并显示在 PR/HTML/Jira/Linear 报告和 SARIF 运行属性中。621 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.1** — Python MCP 启动器与隔离加固：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。`--isolate --read-only` 在仓库含 `.opencode/opencode.jsonc` 时立即以退出码 `2` 失败（改为 `.opencode/opencode.json` 或使用 `--allow-write`），而不是在每个 Agent 内报错。worktree 清理会规范化路径，避免把 macOS `/private/var` 或 Windows 8.3/长路径下的活跃 worktree 误判为未注册；Linux、Windows、macOS 清理测试通过手动 `worktree-tests` workflow 运行。601 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.0** — 托管隔离与 MCP replay：`--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree（基于 HEAD + tracked 改动），在每个 worktree 内应用只读层并在调用后删除；崩溃残留由保守清理处理，非 git 项目在调用模型前失败。MCP 新增 `consilium_replay`：从已保存产物恢复 task/模型/选项并通过 progress 通知流式反馈。评估工具新增 `npm run eval:report`，校验真实 `eval --json`/`--compare-rounds --json` 并生成 `docs/eval-results.md`，不编造数字；588 个 JavaScript 测试 + 9 个 Python 测试。

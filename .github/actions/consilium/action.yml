@@ -67,7 +67,7 @@ inputs:
     description: >-
       npm version of lv24-opencode-consilium to install. Empty (default) installs
       the version that matches the action ref when the action is pinned to a
-      release tag (uses: ...@v1.13.0 installs 1.13.0) and latest otherwise.
+      release tag (uses: ...@v1.14.0 installs 1.14.0) and latest otherwise.
       Pass an exact version or latest to override.
     required: false
     default: ''

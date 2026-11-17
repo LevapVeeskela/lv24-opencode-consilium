@@ -97,9 +97,9 @@ pip install lv24-opencode-consilium
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.14.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.13.0
+# consilium v1.14.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -282,7 +282,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -674,7 +674,7 @@ permissions:
   pull-requests: write
   security-events: write   # нужно для загрузки SARIF
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.14.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -832,7 +832,7 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
-**Не выпущено** — усиление ревью по итогам аудита 1.12.1. *Промпты:* профиль `review` (файл и строка для каждой находки, чтение файлов разрешено, без ограничения в 3–5 предложений, вердикт от председателя) включается автоматически, когда включены находки или добавлен diff; `promptProfile: advice` возвращает прежние промпты. *Безопасность:* результат маскируется до любого вывода (комментарий PR, HTML, SARIF, Jira/Linear, JSON, MCP), добавлены шаблоны `gho_`/`ghs_`, `glpat-`, Slack, Google, PEM, JWT и JSON-поля с секретом; read-only запуск предупреждает о `mcp`/`plugins`/`provider` в проектном `opencode.json`. *GitHub Action:* конфигурация ревью, baseline и конфиг OpenCode берутся из base-ветки (`config-from-base`), action на релизном теге ставит совпадающую версию npm, `opencode-version` закрепляет OpenCode. *Diff:* пустой diff завершается кодом `0` без вызова моделей; обрезанный diff записывается в `metadata.diff`, показывается в отчётах и делает гейт несостоявшимся. *Eval:* `precision` и `unexpected`-находки. *Релиз:* workflow PyPI ждёт появления версии в npm. Также: pre-commit hook закрепляет установленную версию, `docs/plans` больше не входит в npm-пакет, добавлен рецепт ревью логики ([`logic-review.md`](logic-review.md)). 664 JavaScript-тестов (2 платформенных skip) + 16 Python-тестов.
+**1.14.0** — усиление ревью по итогам аудита 1.12.1. *Промпты:* профиль `review` (файл и строка для каждой находки, чтение файлов разрешено, без ограничения в 3–5 предложений, вердикт от председателя) включается автоматически, когда включены находки или добавлен diff; `promptProfile: advice` возвращает прежние промпты. *Безопасность:* результат маскируется до любого вывода (комментарий PR, HTML, SARIF, Jira/Linear, JSON, MCP), добавлены шаблоны `gho_`/`ghs_`, `glpat-`, Slack, Google, PEM, JWT и JSON-поля с секретом; read-only запуск предупреждает о `mcp`/`plugins`/`provider` в проектном `opencode.json`. *GitHub Action:* конфигурация ревью, baseline и конфиг OpenCode берутся из base-ветки (`config-from-base`), action на релизном теге ставит совпадающую версию npm, `opencode-version` закрепляет OpenCode. *Diff:* пустой diff завершается кодом `0` без вызова моделей; обрезанный diff записывается в `metadata.diff`, показывается в отчётах и делает гейт несостоявшимся. *Eval:* `precision` и `unexpected`-находки. *Релиз:* workflow PyPI ждёт появления версии в npm. Также: pre-commit hook закрепляет установленную версию, `docs/plans` больше не входит в npm-пакет, добавлен рецепт ревью логики ([`logic-review.md`](logic-review.md)). 664 JavaScript-тестов (2 платформенных skip) + 16 Python-тестов.
 
 **1.13.0** — лицензия Apache-2.0 и гейт, который закрывается при сбое. Начиная с 1.13.0 проект распространяется под Apache-2.0 (`LICENSE`, `NOTICE`; npm-пакет, PyPI-лаунчер и образ контейнера — под той же лицензией); 1.12.1 и более ранние релизы остаются под MIT. **Изменение поведения:** при `--fail-on` гейт теперь считается *несостоявшимся* (inconclusive) — код `3` и строка `policy gate inconclusive: <причины>` в stderr, — если настроенный эксперт не дал пригодного ответа (ошибка, тайм-аут, пустой ответ, лимит) или блок находок не удалось разобрать; раньше код был `0`. Флаг `--gate-allow-partial` (вход GitHub Action `gate-allow-partial`, по умолчанию выключен) возвращает прежний код выхода и превращает несостоявшийся гейт в предупреждение. Состояние записывается в `metadata.policyGate` и показывается в отчётах PR/HTML/Jira/Linear и в свойствах запуска SARIF. 621 JavaScript-тест (2 платформенных skip) + 16 Python-тестов.
 

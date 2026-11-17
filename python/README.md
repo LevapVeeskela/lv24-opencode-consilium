@@ -95,7 +95,7 @@ python -m lv24_opencode_consilium.mcp
 ## Version pinning
 
 By default both launchers run the npm package version matching the Python
-package version (currently `1.13.0`). Override it with
+package version (currently `1.14.0`). Override it with
 `CONSILIUM_NPM_VERSION` to use any npm version or tag:
 
 ```bash

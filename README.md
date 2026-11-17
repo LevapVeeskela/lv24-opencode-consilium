@@ -101,9 +101,9 @@ pip install lv24-opencode-consilium
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.14.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.13.0
+# consilium v1.14.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -286,7 +286,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -675,7 +675,7 @@ permissions:
   pull-requests: write
   security-events: write   # required for the SARIF upload
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.14.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -833,7 +833,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
-**Unreleased** — review hardening after an audit of 1.12.1. *Prompts:* a `review` prompt profile (file/line evidence, reading files allowed, no 3–5 sentence cap, a merge verdict from the chair) is used automatically when findings are on or a diff is attached; `promptProfile: advice` keeps the old prompts. *Security:* results are redacted before any output (PR comment, HTML, SARIF, Jira/Linear, JSON, MCP), with new patterns for `gho_`/`ghs_`, `glpat-`, Slack, Google, PEM, JWT and JSON secret fields; read-only runs warn about `mcp`/`plugins`/`provider` in the project `opencode.json`. *GitHub Action:* the review configuration, the baseline and the OpenCode config come from the base ref (`config-from-base`), an action pinned to a tag installs the matching npm version, `opencode-version` pins OpenCode. *Diffs:* an empty diff exits `0` without model calls; a truncated diff is recorded in `metadata.diff`, shown in the reports and makes the gate inconclusive. *Eval:* `precision` and `unexpected` findings. *Release:* the PyPI workflow waits for the npm version. Also: the pre-commit hook pins the installed version, `docs/plans` is no longer shipped in the npm package, and a logic review playbook is added ([`docs/logic-review.md`](docs/logic-review.md)). 664 JavaScript tests (2 platform-skipped) + 16 Python tests.
+**1.14.0** — review hardening after an audit of 1.12.1. *Prompts:* a `review` prompt profile (file/line evidence, reading files allowed, no 3–5 sentence cap, a merge verdict from the chair) is used automatically when findings are on or a diff is attached; `promptProfile: advice` keeps the old prompts. *Security:* results are redacted before any output (PR comment, HTML, SARIF, Jira/Linear, JSON, MCP), with new patterns for `gho_`/`ghs_`, `glpat-`, Slack, Google, PEM, JWT and JSON secret fields; read-only runs warn about `mcp`/`plugins`/`provider` in the project `opencode.json`. *GitHub Action:* the review configuration, the baseline and the OpenCode config come from the base ref (`config-from-base`), an action pinned to a tag installs the matching npm version, `opencode-version` pins OpenCode. *Diffs:* an empty diff exits `0` without model calls; a truncated diff is recorded in `metadata.diff`, shown in the reports and makes the gate inconclusive. *Eval:* `precision` and `unexpected` findings. *Release:* the PyPI workflow waits for the npm version. Also: the pre-commit hook pins the installed version, `docs/plans` is no longer shipped in the npm package, and a logic review playbook is added ([`docs/logic-review.md`](docs/logic-review.md)). 664 JavaScript tests (2 platform-skipped) + 16 Python tests.
 
 **1.13.0** — Apache-2.0 license and a fail-closed policy gate. The project is licensed under Apache-2.0 starting with 1.13.0 (`LICENSE`, `NOTICE`; the npm package, the PyPI launcher and the container image carry the same license); 1.12.1 and earlier releases remain under MIT. **Behavior change:** with `--fail-on` the gate is now *inconclusive* — exit `3` and `policy gate inconclusive: <reasons>` on stderr — when a configured expert returns no usable answer (error, timeout, empty response, rate limit) or a findings block cannot be parsed; earlier versions exited `0`. `--gate-allow-partial` (GitHub Action input `gate-allow-partial`, off by default) restores the old exit code and turns the inconclusive gate into a warning. The state is recorded in `metadata.policyGate` and shown in PR/HTML/Jira/Linear reports and SARIF run properties. 621 JavaScript tests (2 platform-skipped) + 16 Python tests.
 

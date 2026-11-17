@@ -60,7 +60,7 @@ Pin the action to a commit SHA (recommended) or a release tag:
 - name: Run Consilium
   uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.13.0'
+    version: '1.14.0'
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
@@ -127,7 +127,7 @@ jobs:
 | `node-version` | `20` | Node.js version used by the action. |
 | `max-cost` | empty | Optional soft cost cap in USD, passed to `--max-cost`. |
 | `read-only` | `true` | Pass `--read-only`: experts may only read/glob/grep; write/edit/shell/subagent/MCP tools are denied. Set to `false` to pass `--allow-write`. |
-| `version` | empty | npm version of `lv24-opencode-consilium` to install. Empty installs the version that matches the action ref when the action is pinned to a release tag (`@v1.13.0` installs `1.13.0`) and `latest` otherwise. |
+| `version` | empty | npm version of `lv24-opencode-consilium` to install. Empty installs the version that matches the action ref when the action is pinned to a release tag (`@v1.14.0` installs `1.14.0`) and `latest` otherwise. |
 | `opencode-version` | `latest` | Version of `opencode-ai` to install when `opencode` is not on PATH. A preinstalled `opencode` is always kept. |
 | `config-from-base` | `true` | Take `consilium.config.json` (and aliases), `.consilium/baseline.json`, `opencode.json(c)` and `.opencode/` from the base ref instead of the pull request. See [Review configuration from the base ref](#review-configuration-from-the-base-ref). |
 | `sarif` | `true` | Export findings as SARIF 2.1.0 and upload them to GitHub code scanning. Requires `security-events: write` and code scanning enabled for the repository. Set to `false` to skip both SARIF steps. |
@@ -389,7 +389,7 @@ Three things can move independently:
 
 1. **The action ref.** Pin `uses:` to a full commit SHA (or a reviewed release
    tag) instead of `@main`.
-2. **The npm package.** Pass an exact `version`, for example `1.13.0`, instead
+2. **The npm package.** Pass an exact `version`, for example `1.14.0`, instead
    of the default `latest`.
 3. **The OpenCode CLI.** The action installs `opencode-ai@latest` only when
    `opencode` is not already on `PATH`. To pin it, install a specific version in
@@ -402,7 +402,7 @@ Three things can move independently:
    - name: Run Consilium
      uses: ./.github/actions/consilium
      with:
-       version: '1.13.0'
+       version: '1.14.0'
    ```
 
    Also pin `actions/checkout` to a commit SHA in production workflows.
@@ -412,7 +412,7 @@ Example remote pin:
 ```yaml
 - uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@<full-commit-sha>
   with:
-    version: '1.13.0'
+    version: '1.14.0'
     fail-on: high
 ```
 
