@@ -4,7 +4,17 @@
  */
 
 import type { CLIOptions } from '../../../domain/types.js';
+import { DEFAULT_CONFIG } from '../../../domain/defaults.js';
 import { installPreCommitHook, uninstallPreCommitHook } from '../../../infrastructure/watch.js';
+
+/** Команда pre-commit hook с закреплённой версией пакета */
+export function buildHookCommand(version: string | undefined): string {
+  const pinned =
+    typeof version === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(version)
+      ? `lv24-opencode-consilium@${version}`
+      : 'lv24-opencode-consilium';
+  return `npx -y ${pinned} --staged -s "Ревью staged-изменений" || exit 1`;
+}
 
 /** Устанавливает или удаляет git pre-commit hook */
 export async function commandHooks(options: CLIOptions): Promise<number> {
@@ -25,8 +35,9 @@ export async function commandHooks(options: CLIOptions): Promise<number> {
     return 0;
   }
 
-  const hookCommand =
-    'npx -y lv24-opencode-consilium --staged -s "Ревью staged-изменений" || exit 1';
+  // Версия закреплена на установленной: хук не должен молча подтягивать
+  // новый релиз из npm при каждом коммите.
+  const hookCommand = buildHookCommand(DEFAULT_CONFIG.version);
   try {
     const hook = installPreCommitHook(cwd, hookCommand);
     console.log(`✅ pre-commit hook ${hook.created ? 'создан' : 'обновлён'}: ${hook.path}`);

@@ -65,10 +65,28 @@ inputs:
     default: ''
   version:
     description: >-
-      npm version of lv24-opencode-consilium to install. Defaults to latest;
-      pin an exact version for reproducible reviews.
+      npm version of lv24-opencode-consilium to install. Empty (default) installs
+      the version that matches the action ref when the action is pinned to a
+      release tag (uses: ...@v1.13.0 installs 1.13.0) and latest otherwise.
+      Pass an exact version or latest to override.
+    required: false
+    default: ''
+  opencode-version:
+    description: >-
+      Version of the opencode-ai npm package to install when opencode is not on
+      PATH. Defaults to latest; pin an exact version for reproducible reviews.
+      A preinstalled opencode is always kept.
     required: false
     default: latest
+  config-from-base:
+    description: >-
+      Take the files that control the review (consilium.config.json and its
+      aliases, .consilium/baseline.json, opencode.json(c), .opencode/) from the
+      base ref instead of the pull request, so a pull request cannot weaken its
+      own check. The pull request versions are restored in the workspace before
+      the run and are not reviewed. Set to false to use the pull request files.
+    required: false
+    default: 'true'
   sarif:
     description: >-
       Export findings as SARIF 2.1.0 and upload them to GitHub code scanning.
@@ -110,16 +128,31 @@ runs:
       shell: bash
       env:
         CONSILIUM_VERSION: ${{ inputs.version }}
+        OPENCODE_VERSION: ${{ inputs.opencode-version }}
+        ACTION_REF: ${{ github.action_ref }}
       run: |
         set -euo pipefail
-        version="${CONSILIUM_VERSION:-latest}"
+        version="${CONSILIUM_VERSION:-}"
+        if [ -z "$version" ]; then
+          # An action pinned to a release tag installs the matching npm version,
+          # so the action code and the CLI cannot drift apart.
+          if printf '%s' "${ACTION_REF:-}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            version="${ACTION_REF#v}"
+          else
+            version="latest"
+            echo "::notice::Installing lv24-opencode-consilium@latest: the action is not pinned to a release tag. Pin the action (…@vX.Y.Z) or pass 'version' for reproducible reviews."
+          fi
+        fi
         npm install --global --no-fund --no-audit "lv24-opencode-consilium@${version}"
 
         # Consilium drives the OpenCode CLI. Keep a preinstalled (and pinned)
         # OpenCode if the caller provided one; only bootstrap it when missing.
         if ! command -v opencode >/dev/null 2>&1; then
-          npm install --global --no-fund --no-audit opencode-ai@latest
-          echo "::notice::Installed opencode-ai@latest because opencode was not on PATH. Preinstall a pinned version for reproducibility."
+          opencode_version="${OPENCODE_VERSION:-latest}"
+          npm install --global --no-fund --no-audit "opencode-ai@${opencode_version}"
+          if [ "$opencode_version" = "latest" ]; then
+            echo "::notice::Installed opencode-ai@latest because opencode was not on PATH. Set 'opencode-version' or preinstall a pinned version for reproducibility."
+          fi
         fi
 
     - name: Run Consilium on the pull request diff
@@ -130,6 +163,8 @@ runs:
         INPUT_BASE: ${{ inputs.base }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_GATE_ALLOW_PARTIAL: ${{ inputs.gate-allow-partial }}
+        INPUT_CONFIG_FROM_BASE: ${{ inputs.config-from-base }}
+        ACTION_PATH: ${{ github.action_path }}
         INPUT_READ_ONLY: ${{ inputs.read-only }}
         INPUT_MAX_COST: ${{ inputs.max-cost }}
         INPUT_SARIF: ${{ inputs.sarif }}
@@ -182,6 +217,24 @@ runs:
         if [ "$exit_code" -eq 0 ] && ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null 2>&1; then
           echo "::error::Base ref '${base}' was not found. Check out with fetch-depth: 0 and fetch the base branch, or pass 'base' explicitly." >&2
           exit_code=2
+        fi
+
+        config_from_base="${INPUT_CONFIG_FROM_BASE:-true}"
+        case "$config_from_base" in
+          true|false) ;;
+          *)
+            echo "::error::Invalid config-from-base value '${config_from_base}'. Use true or false." >&2
+            exit_code=2
+            ;;
+        esac
+
+        # A pull request must not be able to weaken its own review: take the
+        # council config, the baseline and the OpenCode config from the base ref.
+        # If that fails, do not fall back to the pull request files.
+        if [ "$exit_code" -eq 0 ] && [ "$config_from_base" = "true" ]; then
+          if ! node "${ACTION_PATH}/protect-config.mjs" "$base"; then
+            exit_code=2
+          fi
         fi
 
         rm -f "$report_file"
