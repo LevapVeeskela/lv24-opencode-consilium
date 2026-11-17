@@ -19,7 +19,7 @@ import {
   resolvePolicyGateStatus,
   type PolicyGateStatus
 } from '../../../domain/artifacts/policy-gate.js';
-import type { ConsiliumResult } from '../../../domain/types.js';
+import type { ConsiliumResult, DiffInfo } from '../../../domain/types.js';
 import {
   annotateArtifactMetadata,
   loadArtifact,
@@ -32,7 +32,7 @@ import {
 import { EXIT_CODES, UsageError } from '../args.js';
 import { applyCliOverrides } from '../overrides.js';
 import { assertCliIsolatedReadOnlyPreflight } from '../preflight.js';
-import { buildTask } from '../task.js';
+import { buildTaskDetails } from '../task.js';
 import {
   printAgentList,
   printDryRun,
@@ -155,6 +155,7 @@ export async function commandRun(options: CLIOptions): Promise<number> {
 
   let replayArtifact: ArtifactRun | undefined;
   let task: string;
+  let diffInfo: DiffInfo | undefined = options.diffInfo;
   if (options.replay !== undefined) {
     try {
       replayArtifact = loadArtifact(options.replay, artifactsRoot);
@@ -187,18 +188,34 @@ export async function commandRun(options: CLIOptions): Promise<number> {
       }
     }
   } else {
-    const built = await buildTask(options, config);
-    if (!built) {
+    const built = await buildTaskDetails(options, config);
+    if (!built.task) {
       throw new UsageError(
         'Укажите задачу: consilium "Оценить архитектуру" (или передайте её через stdin: consilium -)'
       );
     }
-    task = built;
+    task = built.task;
+    diffInfo = built.diff ?? diffInfo;
   }
 
   if (options.dryRun) {
     printDryRun(task, config);
     return EXIT_CODES.success;
+  }
+
+  if (diffInfo?.empty === true) {
+    // Ревьюить нечего: не тратим вызовы моделей на «изменений нет».
+    if ((options.format ?? 'text') === 'json') {
+      console.log(JSON.stringify({ success: true, skipped: 'empty-diff' }, null, 2));
+    }
+    console.error('ℹ️ diff is empty: nothing to review, no model calls were made.');
+    return EXIT_CODES.success;
+  }
+  if (diffInfo?.truncated === true) {
+    console.error(
+      `⚠️ diff truncated to ${diffInfo.chars} characters (${diffInfo.filesChanged} files changed): ` +
+        'the rest of the change was not reviewed.'
+    );
   }
 
   // JSONC в корне репозитория перекрывает per-worktree read-only слой:
@@ -233,6 +250,9 @@ export async function commandRun(options: CLIOptions): Promise<number> {
   if (options.output && !options.noSave) runOptions.outputFile = options.output;
   if (replayArtifact !== undefined) {
     runOptions.metadata = { replayOf: replayArtifact.id };
+  }
+  if (diffInfo !== undefined) {
+    runOptions.metadata = { ...(runOptions.metadata ?? {}), diff: diffInfo };
   }
 
   try {

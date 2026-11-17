@@ -5,7 +5,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import type { CLIOptions, ConsiliumConfig } from '../../domain/types.js';
+import type { CLIOptions, ConsiliumConfig, DiffInfo } from '../../domain/types.js';
 import { buildContextPack } from '../../infrastructure/context.js';
 import { getGitDiff, formatDiffForPrompt } from '../../infrastructure/git.js';
 import { UsageError } from './args.js';
@@ -36,12 +36,28 @@ export async function readTaskFromFile(path: string): Promise<string> {
   return readFileSync(resolved, 'utf-8').trim();
 }
 
+/** Задача и сведения о diff, который в неё встроен */
+export interface BuiltTask {
+  task: string;
+  /** Присутствует, только если diff запрошен (`--diff`, `--staged`, `--base`) */
+  diff?: DiffInfo;
+}
+
 export async function buildTask(
   options: CLIOptions,
   config?: ConsiliumConfig
 ): Promise<string> {
+  return (await buildTaskDetails(options, config)).task;
+}
+
+/** Собирает задачу и сообщает, что из diff в неё попало */
+export async function buildTaskDetails(
+  options: CLIOptions,
+  config?: ConsiliumConfig
+): Promise<BuiltTask> {
   let task = options.task;
   let diffText: string | undefined;
+  let diffInfo: DiffInfo | undefined;
 
   if (options.taskFile) {
     const fromFile = await readTaskFromFile(options.taskFile);
@@ -55,6 +71,12 @@ export async function buildTask(
         base: options.diffBase
       });
       diffText = diff.diff;
+      diffInfo = {
+        empty: diff.diff.trim().length === 0,
+        truncated: diff.truncated,
+        filesChanged: diff.filesChanged,
+        chars: diff.diff.length
+      };
       const diffTextForPrompt = formatDiffForPrompt(diff);
       task = task
         ? `${task}\n\n${diffTextForPrompt}`
@@ -65,7 +87,7 @@ export async function buildTask(
   }
 
   task = await appendTaskContext(options, config, task, diffText);
-  return task.trim();
+  return diffInfo === undefined ? { task: task.trim() } : { task: task.trim(), diff: diffInfo };
 }
 
 /**

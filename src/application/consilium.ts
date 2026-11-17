@@ -23,6 +23,10 @@ import {
 } from '../infrastructure/opencode/agents.js';
 import { resolveCwd } from '../infrastructure/opencode/spawn.js';
 import {
+  findProjectConfigRisks,
+  formatProjectConfigRisks
+} from '../infrastructure/opencode/project-config-risk.js';
+import {
   applyReadOnlyOverlay,
   type ReadOnlyOverlay
 } from '../infrastructure/opencode/read-only.js';
@@ -320,6 +324,15 @@ export class Consilium {
           root: isolateRoot,
           onLog: (level, message) => hooks?.onLog?.(level, message)
         });
+      }
+
+      if (readOnly) {
+        // Read-only ограничивает инструменты агентов, но не MCP/плагины/провайдеров
+        // из проектного opencode.json: предупреждаем до применения слоя.
+        const riskWarning = formatProjectConfigRisks(
+          findProjectConfigRisks(resolveCwd(runConfig))
+        );
+        if (riskWarning !== undefined) hooks.onLog?.('warn', riskWarning);
       }
 
       if (readOnly && !isolate) {

@@ -18,7 +18,11 @@ import { FAIL_ON_LEVELS } from './baseline.js';
 export type PolicyGateState = 'passed' | 'failed' | 'inconclusive';
 
 /** Почему проверка считается неполной */
-export type PolicyGateReasonKind = 'expert_failed' | 'chair_failed' | 'parse_error';
+export type PolicyGateReasonKind =
+  | 'expert_failed'
+  | 'chair_failed'
+  | 'parse_error'
+  | 'diff_truncated';
 
 /** Одна причина неполной проверки: агент и машинный код, без текста ответа */
 export interface PolicyGateReason {
@@ -44,14 +48,17 @@ export interface PolicyGateStatus {
 export interface PolicyGateRunView {
   experts: ReadonlyArray<Pick<AgentResult, 'agent' | 'success' | 'errorCode'>>;
   chair?: Pick<AgentResult, 'agent' | 'success' | 'errorCode'>;
-  metadata?: { findings?: { parseErrors?: unknown } } | undefined;
+  metadata?:
+    | { findings?: { parseErrors?: unknown }; diff?: { truncated?: unknown } }
+    | undefined;
 }
 
 const MAX_REASON_FIELD_LENGTH = 80;
 const REASON_KINDS: readonly PolicyGateReasonKind[] = [
   'expert_failed',
   'chair_failed',
-  'parse_error'
+  'parse_error',
+  'diff_truncated'
 ];
 const STATES: readonly PolicyGateState[] = ['passed', 'failed', 'inconclusive'];
 
@@ -70,8 +77,9 @@ function parseErrorCode(value: string): string {
 
 /**
  * Собирает причины неполной проверки: эксперты без пригодного ответа
- * (ошибка, тайм-аут, пустой ответ, лимит), упавший председатель и ошибки
- * разбора блока находок (`metadata.findings.parseErrors`).
+ * (ошибка, тайм-аут, пустой ответ, лимит), упавший председатель, ошибки
+ * разбора блока находок (`metadata.findings.parseErrors`) и обрезанный diff
+ * (`metadata.diff.truncated`): часть изменений модели не видели.
  */
 export function collectPolicyGateReasons(run: PolicyGateRunView): PolicyGateReason[] {
   const reasons: PolicyGateReason[] = [];
@@ -106,6 +114,10 @@ export function collectPolicyGateReasons(run: PolicyGateRunView): PolicyGateReas
         code: parseErrorCode(code)
       });
     }
+  }
+
+  if (run.metadata?.diff?.truncated === true) {
+    reasons.push({ kind: 'diff_truncated', agent: 'diff', code: 'TRUNCATED' });
   }
 
   return reasons;
@@ -146,6 +158,7 @@ export function isBlockingInconclusive(status: PolicyGateStatus): boolean {
 function formatReason(reason: PolicyGateReason): string {
   if (reason.kind === 'parse_error') return `${reason.agent}: findings block ${reason.code}`;
   if (reason.kind === 'chair_failed') return `chair ${reason.agent}: ${reason.code}`;
+  if (reason.kind === 'diff_truncated') return 'diff: truncated, part of the change was not reviewed';
   return `${reason.agent}: ${reason.code}`;
 }
 

@@ -171,6 +171,15 @@ function artifactsDirOf(result: ConsiliumResult): string | null {
   return typeof dir === 'string' && dir.length > 0 ? dir : null;
 }
 
+/** Предупреждение об обрезанном diff: часть изменений не попала на ревью. */
+function truncatedDiffNote(result: ConsiliumResult): string | null {
+  const diff = result.metadata?.diff;
+  if (diff === undefined || diff === null || diff.truncated !== true) return null;
+  const chars = typeof diff.chars === 'number' ? diff.chars : 0;
+  const files = typeof diff.filesChanged === 'number' ? diff.filesChanged : 0;
+  return `only the first ${chars} characters of the diff were reviewed (${files} files changed); the rest was not seen by the council.`;
+}
+
 function findingSourceLabel(source: FindingSource): string {
   return source.model === undefined ? source.agent : `${source.agent} (${source.model})`;
 }
@@ -321,6 +330,9 @@ export function renderHtmlReport(result: ConsiliumResult, options?: ReportOption
     + `<section><h2>Сводка</h2><p>Время: всего ${escapeHtml(fmtDuration(result.totalTime))}, параллельно ${escapeHtml(fmtDuration(result.parallelTime))}. `
     + `Эксперты: ${ok}/${total} успешно. Стоимость: ${escapeHtml(totalCost(result) === null ? '—' : money(totalCost(result)))}.</p></section>`
     + policyGateBlock
+    + (truncatedDiffNote(result) === null
+      ? ''
+      : `<section><h2>Diff truncated</h2><p class="err">${escapeHtml(truncatedDiffNote(result) ?? '')}</p></section>`)
     + findingsBlock
     + `<section><h2>Модели</h2><table><thead><tr><th>Эксперт</th><th>Модель</th><th>Статус</th></tr></thead><tbody>${modelsRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></section>`
     + consensusBlock
@@ -407,6 +419,11 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
   const policyGate = policyGateStatusFromMetadata(result.metadata);
   if (policyGate !== null) {
     lines.push(`**Policy gate:** ${escapeMarkdownText(describePolicyGate(policyGate))}`);
+    lines.push('');
+  }
+  const diffNote = truncatedDiffNote(result);
+  if (diffNote !== null) {
+    lines.push(`**Diff truncated:** ${escapeMarkdownText(diffNote)}`);
     lines.push('');
   }
   const findings = findingsSummaryOf(result);

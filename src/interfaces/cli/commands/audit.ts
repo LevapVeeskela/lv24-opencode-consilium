@@ -80,7 +80,14 @@ export async function commandAudit(
     diffBase: undefined,
     artifacts: true,
     // Аудит — ревью: по умолчанию без права записи. --allow-write снимает запрет.
-    readOnly: options.readOnly ?? true
+    readOnly: options.readOnly ?? true,
+    // Diff уже встроен в задачу: сообщаем run, пуст ли он и обрезан ли.
+    diffInfo: {
+      empty: request.diff.trim().length === 0,
+      truncated: request.truncated,
+      filesChanged: request.files.length,
+      chars: request.diff.length
+    }
   };
 
   // Аудит по умолчанию read-only: с --isolate JSONC в корне репозитория

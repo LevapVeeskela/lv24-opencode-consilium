@@ -80,6 +80,20 @@ export interface ConsiliumMetadata extends Record<string, unknown> {
   };
   /** Состояние policy gate (только при `--fail-on`, отличном от none) */
   policyGate?: PolicyGateStatus;
+  /** Сведения о git diff, добавленном к задаче (`--diff`, `audit`) */
+  diff?: DiffInfo;
+}
+
+/** Что именно из diff попало на ревью */
+export interface DiffInfo {
+  /** Diff пуст: ревьюить нечего */
+  empty: boolean;
+  /** Diff обрезан по лимиту символов: часть изменений не попала на ревью */
+  truncated: boolean;
+  /** Число изменённых файлов в полном diff */
+  filesChanged: number;
+  /** Число символов diff, переданных моделям */
+  chars: number;
 }
 
 /**
@@ -494,6 +508,8 @@ export interface CLIOptions {
   failOn?: FailOnLevel;
   /** Не считать неполную проверку (сбой эксперта, ошибка разбора) провалом гейта */
   gateAllowPartial?: boolean;
+  /** Сведения о diff, уже встроенном в задачу вызывающей командой (audit) */
+  diffInfo?: DiffInfo;
   /** Действие команды baseline */
   baselineAction?: 'accept' | 'prune';
   /** Аргумент baseline accept: id артефакта или latest */
