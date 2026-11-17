@@ -127,7 +127,9 @@ jobs:
 | `node-version` | `20` | Node.js version used by the action. |
 | `max-cost` | empty | Optional soft cost cap in USD, passed to `--max-cost`. |
 | `read-only` | `true` | Pass `--read-only`: experts may only read/glob/grep; write/edit/shell/subagent/MCP tools are denied. Set to `false` to pass `--allow-write`. |
-| `version` | `latest` | npm version of `lv24-opencode-consilium` to install. Pin an exact version for reproducibility. |
+| `version` | empty | npm version of `lv24-opencode-consilium` to install. Empty installs the version that matches the action ref when the action is pinned to a release tag (`@v1.13.0` installs `1.13.0`) and `latest` otherwise. |
+| `opencode-version` | `latest` | Version of `opencode-ai` to install when `opencode` is not on PATH. A preinstalled `opencode` is always kept. |
+| `config-from-base` | `true` | Take `consilium.config.json` (and aliases), `.consilium/baseline.json`, `opencode.json(c)` and `.opencode/` from the base ref instead of the pull request. See [Review configuration from the base ref](#review-configuration-from-the-base-ref). |
 | `sarif` | `true` | Export findings as SARIF 2.1.0 and upload them to GitHub code scanning. Requires `security-events: write` and code scanning enabled for the repository. Set to `false` to skip both SARIF steps. |
 | `sarif-file` | `consilium.sarif` | Path to the generated SARIF file, relative to the workspace or absolute. |
 | `category` | `consilium` | Category passed to `github/codeql-action/upload-sarif`, so several SARIF reports can coexist in one repository. |
@@ -355,6 +357,31 @@ set, the review, report, SARIF, and gate steps still run.
 `info`. The default `none` disables the gate and keeps the job green. To make the
 gate blocking in branch protection, require the workflow check and keep the
 threshold meaningful for your repository.
+
+## Review configuration from the base ref
+
+A pull request can otherwise weaken its own review: change expert prompts or
+models in `consilium.config.json`, accept its own findings in
+`.consilium/baseline.json`, or add MCP servers, plugins and providers through
+`opencode.json`.
+
+With `config-from-base: true` (the default) the action runs
+`protect-config.mjs` before Consilium. It restores these paths to their
+base-ref content in the workspace and removes the ones the pull request added:
+
+- `consilium.config.json`, `consilium.json`, `.consiliumrc`, `.consiliumrc.json`
+- `.consilium/baseline.json`
+- `opencode.json`, `opencode.jsonc`, `.opencode/`
+
+The job log gets a notice that lists every file. Those changes are **not
+applied to the run and not reviewed** (they drop out of the diff), so look at
+them by hand. If the step cannot run, the action exits `2` instead of falling
+back to the pull request files. Set `config-from-base: false` when a pull
+request must be reviewed with its own configuration, for example the one that
+introduces Consilium to the repository.
+
+`AGENTS.md` and other instruction files are not protected: they are ordinary
+reviewed content, and the prompts mark repository text as untrusted data.
 
 ## Pinning versions
 

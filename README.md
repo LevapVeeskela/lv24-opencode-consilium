@@ -32,7 +32,7 @@ $ consilium "Review the authentication design"
   sec   → iceman-free             threats, authz, abuse
 
   chair → beam-free               ← synthesizes one plan
-  ✓ 4 experts in parallel · free models · no API bill
+  ✓ 4 experts, up to 3 at a time · free models · no API bill
 ```
 
 The chair does not summarize — it resolves disagreements, drops weak points and returns one plan with explicit trade-offs. Every expert runs on its own model, so blind spots do not overlap.
@@ -137,7 +137,7 @@ consilium "Design a rate limiter for a public API"
 
 1. downloads `https://models.dev/api.json` and `https://openrouter.ai/api/v1/models`;
 2. keeps only free (`cost = 0`), active, chat models with tool calling and >= 32K context;
-3. ranks them and probes the top candidates with a tiny real request (unless `--no-verify`);
+3. ranks them and probes the top candidates (up to 12) with a tiny real request (unless `--no-verify`);
 4. writes the winners into `opencode.json` (agents `arch`, `ux`, `ba`, `sec`, `consilium`) and `consilium.config.json`;
 5. never overwrites existing agent models unless you pass `--force`.
 
@@ -310,12 +310,12 @@ Rules that matter when you drive it:
 3. **Errors are typed.** `errorCode` is one of `RATE_LIMITED`, `MODEL_UNAVAILABLE`, `EMPTY_RESPONSE`, `AGENT_NOT_FOUND`, `COST_LIMIT`, `TIMEOUT`, … and exit codes are `0/1/2/3` (`3` = policy gate).
 4. **State is files, not a daemon.** Artifacts live in `.consilium/runs/<id>/` (`run.json`, `report.md`, `experts/<agent>.md`); `--replay <id>` restores a run.
 5. **No interactive prompts.** Every command is non-interactive; `autoApprove` (OpenCode's `--auto`) is off by default and must be enabled deliberately in a trusted config.
-6. **Cheap first.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; add `--max-cost` for a hard budget.
+6. **Cheap first.** `consilium doctor` → `consilium models --json` → `consilium -f json "..."`; add `--max-cost` as a soft budget (checked between phases).
 
 Copy-paste prompt for an agent:
 
 ```text
-Run the consilium council on this task with a hard cost cap:
+Run the consilium council on this task with a cost cap:
   npx -y lv24-opencode-consilium --max-cost 0.50 -f json "<task>"
 Parse stdout as JSON. If errorCode is COST_LIMIT, report the partial expert
 opinions and metadata.cost; do not retry. If RATE_LIMITED, read
@@ -377,7 +377,7 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--consensus` / `--no-consensus` | Lexical expert-agreement analysis (term overlap, Jaccard); summary into the chair prompt, full report into the result |
 | `--smart-experts` | Heuristically pick 2–3 relevant roles from the task/diff (dropped roles are logged) |
 | `--max-cost <usd>` | Cost limit; when exceeded before the chair, it is skipped (`COST_LIMIT`, partial result with consensus) |
-| `--fallback-models a,b` | On `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` retry the same expert on the next model (chain capped at 2) |
+| `--fallback-models a,b` | On `RATE_LIMITED` / `MODEL_UNAVAILABLE` / `EMPTY_RESPONSE` retry the same expert on the next model (chain capped at 10) |
 | `--session <id>` | Base OpenCode session id; each agent gets `ses_<base>-<agent>` (parallel agents never share a session) |
 | `--variant <name>` | Model variant for all agents (`provider/model` → `provider/model#variant`); invalid variant exits 2 |
 | `--verify` / `--no-verify` | Probe models before selecting (`models` / `init --free`) |
@@ -421,8 +421,8 @@ git diff --staged | consilium - --diff "Review these changes"
 consilium -f json "..." > council.json
 consilium --smart-experts --consensus "Design the subscriptions DB schema"
 consilium --artifacts --max-cost 0.5 "Design the migration plan"
-consilium --replay 2026-11-08-abc123
-consilium --diff-runs 2026-11-08-abc123 2026-11-08-def456
+consilium --replay 20261108-101500-ab12
+consilium --diff-runs 20261108-101500-ab12 20261108-103000-cd34
 consilium --report pr --report-file review.md "Review the current changes"
 consilium --variant high "Design the subscriptions DB schema"
 consilium watch --debounce 500 "Review the current changes"
@@ -458,9 +458,20 @@ How the analysis flags behave:
 
 - `--consensus` computes lexical agreement (Jaccard over significant terms, RU+EN stopwords): per-pair scores, an average and an `agreement` level (`high`/`medium`/`low`). It is a deterministic count, not an LLM judgement. Summary → chair prompt; full report → result and `metadata.consensus`.
 - `--smart-experts` picks 2–3 roles with a heuristic (role lexicons over task and diff); the selection lands in `metadata.smartExperts`.
-- `--max-cost` tracks expert + chair spend. Over the limit before the chair → chair skipped, partial result with `errorCode: COST_LIMIT` and `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`).
+- `--max-cost` tracks expert + chair spend. Over the limit before the chair → chair skipped, partial result with `errorCode: COST_LIMIT` and `metadata.cost` (`limit`/`spent`/`exceeded`/`byAgent`). It is a soft cap checked between phases: experts that are already running finish their calls, and providers that report no cost cannot be capped.
 - `--fallback-models` retries the same expert on the next model (up to the configured list, capped at 10), summing usage into `metadata.fallbackModels`.
 - `--session` gives the chair the base session and each expert `ses_<base>-<agent>`; unknown agents run on the default agent with `ses_<base>-default-<agent>`, so nobody else's session is polluted. Sessions are not hidden from `opencode session list` by design.
+
+## Prompt profiles
+
+The built-in prompts come in two profiles:
+
+| Profile | Used when | What experts are asked for |
+| --- | --- | --- |
+| `advice` | Plain questions (`consilium "Design a rate limiter"`) | A short opinion (3–5 sentences) without tools; the chair returns a plan |
+| `review` | Findings are on (`--findings`, `--fail-on`) or a diff is attached (`--diff`, `--staged`, `--base`, `audit`) | A code review: concrete defects with file, line and trigger scenario; reading files is allowed; no length cap; the chair returns a merge verdict with confirmed issues and rejected claims |
+
+`promptProfile` in `consilium.config.json` overrides the choice: `auto` (default), `advice` or `review`. Custom `experts[].prompt` values and chair templates are never replaced. The `review` prompts are in English and ask the model to answer in the language of the task; in this profile the chair receives at least 8000 characters of each expert answer (3000 in `advice`), so longer answers cost more chair input.
 
 ## Findings and policy gate
 
@@ -511,7 +522,7 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 `--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
 
-**The gate fails closed (behavior change).** With `--fail-on` other than `none`, the gate is *inconclusive* when the review was incomplete: a configured expert returned no usable answer (error, timeout, empty response, rate limit) or a findings block could not be parsed. An inconclusive gate exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr — agent names and machine codes only, never model output. Earlier versions exited `0` in this case, which reported success for a review that did not happen. `--gate-allow-partial` opts out: the inconclusive gate becomes a warning on stderr and in the report, and the exit code depends on the findings alone. The state is recorded in `metadata.policyGate` (`passed` / `failed` / `inconclusive`, with reasons) and shown in the PR, HTML, Jira and Linear reports and in the SARIF run properties. Without `--fail-on` nothing changes.
+**The gate fails closed (behavior change).** With `--fail-on` other than `none`, the gate is *inconclusive* when the review was incomplete: a configured expert returned no usable answer (error, timeout, empty response, rate limit) or a findings block could not be parsed. An inconclusive gate exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr — agent names and machine codes only, never model output. Earlier versions exited `0` in this case, which reported success for a review that did not happen. `--gate-allow-partial` opts out: the inconclusive gate becomes a warning on stderr and in the report, and the exit code depends on the findings alone. The state is recorded in `metadata.policyGate` (`passed` / `failed` / `inconclusive`, with reasons) and shown in the PR, HTML, Jira and Linear reports and in the SARIF run properties. Without `--fail-on` nothing changes. A diff cut at the 60 000-character limit also makes the gate inconclusive, because the rest of the change was not reviewed; it is recorded in `metadata.diff` and in the reports. An empty diff exits `0` without calling any model.
 
 For a focused logic review, use the ready-made task template in [`examples/logic-review/task.md`](examples/logic-review/task.md); the recipe, checks and limitations are in [`docs/logic-review.md`](docs/logic-review.md).
 
@@ -527,7 +538,7 @@ Already have artifacts? Export the newest run without re-running the council:
 
 ```bash
 consilium sarif --run latest --output consilium.sarif
-consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON on stdout
+consilium sarif --run 20260115-100000-ab12   # JSON on stdout
 ```
 
 ## Read-only and isolated runs
@@ -577,7 +588,7 @@ Round 2 doubles model calls, so it is opt-in and skipped when fewer than two exp
 
 ## Evaluation harness (`consilium eval`)
 
-Prove the council catches more than a single model, deterministically:
+Measure what the council catches on planted bugs, deterministically. Whether it beats a single model has not been measured yet; compare with a single-expert run (`consilium eval -e sec`) on your own models. Besides catch and false-positive rates the summary reports `precision` — the share of reported findings that match an expectation — and the number of `unexpected` findings, so invented issues are visible:
 
 ```bash
 consilium eval --fixtures eval/fixtures --json
@@ -673,7 +684,7 @@ permissions:
     sarif: true              # default; set false to skip SARIF
 ```
 
-It runs `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`, comments once, exports `consilium sarif --run latest` and uploads it with `github/codeql-action/upload-sarif`, then propagates the gate exit code (`3`). The gate fails closed (behavior change): an inconclusive review — a failed expert or an unparseable findings block — also exits `3` unless `gate-allow-partial: true` is set. SARIF and upload failures never mask the gate. Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
+It runs `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`, comments once, exports `consilium sarif --run latest` and uploads it with `github/codeql-action/upload-sarif`, then propagates the gate exit code (`3`). The gate fails closed (behavior change): an inconclusive review — a failed expert or an unparseable findings block — also exits `3` unless `gate-allow-partial: true` is set. SARIF and upload failures never mask the gate. The example workflow skips fork PRs because no secrets are available there. By default the action takes the review configuration (`consilium.config.json`, `.consilium/baseline.json`, `opencode.json`, `.opencode/`) from the base ref, so a pull request cannot weaken its own check (`config-from-base: false` opts out). An action pinned to a release tag installs the matching npm version; `opencode-version` pins OpenCode. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
 
 ## Presets
 
@@ -739,6 +750,7 @@ Config discovery in the current directory: `consilium.config.json`, `consilium.j
 | `debounceMs` | 400 | Watch-mode delay, ms |
 | `findings` | `false` | Structured findings block in expert/chair answers |
 | `context` | `off` | `auto` adds changed files, project rules, related tests and commits to the task |
+| `promptProfile` | `auto` | Built-in prompts: `advice` (short opinion) or `review` (code review with file/line evidence). `auto` picks `review` when findings are on or a diff is attached |
 | `deadlineMs` | — | Expert-phase budget in ms (max 24 h); partial synthesis on timeout |
 | `rounds` | `1` | `2` = anonymized peer-review round; doubles model calls |
 | `localOnly` | `false` | Require an explicit local model for every agent |
@@ -794,7 +806,10 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 - **MCP:** `tools/call` requires an `id`, the queue is capped at 16, `output_file` and artifact paths are confined to the workspace, and `consilium_init_free` writes `.bak` files and requires `confirm: true` together with `force`.
 - `autoApprove` (auto-approve permissions) is **off** by default; never enable it for untrusted prompts or tools.
 - `--standalone` isolates the child server; no port takeover.
-- Artifacts redact common token patterns and `.consilium/.gitignore` is created automatically, so runs are not committed by accident.
+- Results are redacted before any output: token prefixes, PEM private keys, JWTs and quoted JSON secret fields are masked in stdout/JSON, `-o`, PR/HTML/SARIF/Jira/Linear reports, MCP and plugin results; artifacts additionally mask `key=value` assignments. Redaction is pattern-based and cannot catch every secret. `.consilium/.gitignore` is created automatically, so runs are not committed by accident.
+- **What leaves your machine.** The task, the diff and (with `--context auto`) file contents are sent to the model providers configured in OpenCode. Free and stealth/alpha models may log or train on prompts under terms Consilium does not control; use `--local-only` for code that must not leave the machine.
+- **Read-only is enforced by OpenCode, not by Consilium.** Consilium writes the deny rules and OpenCode applies them. On OpenCode V1 the fallback disables `write`, `edit`, `patch`, `bash`, `webfetch` and `task` only, and the `.env` rule covers the `read` tool. The test suite uses a fake OpenCode binary, so check the restrictions on your OpenCode version before relying on them.
+- **The project `opencode.json` is loaded by OpenCode itself.** Read-only does not restrict its `mcp`, `plugins` or `provider` sections; a read-only run warns when they are present. Review those keys before running the council on a repository you do not trust.
 - API keys are never printed or written by Consilium; `doctor` only checks whether expected environment variables are present, and OpenCode handles auth.
 - `doctor` warns about missing keys and risky configuration.
 
@@ -817,6 +832,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 | Empty result | `consilium doctor`, then rerun with `-V` |
 
 ## Changelog
+
+**Unreleased** — review hardening after an audit of 1.12.1. *Prompts:* a `review` prompt profile (file/line evidence, reading files allowed, no 3–5 sentence cap, a merge verdict from the chair) is used automatically when findings are on or a diff is attached; `promptProfile: advice` keeps the old prompts. *Security:* results are redacted before any output (PR comment, HTML, SARIF, Jira/Linear, JSON, MCP), with new patterns for `gho_`/`ghs_`, `glpat-`, Slack, Google, PEM, JWT and JSON secret fields; read-only runs warn about `mcp`/`plugins`/`provider` in the project `opencode.json`. *GitHub Action:* the review configuration, the baseline and the OpenCode config come from the base ref (`config-from-base`), an action pinned to a tag installs the matching npm version, `opencode-version` pins OpenCode. *Diffs:* an empty diff exits `0` without model calls; a truncated diff is recorded in `metadata.diff`, shown in the reports and makes the gate inconclusive. *Eval:* `precision` and `unexpected` findings. *Release:* the PyPI workflow waits for the npm version. Also: the pre-commit hook pins the installed version, `docs/plans` is no longer shipped in the npm package, and a logic review playbook is added ([`docs/logic-review.md`](docs/logic-review.md)). 664 JavaScript tests (2 platform-skipped) + 16 Python tests.
 
 **1.13.0** — Apache-2.0 license and a fail-closed policy gate. The project is licensed under Apache-2.0 starting with 1.13.0 (`LICENSE`, `NOTICE`; the npm package, the PyPI launcher and the container image carry the same license); 1.12.1 and earlier releases remain under MIT. **Behavior change:** with `--fail-on` the gate is now *inconclusive* — exit `3` and `policy gate inconclusive: <reasons>` on stderr — when a configured expert returns no usable answer (error, timeout, empty response, rate limit) or a findings block cannot be parsed; earlier versions exited `0`. `--gate-allow-partial` (GitHub Action input `gate-allow-partial`, off by default) restores the old exit code and turns the inconclusive gate into a warning. The state is recorded in `metadata.policyGate` and shown in PR/HTML/Jira/Linear reports and SARIF run properties. 621 JavaScript tests (2 platform-skipped) + 16 Python tests.
 
@@ -864,7 +881,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (621 tests, 2 platform-skipped)
+npm test            # build + node:test (664 tests, 2 platform-skipped)
 npm run typecheck   # tsc --noEmit
 python -m unittest discover -s python/tests   # 16 launcher tests
 ```

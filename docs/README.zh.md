@@ -17,7 +17,7 @@ $ consilium "Review the authentication design"
   sec   → iceman-free             threats, authz, abuse
 
   chair → beam-free               ← synthesizes one plan
-  ✓ 4 experts in parallel · free models · no API bill
+  ✓ 4 experts, up to 3 at a time · free models · no API bill
 ```
 
 主席不做摘要：它解决分歧、丢弃薄弱论点，输出带明确取舍的方案；专家跑在不同模型上，盲点不重叠。
@@ -223,6 +223,17 @@ consilium hooks uninstall                   # 只删托管块
 ```
 
 产物是普通文件：`.consilium/runs/<id>/` 下的 `run.json`、`report.md`、`experts/<agent>.md`。PR 报告带 `<!-- consilium:report -->` 和 `<details>`；HTML 自包含；hook 只写 `# >>> consilium >>>` … `# <<< consilium <<<` 块。
+## 提示词配置（prompt profiles）
+
+内置提示词有两种配置：
+
+| 配置 | 何时使用 | 对专家的要求 |
+| --- | --- | --- |
+| `advice` | 普通问题（`consilium "Design a rate limiter"`） | 不使用工具的简短意见（3–5 句）；主席给出计划 |
+| `review` | 启用发现（`--findings`、`--fail-on`）或附带 diff（`--diff`、`--staged`、`--base`、`audit`） | 代码审查：给出文件、行号和触发场景的具体缺陷；允许读取文件；不限长度；主席给出合并结论、已确认问题和被拒绝的论点 |
+
+`consilium.config.json` 中的 `promptProfile` 可覆盖选择：`auto`（默认）、`advice` 或 `review`。自定义的 `experts[].prompt` 和主席模板不会被替换。`review` 提示词为英文，并要求模型用任务的语言回答；此配置下主席至少收到每位专家回答的 8000 个字符（`advice` 为 3000），较长的回答会增加主席的输入。
+
 ## 结构化发现与策略门禁
 用 `--findings` 让评审返回结构化发现；每个专家（和主席）在回答末尾附一个 `json` 代码块：
 
@@ -242,7 +253,7 @@ consilium --findings --fail-on high --diff "Review the current changes"
 ```
 
 - `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
-- **门禁在故障时关闭（行为变更）。** 当 `--fail-on` 不为 `none` 时，如果审查不完整——某位已配置的专家没有给出可用回答（错误、超时、空响应、限流），或发现块无法解析——门禁视为*未完成*（inconclusive）：退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <agent: reason; …>`（只含代理名和机器码，不含模型回答）。此前这种情况退出 `0`。`--gate-allow-partial` 可关闭新行为：未完成的门禁只在 stderr 和报告中给出警告，退出码仅取决于发现。状态记录在 `metadata.policyGate`（`passed` / `failed` / `inconclusive` 及原因），并显示在 PR、HTML、Jira、Linear 报告和 SARIF 运行属性中。不使用 `--fail-on` 时行为不变。
+- **门禁在故障时关闭（行为变更）。** 当 `--fail-on` 不为 `none` 时，如果审查不完整——某位已配置的专家没有给出可用回答（错误、超时、空响应、限流），或发现块无法解析——门禁视为*未完成*（inconclusive）：退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <agent: reason; …>`（只含代理名和机器码，不含模型回答）。此前这种情况退出 `0`。`--gate-allow-partial` 可关闭新行为：未完成的门禁只在 stderr 和报告中给出警告，退出码仅取决于发现。状态记录在 `metadata.policyGate`（`passed` / `failed` / `inconclusive` 及原因），并显示在 PR、HTML、Jira、Linear 报告和 SARIF 运行属性中。不使用 `--fail-on` 时行为不变。按 60 000 字符上限截断的 diff 同样使门禁未完成（其余改动未被审查），并记录在 `metadata.diff` 和报告中；空 diff 直接以 `0` 退出，不调用任何模型。
 
 针对性逻辑审查：可直接使用的任务模板见 [`examples/logic-review/task.md`](../examples/logic-review/task.md)，配方、检查项与限制见 [`logic-review.md`](logic-review.md)。
 
@@ -257,7 +268,7 @@ consilium --findings --report sarif --report-file consilium.sarif "Review the cu
 
 ```bash
 consilium sarif --run latest --output consilium.sarif
-consilium sarif --run 2026-01-15T10-00-00-000Z   # JSON 输出到 stdout
+consilium sarif --run 20260115-100000-ab12   # JSON 输出到 stdout
 ```
 
 运行不存在属于用法错误（退出码 2）；没有发现时会生成合法的空 SARIF。
@@ -305,7 +316,7 @@ consilium --rounds 2 --preset deep "Design the migration plan"
 第二轮使模型调用翻倍，因此为可选项：成功专家少于两位、触发截止时间或已超过 `--max-cost` 时跳过。第二轮延续每位专家的会话，发现从最终回答中收集；第一轮回答会包含在该专家自己的第二轮提示中，同伴回答匿名化并标记为数据。
 
 ## 评估工具（`consilium eval`）
-确定性地证明议会比单个模型发现更多：
+确定性地衡量议会在预埋缺陷上能发现什么。议会是否优于单个模型目前尚未实测；可在自己的模型上与单专家运行（`consilium eval -e sec`）对比。除捕获率和误报率外，汇总还给出 `precision`（已报告发现中与预期匹配的比例）和 `unexpected` 发现数，因此臆造的问题也能看到：
 
 ```bash
 consilium eval --fixtures eval/fixtures --json
@@ -375,7 +386,7 @@ permissions:
     sarif: true             # 默认；设为 false 可跳过 SARIF
 ```
 
-它运行 `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。门禁在故障时关闭（行为变更）：审查不完整（专家失败或发现块无法解析）同样退出 `3`，除非设置 `gate-allow-partial: true`。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
+它运行 `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。门禁在故障时关闭（行为变更）：审查不完整（专家失败或发现块无法解析）同样退出 `3`，除非设置 `gate-allow-partial: true`。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。示例 workflow 会跳过 fork PR（那里没有 secrets）。默认情况下 action 从 base 分支读取审查配置（`consilium.config.json`、`.consilium/baseline.json`、`opencode.json`、`.opencode/`），因此 PR 无法削弱对自身的检查（`config-from-base: false` 可关闭）。固定到发布标签的 action 会安装对应的 npm 版本；`opencode-version` 用于固定 OpenCode。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
 
 ## 预设
 | 预设 | 专家 | 行为 |
@@ -419,6 +430,7 @@ permissions:
 | `standalone` / `autoApprove` / `autoDiscoverAgents` | `true` / `false` / `true` | 私有服务器 / 仅配置，自动批准权限（项目配置中除非 `-c` 否则忽略）/ 复用 Agent |
 | `artifacts` / `consensus` / `smartExperts` / `findings` | `false` | `true` → `.consilium/runs/<id>/`；词法一致性；启发式选角色；结构化发现 |
 | `context` | `off` | `auto` 将改动文件、项目规则、相关测试和提交加入任务 |
+| `promptProfile` | `auto` | 内置提示词：`advice`（简短意见）或 `review`（带文件和行号证据的代码审查）。`auto` 在启用发现或附带 diff 时选择 `review` |
 | `deadlineMs` / `rounds` / `localOnly` / `presets` | — / `1` / `false` / — | 专家阶段时限（ms，最多 24 小时，超时后部分综合）/ `2` 为匿名化同伴评审轮次，模型调用翻倍 / 每个 Agent 必须显式使用本地模型 / 自定义预设合并覆盖内置预设 |
 | `readOnly` / `isolate` | `false` / `false` | 专家与主席仅 read/glob/grep（`audit` 默认开启，`--allow-write` 取消）/ 每个 Agent 使用 `.consilium/worktrees` 下由 Consilium 管理的 git worktree（需要 git） |
 | `maxCost` / `fallbackModels` / `session` / `report` / `reportFile` / `variant` / `debounceMs` | 多为 —；`debounceMs` 400 | USD 上限 / 备用模型 / 会话基 id / 报告格式（`html`、`pr`、`markdown`、`sarif`、`jira`、`linear`）/ 报告文件（扩展名推断格式）/ variant / watch 防抖 |
@@ -448,7 +460,11 @@ const top = selectCouncilModels(models, 5);
 - **`--isolate`** 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree，包含 tracked 改动、不复制 untracked 文件，并在调用后删除；只读规则写入每个 worktree 内部，保守清理处理崩溃残留。
 - **Windows**：`.cmd`/`.bat` 仅在每个参数通过严格白名单后才经 `cmd.exe` 启动；`.exe` 与 POSIX 直接启动。
 - **MCP**：`tools/call` 必须有 `id`，队列上限 16，`output_file`/产物路径限制在 workspace 内，`init_free` 写 `.bak` 且 `force` 需要 `confirm: true`。
-- `autoApprove` 默认**关闭**；产物会脱敏常见 token 并自动生成 `.consilium/.gitignore`。
+- `autoApprove` 默认**关闭**；自动生成 `.consilium/.gitignore`。
+- 结果在任何输出之前脱敏：stdout/JSON、`-o` 文件、PR/HTML/SARIF/Jira/Linear 报告、MCP 与插件结果中的 token 前缀、PEM 私钥、JWT 和 JSON 密钥字段都会被遮蔽；产物另外遮蔽 `key=value` 赋值。脱敏基于模式匹配，无法保证发现所有密钥。
+- **哪些内容会离开你的机器。** 任务、diff 以及（使用 `--context auto` 时）文件内容会发送给 OpenCode 中配置的模型提供商。免费和 stealth/alpha 模型可能按 Consilium 无法控制的条款记录提示词或用于训练；不能离开本机的代码请使用 `--local-only`。
+- **只读由 OpenCode 执行，而不是 Consilium。** Consilium 写入拒绝规则，由 OpenCode 应用。在 OpenCode V1 上，回退层只禁用 `write`、`edit`、`patch`、`bash`、`webfetch` 和 `task`，`.env` 规则只作用于 `read` 工具。测试使用伪造的 OpenCode，因此在依赖这些限制之前请在你的 OpenCode 版本上验证。
+- **项目的 `opencode.json` 由 OpenCode 自行加载。** 只读不限制其中的 `mcp`、`plugins`、`provider`；只读运行在它们存在时会给出警告。在不信任的仓库上运行议会前请先检查这些键。
 - 不打印或写入 API 密钥；`doctor` 只检查环境变量并告警，认证由 OpenCode 负责。
 ## 故障排查
 | 症状 | 处理 |
@@ -461,6 +477,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **未发布** — 基于对 1.12.1 的审计加固审查。*提示词：*启用发现或附带 diff 时自动使用 `review` 配置（每条发现给出文件和行号、允许读取文件、不再限制 3–5 句、主席给出合并结论）；`promptProfile: advice` 保留旧提示词。*安全：*结果在任何输出前脱敏（PR 评论、HTML、SARIF、Jira/Linear、JSON、MCP），新增 `gho_`/`ghs_`、`glpat-`、Slack、Google、PEM、JWT 和 JSON 密钥字段的模式；只读运行会警告项目 `opencode.json` 中的 `mcp`/`plugins`/`provider`。*GitHub Action：*审查配置、baseline 与 OpenCode 配置取自 base 分支（`config-from-base`），固定到标签的 action 安装对应的 npm 版本，`opencode-version` 固定 OpenCode。*Diff：*空 diff 以 `0` 退出且不调用模型；被截断的 diff 记录在 `metadata.diff`、显示在报告中并使门禁未完成。*Eval：*新增 `precision` 与 `unexpected` 发现。*发布：*PyPI workflow 等待 npm 版本可用。另外：pre-commit hook 固定已安装版本，npm 包不再包含 `docs/plans`，新增逻辑审查手册（[`logic-review.md`](logic-review.md)）。664 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.13.0** — Apache-2.0 许可证与故障时关闭的策略门禁：自 1.13.0 起项目采用 Apache-2.0 许可证（`LICENSE`、`NOTICE`；npm 包、PyPI 启动器与容器镜像使用同一许可证），1.12.1 及更早版本仍按 MIT 授权。**行为变更：**使用 `--fail-on` 时，如果某位已配置的专家没有给出可用回答（错误、超时、空响应、限流）或发现块无法解析，门禁视为*未完成*（inconclusive）——退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <reasons>`；此前退出 `0`。`--gate-allow-partial`（GitHub Action 输入 `gate-allow-partial`，默认关闭）恢复原有退出码，并把未完成的门禁降为警告。状态记录在 `metadata.policyGate`，并显示在 PR/HTML/Jira/Linear 报告和 SARIF 运行属性中。621 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.1** — Python MCP 启动器与隔离加固：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。`--isolate --read-only` 在仓库含 `.opencode/opencode.jsonc` 时立即以退出码 `2` 失败（改为 `.opencode/opencode.json` 或使用 `--allow-write`），而不是在每个 Agent 内报错。worktree 清理会规范化路径，避免把 macOS `/private/var` 或 Windows 8.3/长路径下的活跃 worktree 误判为未注册；Linux、Windows、macOS 清理测试通过手动 `worktree-tests` workflow 运行。601 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.0** — 托管隔离与 MCP replay：`--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree（基于 HEAD + tracked 改动），在每个 worktree 内应用只读层并在调用后删除；崩溃残留由保守清理处理，非 git 项目在调用模型前失败。MCP 新增 `consilium_replay`：从已保存产物恢复 task/模型/选项并通过 progress 通知流式反馈。评估工具新增 `npm run eval:report`，校验真实 `eval --json`/`--compare-rounds --json` 并生成 `docs/eval-results.md`，不编造数字；588 个 JavaScript 测试 + 9 个 Python 测试。
@@ -482,6 +499,6 @@ const top = selectCouncilModels(models, 5);
 - 1.12.1 已发布 `.opencode/opencode.jsonc` fail-fast 预检与跨平台 worktree 清理覆盖；1.12.0 已发布托管只读 worktree、MCP replay 与自动 eval 报告生成器。
 
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，621 个测试，2 个平台跳过）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（16 个启动器测试）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，664 个测试，2 个平台跳过）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（16 个启动器测试）。
 ## 许可证
 [Apache-2.0](../LICENSE)（另见 [`NOTICE`](../NOTICE)）。1.12.1 及更早发布的版本按 MIT 授权，并继续适用。

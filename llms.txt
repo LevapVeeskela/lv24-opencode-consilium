@@ -47,12 +47,18 @@ Version: 1.13.0 · License: Apache-2.0 · Node: >= 18 · Runtime dependencies: n
 - `metadata.findings` = `{ items, counts, rejected, parseErrors }`; findings are deduped by fingerprint (plus fuzzy paraphrases), max severity, `contested` when rejected.
 - `--fail-on <severity>` — exit `3` when new findings reach the threshold. The gate fails closed: it also exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr when an expert returned no usable answer or a findings block was not parsed.
 - `--gate-allow-partial` — opt out: an inconclusive gate only warns and the exit code depends on findings alone. State: `metadata.policyGate` = `{ state: passed|failed|inconclusive, threshold, violations, reasons[], allowPartial }`.
+- Diffs: an empty diff exits `0` without model calls (`-f json` prints `{"success": true, "skipped": "empty-diff"}`); a truncated diff is recorded in `metadata.diff = { empty, truncated, filesChanged, chars }` and makes the gate inconclusive.
+- Prompt profiles: `promptProfile` = `auto` (default) | `advice` | `review`. `review` (file/line evidence, reading files allowed, no length cap) is used when findings are on or a diff is attached; custom prompts are never replaced.
+- `--max-cost` is a soft cap checked between phases; providers that report no cost cannot be capped.
 - Baseline: `.consilium/baseline.json` via `consilium baseline accept|prune`; accepted fingerprints are ignored by the gate.
 
 ## Safety
 
 - `--read-only` writes a temporary `.opencode/opencode.json` layer with V2 `agents.<name>.permissions` and V1 `agent.<name>.tools`, holds `.consilium/read-only.lock`, backs up an existing layer and restores it on success/error/cancel/exit. Invalid JSON, an existing `.opencode/opencode.jsonc` or symlinked layer fails closed. With `--isolate --read-only`, the `.jsonc` check happens before any agent and exits CLI `2`.
 - `metadata.safety = { readOnly, isolate }` records the effective policy in results/artifacts.
+- Results are redacted before any output (stdout/JSON, `-o`, PR/HTML/SARIF/Jira/Linear, MCP, plugin): token prefixes, PEM keys, JWT and quoted JSON secret fields. Pattern-based; not a guarantee.
+- Read-only is enforced by OpenCode from rules Consilium writes; it does not restrict `mcp`/`plugins`/`provider` in the project `opencode.json` (a read-only run warns about them).
+- Data flow: the task, the diff and optional context files go to the model providers configured in OpenCode; use `--local-only` for code that must stay local.
 - `--isolate` creates a managed git worktree per agent under `.consilium/worktrees`, includes tracked uncommitted changes, does not copy untracked files, applies the read-only overlay inside each worktree, and removes it after the call; stale cleanup handles crashed runs.
 
 ## Machine contract
