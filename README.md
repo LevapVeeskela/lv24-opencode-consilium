@@ -513,6 +513,8 @@ consilium --findings --fail-on high --diff "Review the current changes"
 
 **The gate fails closed (behavior change).** With `--fail-on` other than `none`, the gate is *inconclusive* when the review was incomplete: a configured expert returned no usable answer (error, timeout, empty response, rate limit) or a findings block could not be parsed. An inconclusive gate exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr — agent names and machine codes only, never model output. Earlier versions exited `0` in this case, which reported success for a review that did not happen. `--gate-allow-partial` opts out: the inconclusive gate becomes a warning on stderr and in the report, and the exit code depends on the findings alone. The state is recorded in `metadata.policyGate` (`passed` / `failed` / `inconclusive`, with reasons) and shown in the PR, HTML, Jira and Linear reports and in the SARIF run properties. Without `--fail-on` nothing changes.
 
+For a focused logic review, use the ready-made task template in [`examples/logic-review/task.md`](examples/logic-review/task.md); the recipe, checks and limitations are in [`docs/logic-review.md`](docs/logic-review.md).
+
 ## SARIF and code scanning
 
 ```bash

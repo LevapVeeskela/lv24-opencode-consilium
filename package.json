@@ -43,6 +43,7 @@
     "bin",
     "schema",
     "docs",
+    "examples/logic-review",
     "eval",
     "llms.txt",
     "consilium.config.example.json",

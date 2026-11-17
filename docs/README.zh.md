@@ -244,6 +244,8 @@ consilium --findings --fail-on high --diff "Review the current changes"
 - `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
 - **门禁在故障时关闭（行为变更）。** 当 `--fail-on` 不为 `none` 时，如果审查不完整——某位已配置的专家没有给出可用回答（错误、超时、空响应、限流），或发现块无法解析——门禁视为*未完成*（inconclusive）：退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <agent: reason; …>`（只含代理名和机器码，不含模型回答）。此前这种情况退出 `0`。`--gate-allow-partial` 可关闭新行为：未完成的门禁只在 stderr 和报告中给出警告，退出码仅取决于发现。状态记录在 `metadata.policyGate`（`passed` / `failed` / `inconclusive` 及原因），并显示在 PR、HTML、Jira、Linear 报告和 SARIF 运行属性中。不使用 `--fail-on` 时行为不变。
 
+针对性逻辑审查：可直接使用的任务模板见 [`examples/logic-review/task.md`](../examples/logic-review/task.md)，配方、检查项与限制见 [`logic-review.md`](logic-review.md)。
+
 ## SARIF 与代码扫描
 ```bash
 consilium --findings --report sarif --report-file consilium.sarif "Review the current changes"

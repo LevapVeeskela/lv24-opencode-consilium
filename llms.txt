@@ -102,6 +102,7 @@ Version: 1.13.0 · License: Apache-2.0 · Node: >= 18 · Runtime dependencies: n
 - Sessions and plugin internals: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/session-and-plugin.md
 - Architecture (layers, barrels, extension guides): https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/architecture.md
 - Scheduling: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/scheduling.md
+- Logic review playbook: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/logic-review.md
 - Eval results template: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/eval-results.md
 - PyPI publishing and wrapper: https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/docs/pypi.md
 - npm: https://www.npmjs.com/package/lv24-opencode-consilium
