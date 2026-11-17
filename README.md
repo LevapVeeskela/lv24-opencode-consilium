@@ -5,7 +5,7 @@
 [![npm](https://img.shields.io/npm/v/lv24-opencode-consilium?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-opencode-consilium)
 [![downloads](https://img.shields.io/npm/dm/lv24-opencode-consilium?color=cb3837)](https://www.npmjs.com/package/lv24-opencode-consilium)
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Flevapveeskela%2Flv24--opencode--consilium-2496ED?logo=docker&logoColor=white)](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)
-[![license](https://img.shields.io/badge/license-MIT-2ea44f)](LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](package.json)
 [![OpenCode](https://img.shields.io/badge/OpenCode-V1%20%7C%20V2-6C5CE7)](https://opencode.ai)
 
@@ -101,9 +101,9 @@ pip install lv24-opencode-consilium
 A self-contained image (Node.js, OpenCode CLI, `git`) for `linux/amd64` and `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1   # or :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0   # or :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.12.1
+# consilium v1.13.0
 ```
 
 Run it on a project — mount credentials and config, keep the project writable:
@@ -286,7 +286,7 @@ If you are an agent, these are the stable contracts. Prefer them over scraping p
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.1",
+  "version": "1.13.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -662,7 +662,7 @@ permissions:
   pull-requests: write
   security-events: write   # required for the SARIF upload
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -816,6 +816,8 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 
 ## Changelog
 
+**1.13.0** — Apache-2.0 license and a fail-closed policy gate. The project is licensed under Apache-2.0 starting with 1.13.0 (`LICENSE`, `NOTICE`; the npm package, the PyPI launcher and the container image carry the same license); 1.12.1 and earlier releases remain under MIT. **Behavior change:** with `--fail-on` the gate is now *inconclusive* — exit `3` and `policy gate inconclusive: <reasons>` on stderr — when a configured expert returns no usable answer (error, timeout, empty response, rate limit) or a findings block cannot be parsed; earlier versions exited `0`. `--gate-allow-partial` (GitHub Action input `gate-allow-partial`, off by default) restores the old exit code and turns the inconclusive gate into a warning. The state is recorded in `metadata.policyGate` and shown in PR/HTML/Jira/Linear reports and SARIF run properties. 621 JavaScript tests (2 platform-skipped) + 16 Python tests.
+
 **1.12.1** — Python MCP launcher and isolation hardening. `pip install lv24-opencode-consilium` now also installs the `consilium-mcp` console script, which starts the same stdio MCP server through `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; arguments, environment and exit codes are forwarded, and `python -m lv24_opencode_consilium.mcp` is supported. `--isolate --read-only` now fails fast with CLI exit `2` when the repository has `.opencode/opencode.jsonc` (rename it to `.opencode/opencode.json` or use `--allow-write`) instead of failing inside every agent. Worktree cleanup is canonicalized and never treats a live worktree as unregistered when git reports a macOS `/private/var` or Windows 8.3/long path; Linux, Windows and macOS cleanup tests run via the manual `worktree-tests` workflow. 601 JavaScript tests (2 platform-skipped) + 16 Python tests.
 
 **1.12.0** — managed isolation and MCP replay. `--isolate` now creates a Consilium-managed git worktree per agent under `.consilium/worktrees`, based on HEAD plus tracked changes, applies the read-only overlay inside each worktree, and removes it after every call; stale worktrees are cleaned conservatively and non-git projects fail before any model call. MCP gains `consilium_replay`, restoring a saved task/models/options and streaming progress through `progressToken`. The eval harness gets `npm run eval:report`, which validates recorded `eval --json`/`--compare-rounds --json` output and renders `docs/eval-results.md` without inventing numbers. 588 JavaScript tests + 9 Python tests.
@@ -860,7 +862,7 @@ The prompt goes to the child's **stdin** (UTF-8), so arbitrary task text is safe
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (601 tests, 2 platform-skipped)
+npm test            # build + node:test (621 tests, 2 platform-skipped)
 npm run typecheck   # tsc --noEmit
 python -m unittest discover -s python/tests   # 16 launcher tests
 ```
@@ -869,4 +871,5 @@ Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / 
 
 ## License
 
-MIT
+Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Releases up to and including 1.12.1 were published under MIT and remain available under it.

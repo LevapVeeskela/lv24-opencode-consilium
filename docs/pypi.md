@@ -61,7 +61,7 @@ tags. The PyPI workflow fails fast if the tag, `package.json`,
 Manual fallback, for example when a release tag predates the workflow:
 
 ```bash
-gh workflow run pypi-publish.yml -f version=1.12.1
+gh workflow run pypi-publish.yml -f version=1.13.0
 ```
 
 The input may include or omit the leading `v`. Existing versions are detected
@@ -113,11 +113,11 @@ Set `CONSILIUM_NPM_VERSION` to pin the npm CLI version the wrappers invoke
 (default: the wrapper's own version):
 
 ```bash
-CONSILIUM_NPM_VERSION=1.12.1 consilium "Review the API"
-CONSILIUM_NPM_VERSION=1.12.1 consilium-mcp
+CONSILIUM_NPM_VERSION=1.13.0 consilium "Review the API"
+CONSILIUM_NPM_VERSION=1.13.0 consilium-mcp
 ```
 
-On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.12.1"`.
+On PowerShell: `$env:CONSILIUM_NPM_VERSION = "1.13.0"`.
 
 Upgrade with `pip install --upgrade lv24-opencode-consilium`. The PyPI version is
 kept in lockstep with npm, so either installation route gives the same engine.
@@ -148,7 +148,7 @@ python -m twine upload --repository-url https://test.pypi.org/legacy/ python/dis
 The committed workflow publishes to PyPI only and never handles tokens. For a CI
 dry run, add a separate job that passes
 `repository-url: https://test.pypi.org/legacy/` to the publish action. Use a
-throwaway version such as `1.12.1rc1` and never reuse it for a real release.
+throwaway version such as `1.13.0rc1` and never reuse it for a real release.
 
 ## Cost
 

@@ -49,7 +49,7 @@ pip install lv24-opencode-consilium     # PyPI 薄启动器（仍需 Node.js + O
 
 要求：Node.js **>= 18**、已认证的 OpenCode CLI（`npm install -g opencode-ai`，**V1 或 V2**）；PyPI 启动器需要 Python 3.9+；可选 `OPENROUTER_API_KEY`。
 ### 容器镜像（GHCR）
-自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.12.1`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
+自包含镜像（Node.js、OpenCode CLI、`git`）支持 `linux/amd64` 与 `linux/arm64`；`docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0`（或 `:latest`），用 `docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version` 验证（`consilium v1.13.0`）。镜像页：[GHCR](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)。
 
 ```bash
 docker run --rm -it \
@@ -143,7 +143,7 @@ Codex 在 `~/.codex/config.toml` 里用同一组 `command`/`args`（`[mcp_server
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.1",
+  "version": "1.13.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -364,7 +364,7 @@ permissions:
   pull-requests: write
   security-events: write   # SARIF 上传所需
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -459,6 +459,7 @@ const top = selectCouncilModels(models, 5);
 | `COST_LIMIT` | 主席按设计跳过；部分结果含意见与共识，花费见 `metadata.cost.byAgent` |
 | V2 上 MCP 缺失 | 平铺 `mcp.<name>` 被忽略；`consilium mcp --install --force` |
 ## 更新日志
+- **1.13.0** — Apache-2.0 许可证与故障时关闭的策略门禁：自 1.13.0 起项目采用 Apache-2.0 许可证（`LICENSE`、`NOTICE`；npm 包、PyPI 启动器与容器镜像使用同一许可证），1.12.1 及更早版本仍按 MIT 授权。**行为变更：**使用 `--fail-on` 时，如果某位已配置的专家没有给出可用回答（错误、超时、空响应、限流）或发现块无法解析，门禁视为*未完成*（inconclusive）——退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <reasons>`；此前退出 `0`。`--gate-allow-partial`（GitHub Action 输入 `gate-allow-partial`，默认关闭）恢复原有退出码，并把未完成的门禁降为警告。状态记录在 `metadata.policyGate`，并显示在 PR/HTML/Jira/Linear 报告和 SARIF 运行属性中。621 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.1** — Python MCP 启动器与隔离加固：`pip install lv24-opencode-consilium` 现在还会安装 `consilium-mcp` 控制台脚本，通过 `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp` 启动同一个 stdio MCP 服务器；参数、环境与退出码原样传递，并支持 `python -m lv24_opencode_consilium.mcp`。`--isolate --read-only` 在仓库含 `.opencode/opencode.jsonc` 时立即以退出码 `2` 失败（改为 `.opencode/opencode.json` 或使用 `--allow-write`），而不是在每个 Agent 内报错。worktree 清理会规范化路径，避免把 macOS `/private/var` 或 Windows 8.3/长路径下的活跃 worktree 误判为未注册；Linux、Windows、macOS 清理测试通过手动 `worktree-tests` workflow 运行。601 个 JavaScript 测试（2 个平台跳过）+ 16 个 Python 测试。
 - **1.12.0** — 托管隔离与 MCP replay：`--isolate` 为每个 Agent 在 `.consilium/worktrees` 下创建由 Consilium 管理的 git worktree（基于 HEAD + tracked 改动），在每个 worktree 内应用只读层并在调用后删除；崩溃残留由保守清理处理，非 git 项目在调用模型前失败。MCP 新增 `consilium_replay`：从已保存产物恢复 task/模型/选项并通过 progress 通知流式反馈。评估工具新增 `npm run eval:report`，校验真实 `eval --json`/`--compare-rounds --json` 并生成 `docs/eval-results.md`，不编造数字；588 个 JavaScript 测试 + 9 个 Python 测试。
 - **1.11.0** — 只读与隔离运行、MCP 产物工具、工单报告与更大的评估语料：`--read-only` 通过带锁、备份和按字节精确恢复的临时 `.opencode/opencode.json` 层，将专家与主席限制为 read/glob/grep；`audit` 与 GitHub Action 默认只读，`--allow-write` 可取消；`--isolate` 让每个 Agent 在 OpenCode worktree 中运行；MCP 新增 `consilium_list_runs`、`consilium_get_run`、`consilium_sarif` 和 `consilium_diff_runs`；`--report jira|linear` 渲染 Jira wiki/Linear Markdown；V1 `tools`/`permission` 现在迁移为有序的 V2 规则；评估语料扩充到 22 个 fixture，基准数字由真实运行生成而不提交；561 个 JavaScript 测试 + 9 个 Python 测试。
@@ -479,6 +480,6 @@ const top = selectCouncilModels(models, 5);
 - 1.12.1 已发布 `.opencode/opencode.jsonc` fail-fast 预检与跨平台 worktree 清理覆盖；1.12.0 已发布托管只读 worktree、MCP replay 与自动 eval 报告生成器。
 
 ## 开发
-`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，601 个测试，2 个平台跳过）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（16 个启动器测试）。
+`npm install` → `npm run build`（tsc）→ `npm test`（build + node:test，621 个测试，2 个平台跳过）→ `npm run typecheck`（`tsc --noEmit`）→ `python -m unittest discover -s python/tests`（16 个启动器测试）。
 ## 许可证
-[MIT](../LICENSE)
+[Apache-2.0](../LICENSE)（另见 [`NOTICE`](../NOTICE)）。1.12.1 及更早发布的版本按 MIT 授权，并继续适用。

@@ -5,7 +5,7 @@
 [![npm](https://img.shields.io/npm/v/lv24-opencode-consilium?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-opencode-consilium)
 [![downloads](https://img.shields.io/npm/dm/lv24-opencode-consilium?color=cb3837)](https://www.npmjs.com/package/lv24-opencode-consilium)
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Flevapveeskela%2Flv24--opencode--consilium-2496ED?logo=docker&logoColor=white)](https://github.com/LevapVeeskela/lv24-opencode-consilium/pkgs/container/lv24-opencode-consilium)
-[![license](https://img.shields.io/badge/license-MIT-2ea44f)](../LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](../LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](../package.json)
 [![OpenCode](https://img.shields.io/badge/OpenCode-V1%20%7C%20V2-6C5CE7)](https://opencode.ai)
 
@@ -97,9 +97,9 @@ pip install lv24-opencode-consilium
 Самодостаточный образ (Node.js, OpenCode CLI, `git`) для `linux/amd64` и `linux/arm64`:
 
 ```bash
-docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.12.1   # или :latest
+docker pull ghcr.io/levapveeskela/lv24-opencode-consilium:1.13.0   # или :latest
 docker run --rm ghcr.io/levapveeskela/lv24-opencode-consilium:latest --version
-# consilium v1.12.1
+# consilium v1.13.0
 ```
 
 Запуск на проекте — смонтируйте доступы и конфиг, каталог проекта оставьте на запись, потому что `--diff`, артефакты и отчёты пишутся в него:
@@ -282,7 +282,7 @@ args = ["-y", "lv24-opencode-consilium", "mcp"]
 ```json
 {
   "package": "lv24-opencode-consilium",
-  "version": "1.12.1",
+  "version": "1.13.0",
   "bins": ["consilium", "consilium-mcp", "lv24-opencode-consilium"],
   "mcp": { "command": "npx", "args": ["-y", "lv24-opencode-consilium", "mcp"] },
   "json_mode": "consilium -f json \"<task>\"",
@@ -661,7 +661,7 @@ permissions:
   pull-requests: write
   security-events: write   # нужно для загрузки SARIF
 
-- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.12.1
+- uses: LevapVeeskela/lv24-opencode-consilium/.github/actions/consilium@v1.13.0
   with:
     fail-on: high
     github-token: ${{ github.token }}
@@ -815,6 +815,8 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 
 ## История изменений
 
+**1.13.0** — лицензия Apache-2.0 и гейт, который закрывается при сбое. Начиная с 1.13.0 проект распространяется под Apache-2.0 (`LICENSE`, `NOTICE`; npm-пакет, PyPI-лаунчер и образ контейнера — под той же лицензией); 1.12.1 и более ранние релизы остаются под MIT. **Изменение поведения:** при `--fail-on` гейт теперь считается *несостоявшимся* (inconclusive) — код `3` и строка `policy gate inconclusive: <причины>` в stderr, — если настроенный эксперт не дал пригодного ответа (ошибка, тайм-аут, пустой ответ, лимит) или блок находок не удалось разобрать; раньше код был `0`. Флаг `--gate-allow-partial` (вход GitHub Action `gate-allow-partial`, по умолчанию выключен) возвращает прежний код выхода и превращает несостоявшийся гейт в предупреждение. Состояние записывается в `metadata.policyGate` и показывается в отчётах PR/HTML/Jira/Linear и в свойствах запуска SARIF. 621 JavaScript-тест (2 платформенных skip) + 16 Python-тестов.
+
 **1.12.1** — MCP-лаунчер для Python и усиление изоляции. `pip install lv24-opencode-consilium` теперь также устанавливает консольный скрипт `consilium-mcp`, который запускает тот же stdio MCP-сервер через `npx --yes --package lv24-opencode-consilium@<version> consilium-mcp`; аргументы, окружение и код выхода передаются, поддерживается `python -m lv24_opencode_consilium.mcp`. `--isolate --read-only` теперь падает сразу с exit `2`, если в репозитории есть `.opencode/opencode.jsonc` (переименуйте в `.opencode/opencode.json` или используйте `--allow-write`), вместо ошибки в каждом агенте. Очистка worktree канонизирует пути и не принимает живой worktree за незарегистрированный, когда git отдаёт macOS `/private/var` или Windows 8.3/длинный путь; тесты очистки идут на Linux, Windows и macOS через manual workflow `worktree-tests`. 601 тест JavaScript (2 платформенных skip) + 16 тестов Python.
 
 **1.12.0** — управляемая изоляция и MCP replay. `--isolate` создаёт управляемый Consilium git worktree на каждого агента в `.consilium/worktrees`, от HEAD плюс tracked-изменения, применяет read-only-слой внутри каждого worktree и удаляет его после каждого вызова; осиротевшие worktree очищаются консервативно, а проект без git падает до вызова моделей. В MCP добавлен `consilium_replay`: восстановление task/моделей/опций сохранённого артефакта и progress-уведомления. Eval-харнесс получил `npm run eval:report`, который валидирует записанный `eval --json`/`--compare-rounds --json` и рендерит `docs/eval-results.md` без выдуманных цифр. 588 тестов JavaScript + 9 тестов Python.
@@ -859,11 +861,12 @@ opencode run --standalone --format json [--auto] [--agent=NAME] [--model=provide
 ```bash
 npm install
 npm run build       # tsc
-npm test            # build + node:test (601 тест, 2 платформенных skip)
+npm test            # build + node:test (621 тест, 2 платформенных skip)
 npm run typecheck   # tsc --noEmit
 python -m unittest discover -s python/tests   # 16 тестов лаунчера
 ```
 
 ## Лицензия
 
-MIT
+Apache-2.0 — см. [`LICENSE`](../LICENSE) и [`NOTICE`](../NOTICE).
+Релизы до 1.12.1 включительно опубликованы под MIT и остаются доступны на этих условиях.

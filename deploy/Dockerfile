@@ -23,7 +23,7 @@ ARG DATE=unknown
 
 LABEL org.opencontainers.image.source="https://github.com/LevapVeeskela/lv24-opencode-consilium" \
       org.opencontainers.image.description="LV24 opencode-consilium: a council of AI experts for OpenCode (CLI, MCP and V2 plugin)" \
-      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.documentation="https://github.com/LevapVeeskela/lv24-opencode-consilium#readme" \
       org.opencontainers.image.url="https://github.com/LevapVeeskela/lv24-opencode-consilium" \
       org.opencontainers.image.version="${VERSION}" \
@@ -44,6 +44,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/dist ./dist
 COPY bin ./bin
 COPY schema ./schema
+COPY LICENSE NOTICE ./
 COPY consilium.config.example.json ./
 RUN chmod +x bin/cli.js bin/mcp.js \
     && ln -s /app/bin/cli.js /usr/local/bin/consilium \

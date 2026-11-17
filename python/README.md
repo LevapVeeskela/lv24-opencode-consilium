@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/lv24-opencode-consilium?label=PyPI&logo=pypi&logoColor=white)](https://pypi.org/project/lv24-opencode-consilium/)
 [![PyPI - Python versions](https://img.shields.io/pypi/pyversions/lv24-opencode-consilium?logo=python&logoColor=white)](https://pypi.org/project/lv24-opencode-consilium/)
 [![npm](https://img.shields.io/npm/v/lv24-opencode-consilium?label=npm&color=cb3837&logo=npm)](https://www.npmjs.com/package/lv24-opencode-consilium)
-[![license](https://img.shields.io/badge/license-MIT-2ea44f)](https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/LICENSE)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/LevapVeeskela/lv24-opencode-consilium/blob/master/LICENSE)
 
 A thin, dependency-free Python launcher for **Consilium**, the multi-agent
 review and audit CLI for the [OpenCode](https://opencode.ai/) ecosystem.
@@ -95,7 +95,7 @@ python -m lv24_opencode_consilium.mcp
 ## Version pinning
 
 By default both launchers run the npm package version matching the Python
-package version (currently `1.12.1`). Override it with
+package version (currently `1.13.0`). Override it with
 `CONSILIUM_NPM_VERSION` to use any npm version or tag:
 
 ```bash
@@ -126,4 +126,5 @@ $env:CONSILIUM_NPM_VERSION = "latest"; consilium --help
 
 ## License
 
-MIT
+Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Releases up to and including 1.12.1 were published under MIT and remain available under it.
