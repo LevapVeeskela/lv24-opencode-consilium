@@ -45,7 +45,8 @@ Version: 1.12.1 · License: MIT · Node: >= 18 · Runtime dependencies: none
 
 - `--findings` — experts/chair return a fenced JSON block with `findings[]` and `rejected[]`.
 - `metadata.findings` = `{ items, counts, rejected, parseErrors }`; findings are deduped by fingerprint (plus fuzzy paraphrases), max severity, `contested` when rejected.
-- `--fail-on <severity>` — exit `3` when new findings reach the threshold.
+- `--fail-on <severity>` — exit `3` when new findings reach the threshold. The gate fails closed: it also exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr when an expert returned no usable answer or a findings block was not parsed.
+- `--gate-allow-partial` — opt out: an inconclusive gate only warns and the exit code depends on findings alone. State: `metadata.policyGate` = `{ state: passed|failed|inconclusive, threshold, violations, reasons[], allowPartial }`.
 - Baseline: `.consilium/baseline.json` via `consilium baseline accept|prune`; accepted fingerprints are ignored by the gate.
 
 ## Safety

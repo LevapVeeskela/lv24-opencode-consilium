@@ -10,6 +10,7 @@ import type { CLIOptions } from '../../../domain/types.js';
 import type { FindingsSummary } from '../../../domain/council/findings.js';
 import { buildSarifReport } from '../../../domain/artifacts/sarif.js';
 import { findingsSummaryFromMetadata } from '../../../domain/artifacts/report.js';
+import { policyGateStatusFromMetadata } from '../../../domain/artifacts/policy-gate.js';
 import type { ArtifactRef, ArtifactRun } from '../../../domain/artifacts/artifacts/types.js';
 import {
   listArtifacts,
@@ -111,7 +112,11 @@ export async function commandSarif(
   }
 
   const findings = readFindings(artifact);
-  const document = buildSarifReport(findings, { version: packageVersion() });
+  const policyGate = policyGateStatusFromMetadata(artifact.metadata) ?? undefined;
+  const document = buildSarifReport(findings, {
+    version: packageVersion(),
+    ...(policyGate === undefined ? {} : { policyGate })
+  });
   const json = `${JSON.stringify(document, null, 2)}\n`;
   const count = findings?.items.length ?? 0;
 

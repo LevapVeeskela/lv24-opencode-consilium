@@ -202,7 +202,8 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--artifacts`、`--no-artifacts`、`--artifacts-dir <path>`、`--replay <id>`、`--diff-runs <a> <b>` | 产物 / 目录 / 重跑 / 对比 |
 | `--report <html\|pr\|markdown\|sarif\|jira\|linear>`、`--report-file <file>`、`--diff [--staged] [--base <ref>]`、`--debounce <ms>` | 报告（SARIF 2.1.0、Jira wiki、Linear Markdown）/ 写文件（`.sarif`/`.sarif.json` 推断为 SARIF，`.jira`/`.linear` 推断为对应格式）/ git diff / watch 防抖 |
 | `watch` / `hooks install\|uninstall` / `--native-v2` / `--install`、`--global` | 监听重跑 / pre-commit hook / 原生 V2 配置 / 注册 MCP |
-| `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`）/ 管理 `.consilium/baseline.json` |
+| `--findings` / `--no-findings` / `--fail-on <severity>` / `baseline accept\|prune` | 结构化发现开关 / 新发现达到阈值时退出 `3`（`critical`…`none`），门禁未完成（专家失败或发现块无法解析）时同样退出 `3`/ 管理 `.consilium/baseline.json` |
+| `--gate-allow-partial` | 门禁未完成时不判定失败：仅警告，退出码只取决于发现（默认关闭） |
 | `--context <off\|auto>` / `eval [--fixtures <dir>]` / `--fail-under <pct>` / `--reliability` | 上下文包（`auto`，默认 `off`）/ 运行评估 fixture（默认 `eval/fixtures`）/ eval 门禁：低于 catch 百分比退出 `3` / `models` 打印 `.consilium/reliability.json` 的成功率与延迟 |
 | `history [--limit N]` | 最近运行：成功、成本、发现、一致性（`.consilium/runs`；`--json` 可用） |
 | `stats [--html <file>]` | 成功率、p50/p95 延迟、成本、发现与按模型错误（`--json`；`--html` 写静态报告） |
@@ -241,6 +242,7 @@ consilium --findings --fail-on high --diff "Review the current changes"
 ```
 
 - `consilium baseline accept <id|latest> [--dry-run]` / `prune [--older-than <days>] [--all --yes]` 管理 `.consilium/baseline.json`；`--fail-on <severity>` 只针对**新**发现并在命中时退出 `3`；不带 `--findings` 的 `--fail-on` 是用法错误。baseline 文件可提交，与团队共享已接受的发现。
+- **门禁在故障时关闭（行为变更）。** 当 `--fail-on` 不为 `none` 时，如果审查不完整——某位已配置的专家没有给出可用回答（错误、超时、空响应、限流），或发现块无法解析——门禁视为*未完成*（inconclusive）：退出码 `3`，并在 stderr 输出 `policy gate inconclusive: <agent: reason; …>`（只含代理名和机器码，不含模型回答）。此前这种情况退出 `0`。`--gate-allow-partial` 可关闭新行为：未完成的门禁只在 stderr 和报告中给出警告，退出码仅取决于发现。状态记录在 `metadata.policyGate`（`passed` / `failed` / `inconclusive` 及原因），并显示在 PR、HTML、Jira、Linear 报告和 SARIF 运行属性中。不使用 `--fail-on` 时行为不变。
 
 ## SARIF 与代码扫描
 ```bash
@@ -367,10 +369,11 @@ permissions:
     fail-on: high
     github-token: ${{ github.token }}
     read-only: true         # 默认；设为 false 会传 --allow-write
+    gate-allow-partial: false  # 默认；设为 true 时未完成的门禁不会让 job 失败
     sarif: true             # 默认；设为 false 可跳过 SARIF
 ```
 
-它运行 `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
+它运行 `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`，只评论一次，通过 `consilium sarif --run latest` 导出发现并用 `github/codeql-action/upload-sarif` 上传，然后传递门禁退出码（`3`）。门禁在故障时关闭（行为变更）：审查不完整（专家失败或发现块无法解析）同样退出 `3`，除非设置 `gate-allow-partial: true`。SARIF 与上传失败不会掩盖门禁（对应步骤使用 `continue-on-error`）。上传需要启用 code scanning 与 `security-events: write` 权限；`sarif-file` 指定文件路径，`category` 用于区分仓库中的其他 SARIF 上传。`sarif: false` 会跳过这两个步骤。Fork PR 默认跳过（没有 secrets）；用 `version` 输入固定 npm 版本。它在你自己的 runner 上运行——无托管应用、无付费服务。完整指南：[`github-action.md`](github-action.md)。
 
 ## 预设
 | 预设 | 专家 | 行为 |

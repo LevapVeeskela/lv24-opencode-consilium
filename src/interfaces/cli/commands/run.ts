@@ -11,7 +11,20 @@ import {
   formatPolicyGate,
   loadBaseline
 } from '../../../domain/artifacts/baseline.js';
-import { loadArtifact, resolveArtifactRoot } from '../../../infrastructure/artifacts/store.js';
+import type { FailOnLevel, PolicyGateResult } from '../../../domain/artifacts/baseline.js';
+import {
+  collectPolicyGateReasons,
+  formatInconclusiveGate,
+  isBlockingInconclusive,
+  resolvePolicyGateStatus,
+  type PolicyGateStatus
+} from '../../../domain/artifacts/policy-gate.js';
+import type { ConsiliumResult } from '../../../domain/types.js';
+import {
+  annotateArtifactMetadata,
+  loadArtifact,
+  resolveArtifactRoot
+} from '../../../infrastructure/artifacts/store.js';
 import {
   applyReplayPlan,
   parseReplayExperts
@@ -28,6 +41,57 @@ import {
   setupConsoleHooks,
   writeRunReport
 } from '../output.js';
+
+/** Итог policy gate: находки против baseline и состояние проверки */
+interface RunGate {
+  result: PolicyGateResult;
+  status: PolicyGateStatus;
+}
+
+/**
+ * Считает policy gate и записывает состояние в `metadata.policyGate`
+ * (и в сохранённый артефакт, чтобы его видел `consilium sarif`).
+ */
+function evaluateRunGate(
+  result: ConsiliumResult,
+  failOn: FailOnLevel,
+  options: CLIOptions
+): RunGate {
+  const loadedBaseline = loadBaseline(process.cwd());
+  if (loadedBaseline.warning !== undefined && !options.silent) {
+    console.error(`⚠️ ${loadedBaseline.warning}`);
+  }
+  const gateResult = evaluatePolicyGate(
+    result.metadata?.findings?.items,
+    loadedBaseline.baseline,
+    failOn
+  );
+  const status = resolvePolicyGateStatus({
+    threshold: failOn,
+    violations: gateResult.violations.length,
+    reasons: collectPolicyGateReasons(result),
+    allowPartial: options.gateAllowPartial === true
+  });
+  result.metadata = { ...(result.metadata ?? {}), policyGate: status };
+
+  const artifacts = result.metadata.artifacts;
+  if (artifacts !== null && typeof artifacts === 'object' && !Array.isArray(artifacts)) {
+    const dir = (artifacts as { dir?: unknown }).dir;
+    if (typeof dir === 'string' && dir.length > 0) {
+      try {
+        annotateArtifactMetadata(dir, { policyGate: status });
+      } catch (error) {
+        if (!options.silent) {
+          console.error(
+            `⚠️ Не удалось записать состояние гейта в артефакт: ${(error as Error).message}`
+          );
+        }
+      }
+    }
+  }
+
+  return { result: gateResult, status };
+}
 
 export async function commandRun(options: CLIOptions): Promise<number> {
   const loaded = loadConfig(options.config, { trustProjectConfig: options.config !== undefined });
@@ -173,6 +237,11 @@ export async function commandRun(options: CLIOptions): Promise<number> {
 
   try {
     const result = await consilium.run(task, runOptions);
+
+    // Состояние гейта считаем до отчётов и JSON-вывода, чтобы они его видели.
+    const gate =
+      failOn === 'none' ? undefined : evaluateRunGate(result, failOn, options);
+
     const reportPrinted = writeRunReport(result, config, options);
     if (!reportPrinted) printResult(result, options);
     printSummary(result, options);
@@ -181,19 +250,19 @@ export async function commandRun(options: CLIOptions): Promise<number> {
       return EXIT_CODES.runFailed;
     }
 
-    if (failOn !== 'none') {
-      const loadedBaseline = loadBaseline(process.cwd());
-      if (loadedBaseline.warning !== undefined && !options.silent) {
-        console.error(`⚠️ ${loadedBaseline.warning}`);
-      }
-      const gate = evaluatePolicyGate(
-        result.metadata?.findings?.items,
-        loadedBaseline.baseline,
-        failOn
-      );
-      if (gate.failed) {
-        console.error(formatPolicyGate(gate));
+    if (gate !== undefined) {
+      if (gate.result.failed) {
+        console.error(formatPolicyGate(gate.result));
         return EXIT_CODES.policyGate;
+      }
+      if (isBlockingInconclusive(gate.status)) {
+        // Проверка не состоялась: эксперт не ответил или находки не разобраны.
+        // Молчаливый код 0 здесь означал бы «зелёный» без ревью.
+        console.error(formatInconclusiveGate(gate.status));
+        return EXIT_CODES.policyGate;
+      }
+      if (gate.status.state === 'inconclusive') {
+        console.error(`⚠️ ${formatInconclusiveGate(gate.status)}`);
       }
     }
 

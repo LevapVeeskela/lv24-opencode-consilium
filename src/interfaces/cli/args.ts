@@ -316,6 +316,9 @@ export function parseArgs(argv: string[]): CLIOptions {
         options.failOn = level as FailOnLevel;
         break;
       }
+      case '--gate-allow-partial':
+        options.gateAllowPartial = true;
+        break;
       case '--older-than':
         options.olderThan = parseNonNegativeInt(requireNumericValue(argv, ++i, arg), arg);
         break;

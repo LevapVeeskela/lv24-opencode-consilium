@@ -11,6 +11,7 @@ import {
   findingsSummaryOf,
   formatFindingsCounts
 } from './findings-summary.js';
+import { describePolicyGate, policyGateStatusFromMetadata } from './policy-gate.js';
 
 /** Supported ticket trackers. */
 export type TicketTarget = 'jira' | 'linear';
@@ -34,6 +35,8 @@ interface TicketView {
   cost: string;
   duration: string;
   summary: FindingsSummary | null;
+  /** Policy gate state line; absent when the run had no `--fail-on`. */
+  policyGate?: string;
   version?: string;
 }
 
@@ -85,6 +88,10 @@ function buildView(result: ConsiliumResult, options: TicketReportOptions): Ticke
   if (options.version !== undefined && options.version.length > 0) {
     view.version = singleLine(options.version);
   }
+  const policyGate = policyGateStatusFromMetadata(result.metadata);
+  if (policyGate !== null) {
+    view.policyGate = singleLine(describePolicyGate(policyGate));
+  }
   return view;
 }
 
@@ -92,6 +99,9 @@ function renderLinear(view: TicketView): string {
   const lines: string[] = [`# ${singleLine(view.title)}`, ''];
   lines.push(`**Status:** ${singleLine(view.status)}`);
   lines.push(`**Findings:** ${findingsLine(view.summary)}`);
+  if (view.policyGate !== undefined) {
+    lines.push(`**Policy gate:** ${linearCell(view.policyGate)}`);
+  }
   lines.push('');
   lines.push('## Summary');
   lines.push('');
@@ -127,6 +137,9 @@ function renderJira(view: TicketView): string {
   const lines: string[] = [`h1. ${jiraInline(view.title)}`, ''];
   lines.push(`*Status:* ${jiraInline(view.status)}`);
   lines.push(`*Findings:* ${jiraInline(findingsLine(view.summary))}`);
+  if (view.policyGate !== undefined) {
+    lines.push(`*Policy gate:* ${jiraInline(view.policyGate)}`);
+  }
   lines.push('');
   lines.push('h2. Summary');
   lines.push('');

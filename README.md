@@ -399,7 +399,8 @@ consilium sarif [--run <id|latest>] [--output <file>]
 | `--native-v2` | Write native V2 config (`agents`/`system`) |
 | `--install`, `--global` | Register the MCP server in the project or global config |
 | `--findings` / `--no-findings` | Structured findings block in expert/chair answers (off by default) |
-| `--fail-on <severity>` | Exit `3` when new findings reach the threshold: `critical`, `high`, `medium`, `low`, `info`, `none` |
+| `--fail-on <severity>` | Exit `3` when new findings reach the threshold: `critical`, `high`, `medium`, `low`, `info`, `none`; also exit `3` when the gate is inconclusive (an expert failed or a findings block was not parsed) |
+| `--gate-allow-partial` | Do not fail an inconclusive gate: warn instead and let the exit code depend on the findings alone (off by default) |
 | `baseline accept\|prune` | Manage `.consilium/baseline.json` (accepted finding fingerprints) |
 | `--context <off\|auto>` | Add changed files, rules, related tests and commits to the task (`auto`; off by default) |
 | `eval [--fixtures <dir>]` | Run the planted-bug evaluation suite (default `eval/fixtures`) |
@@ -509,6 +510,8 @@ consilium --findings --fail-on high --diff "Review the current changes"
 ```
 
 `--fail-on` gates on **new** findings: fingerprints present in `.consilium/baseline.json` are ignored. Exit code `3` means the gate failed. `--fail-on` without `--findings` is a usage error. The baseline file is project-local and can be committed to share accepted findings with the team.
+
+**The gate fails closed (behavior change).** With `--fail-on` other than `none`, the gate is *inconclusive* when the review was incomplete: a configured expert returned no usable answer (error, timeout, empty response, rate limit) or a findings block could not be parsed. An inconclusive gate exits `3` and prints `policy gate inconclusive: <agent: reason; …>` to stderr — agent names and machine codes only, never model output. Earlier versions exited `0` in this case, which reported success for a review that did not happen. `--gate-allow-partial` opts out: the inconclusive gate becomes a warning on stderr and in the report, and the exit code depends on the findings alone. The state is recorded in `metadata.policyGate` (`passed` / `failed` / `inconclusive`, with reasons) and shown in the PR, HTML, Jira and Linear reports and in the SARIF run properties. Without `--fail-on` nothing changes.
 
 ## SARIF and code scanning
 
@@ -664,10 +667,11 @@ permissions:
     fail-on: high
     github-token: ${{ github.token }}
     read-only: true          # default; false passes --allow-write
+    gate-allow-partial: false  # default; true keeps an inconclusive gate from failing the job
     sarif: true              # default; set false to skip SARIF
 ```
 
-It runs `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`, comments once, exports `consilium sarif --run latest` and uploads it with `github/codeql-action/upload-sarif`, then propagates the gate exit code (`3`). SARIF and upload failures never mask the gate. Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
+It runs `consilium --diff --base origin/<base> --artifacts --read-only --report pr --report-file consilium-review.md --fail-on <level>`, comments once, exports `consilium sarif --run latest` and uploads it with `github/codeql-action/upload-sarif`, then propagates the gate exit code (`3`). The gate fails closed (behavior change): an inconclusive review — a failed expert or an unparseable findings block — also exits `3` unless `gate-allow-partial: true` is set. SARIF and upload failures never mask the gate. Fork PRs are skipped by default because no secrets are available; pin the npm version with the `version` input. It runs on your runner — no hosted app, no paid service. Full guide: [`docs/github-action.md`](docs/github-action.md).
 
 ## Presets
 

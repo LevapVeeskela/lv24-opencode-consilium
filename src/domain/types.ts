@@ -5,6 +5,7 @@
 
 import type { FindingsSummary } from './council/findings.js';
 import type { FailOnLevel } from './artifacts/baseline.js';
+import type { PolicyGateStatus } from './artifacts/policy-gate.js';
 import type { CouncilPreset } from './council/presets.js';
 
 /** Формат отчёта. */
@@ -77,6 +78,8 @@ export interface ConsiliumMetadata extends Record<string, unknown> {
     /** Каждый агент запускался в отдельном управляемом git worktree Consilium */
     isolate: boolean;
   };
+  /** Состояние policy gate (только при `--fail-on`, отличном от none) */
+  policyGate?: PolicyGateStatus;
 }
 
 /**
@@ -489,6 +492,8 @@ export interface CLIOptions {
   reliability?: boolean;
   /** Порог политики: завершиться с кодом 3 при находках не ниже уровня */
   failOn?: FailOnLevel;
+  /** Не считать неполную проверку (сбой эксперта, ошибка разбора) провалом гейта */
+  gateAllowPartial?: boolean;
   /** Действие команды baseline */
   baselineAction?: 'accept' | 'prune';
   /** Аргумент baseline accept: id артефакта или latest */

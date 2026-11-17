@@ -27,7 +27,8 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
 
 КОДЫ ВЫХОДА:
   0 — успех; 1 — запуск не удался; 2 — ошибка использования;
-  3 — сработала политика --fail-on (находки не ниже порога)
+  3 — сработала политика --fail-on (находки не ниже порога
+      либо проверка не состоялась: policy gate inconclusive)
       или catch rate eval ниже --fail-under
       (в compare-режиме — catch rate дебатов)
 
@@ -90,7 +91,11 @@ consilium - Консилиум ИИ-экспертов через OpenCode CLI
   --findings              Структурированные находки экспертов и председателя в metadata.findings
   --no-findings           Отключить структурированные находки
   --fail-on <уровень>     Код 3, если после baseline остались находки >= уровня:
-                          critical, high, medium, low, info, none (по умолчанию none)
+                          critical, high, medium, low, info, none (по умолчанию none).
+                          Код 3 и при несостоявшейся проверке (inconclusive):
+                          эксперт не ответил или блок находок не разобран
+  --gate-allow-partial    Не считать несостоявшуюся проверку провалом гейта:
+                          предупреждение, код выхода — только по находкам
   --smart-experts         Выбрать 2–3 релевантных эксперта по задаче/диффу
   --max-cost <usd>        Лимит стоимости; при превышении председатель не запускается
   --fallback-models a,b   Запасные модели при RATE_LIMITED/MODEL_UNAVAILABLE/EMPTY_RESPONSE

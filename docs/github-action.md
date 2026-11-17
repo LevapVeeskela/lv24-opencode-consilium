@@ -120,7 +120,8 @@ jobs:
 | --- | --- | --- |
 | `task` | Review instructions | Task passed to Consilium. Defaults to a focused correctness/security/regression review. |
 | `base` | empty | Git ref to diff against. Empty means `origin/<github.base_ref>`. The action validates the ref before running. |
-| `fail-on` | `none` | Gate threshold: `critical`, `high`, `medium`, `low`, `info`, or `none`. |
+| `fail-on` | `none` | Gate threshold: `critical`, `high`, `medium`, `low`, `info`, or `none`. The gate also fails when it is inconclusive (see [Gate behavior](#gate-behavior-and-exit-code-3)). |
+| `gate-allow-partial` | `false` | Pass `--gate-allow-partial`: an inconclusive gate (failed expert, unparseable findings block) only warns instead of exiting `3`. |
 | `comment` | `true` | Post or update the sticky comment. `false` still applies the gate. |
 | `github-token` | `${{ github.token }}` | Token for the comment API. Needs `pull-requests: write`. |
 | `node-version` | `20` | Node.js version used by the action. |
@@ -311,7 +312,22 @@ Exit codes come from the Consilium CLI:
 | `0` | Review completed and the gate passed. |
 | `1` | The review run failed. |
 | `2` | Usage error, invalid input, or missing base ref. |
-| `3` | Policy gate failed: new findings at or above `fail-on` remain. |
+| `3` | Policy gate failed: new findings at or above `fail-on` remain, **or the gate was inconclusive**. |
+
+**The gate fails closed (behavior change).** With `fail-on` other than `none`,
+the gate is *inconclusive* when the review was incomplete: a configured expert
+did not return a usable answer (error, timeout, empty response, rate limit) or
+a findings block could not be parsed. An inconclusive gate exits `3` and prints
+`policy gate inconclusive: <agent: reason; ...>` to the job log (agent names and
+machine codes only, no model output). Earlier versions exited `0` in this case,
+which reported a green check for a review that did not happen.
+
+To keep the old behavior, set `gate-allow-partial: true` (CLI:
+`--gate-allow-partial`): the inconclusive gate becomes a warning in the log and
+in the review comment, and the exit code depends on the findings alone. The
+state is recorded in `metadata.policyGate` (`passed`, `failed` or
+`inconclusive`, with reasons), in the PR comment and in the SARIF run
+properties.
 
 The gate compares findings with `.consilium/baseline.json`. Fingerprints in the
 baseline are accepted and ignored. To accept known findings, run locally:

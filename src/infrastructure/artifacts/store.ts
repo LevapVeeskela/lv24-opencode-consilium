@@ -230,6 +230,23 @@ export function saveArtifact(run: ArtifactRun, options: { root?: string }): Arti
   return { id: finalId, dir: path.resolve(dir) };
 }
 
+/**
+ * Дополняет `metadata` сохранённого запуска (атомарная перезапись `run.json`).
+ * Нужна для полей, которые появляются после сохранения артефакта, например
+ * состояния policy gate: его должен видеть `consilium sarif --run latest`.
+ */
+export function annotateArtifactMetadata(dir: string, patch: Record<string, unknown>): void {
+  const file = path.join(path.resolve(dir), 'run.json');
+  const data: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  if (!isRecord(data)) {
+    throw new Error(`Некорректный артефакт ${file}: корень должен быть объектом`);
+  }
+  const metadata = isRecord(data['metadata']) ? data['metadata'] : {};
+  const updated = { ...data, metadata: { ...metadata, ...patch } };
+  writeFileAtomic(file, `${JSON.stringify(updated, null, 2)}
+`);
+}
+
 /** Проверяет запись каталога как артефакт (id + createdAt), ошибки гасит */
 function tryReadRef(
   dir: string,

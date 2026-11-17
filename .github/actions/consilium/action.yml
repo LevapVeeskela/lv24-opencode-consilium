@@ -21,9 +21,18 @@ inputs:
   fail-on:
     description: >-
       Fail with exit code 3 when new findings at or above this severity remain:
-      critical, high, medium, low, info, or none.
+      critical, high, medium, low, info, or none. The gate also fails (exit 3)
+      when it is inconclusive: an expert did not answer or a findings block
+      could not be parsed.
     required: false
     default: none
+  gate-allow-partial:
+    description: >-
+      Pass --gate-allow-partial: an inconclusive gate (an expert failed or a
+      findings block was not parseable) only warns, and the exit code depends
+      on the findings alone. Off by default, so the gate fails closed.
+    required: false
+    default: 'false'
   read-only:
     description: >-
       Run the review with read-only expert permissions (only read/glob/grep;
@@ -120,6 +129,7 @@ runs:
         INPUT_TASK: ${{ inputs.task }}
         INPUT_BASE: ${{ inputs.base }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_GATE_ALLOW_PARTIAL: ${{ inputs.gate-allow-partial }}
         INPUT_READ_ONLY: ${{ inputs.read-only }}
         INPUT_MAX_COST: ${{ inputs.max-cost }}
         INPUT_SARIF: ${{ inputs.sarif }}
@@ -146,6 +156,15 @@ runs:
           true|false) ;;
           *)
             echo "::error::Invalid read-only value '${read_only}'. Use true or false." >&2
+            exit_code=2
+            ;;
+        esac
+
+        gate_allow_partial="${INPUT_GATE_ALLOW_PARTIAL:-false}"
+        case "$gate_allow_partial" in
+          true|false) ;;
+          *)
+            echo "::error::Invalid gate-allow-partial value '${gate_allow_partial}'. Use true or false." >&2
             exit_code=2
             ;;
         esac
@@ -184,6 +203,11 @@ runs:
           # the CLI exits 2 or produces an empty SARIF report.
           if [ "$fail_on" != "none" ] || [ "${INPUT_SARIF:-false}" = "true" ]; then
             args=(--findings "${args[@]}")
+          fi
+
+          # The gate fails closed when it is inconclusive; this opts out.
+          if [ "$gate_allow_partial" = "true" ]; then
+            args=(--gate-allow-partial "${args[@]}")
           fi
 
           if [ -n "${INPUT_MAX_COST:-}" ]; then
@@ -261,7 +285,7 @@ runs:
       run: |
         case "$CONSILIUM_EXIT_CODE" in
           3)
-            echo "::error::Consilium gate failed: new findings reached the configured severity. See the review comment."
+            echo "::error::Consilium gate failed: new findings reached the configured severity, or the gate was inconclusive (an expert failed or a findings block was not parseable). See the log above and the review comment."
             ;;
           2)
             echo "::error::Consilium could not run (usage error, missing base, or invalid input). See the log above."

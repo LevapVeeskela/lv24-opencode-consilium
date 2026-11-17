@@ -11,6 +11,7 @@ import {
   findingsSummaryOf,
   formatFindingsCounts
 } from './findings-summary.js';
+import { describePolicyGate, policyGateStatusFromMetadata } from './policy-gate.js';
 import { buildSarifReport } from './sarif.js';
 import { renderTicketReport } from './ticket.js';
 
@@ -20,6 +21,21 @@ export { findingsSummaryFromMetadata, findingsSummaryOf, formatFindingsCounts } 
 export { renderTicketReport } from './ticket.js';
 export type { TicketReportOptions, TicketTarget } from './ticket.js';
 export type { SarifOptions } from './sarif.js';
+export {
+  collectPolicyGateReasons,
+  describePolicyGate,
+  formatInconclusiveGate,
+  formatPolicyGateReasons,
+  isBlockingInconclusive,
+  policyGateStatusFromMetadata,
+  resolvePolicyGateStatus
+} from './policy-gate.js';
+export type {
+  PolicyGateReason,
+  PolicyGateReasonKind,
+  PolicyGateState,
+  PolicyGateStatus
+} from './policy-gate.js';
 
 /** Опции рендера отчёта. */
 export interface ReportOptions {
@@ -249,6 +265,11 @@ export function renderHtmlReport(result: ConsiliumResult, options?: ReportOption
   const artifactsDir = artifactsDirOf(result);
   const findings = findingsSummaryOf(result);
   const findingsBlock = findings !== null && findings.items.length > 0 ? buildHtmlFindings(findings) : '';
+  const policyGate = policyGateStatusFromMetadata(result.metadata);
+  const policyGateBlock =
+    policyGate === null
+      ? ''
+      : `<section><h2>Policy gate</h2><p${policyGate.state === 'passed' ? '' : ' class="err"'}>${escapeHtml(describePolicyGate(policyGate))}</p></section>`;
   const findingsStyles = findingsBlock.length > 0
     ? `.sev{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff;background:#57606a}`
       + `.sev-critical{background:#b42318}.sev-high{background:#d1242f}.sev-medium{background:#bf8700}.sev-low{background:#1a7f37}.sev-info{background:#57606a}`
@@ -299,6 +320,7 @@ export function renderHtmlReport(result: ConsiliumResult, options?: ReportOption
     + `<header><h1>${escapeHtml(title)}</h1><p>Дата: ${escapeHtml(fmtDate(generatedAt))} <span class="badge">${result.success ? 'успешно' : 'частично'}</span></p></header>`
     + `<section><h2>Сводка</h2><p>Время: всего ${escapeHtml(fmtDuration(result.totalTime))}, параллельно ${escapeHtml(fmtDuration(result.parallelTime))}. `
     + `Эксперты: ${ok}/${total} успешно. Стоимость: ${escapeHtml(totalCost(result) === null ? '—' : money(totalCost(result)))}.</p></section>`
+    + policyGateBlock
     + findingsBlock
     + `<section><h2>Модели</h2><table><thead><tr><th>Эксперт</th><th>Модель</th><th>Статус</th></tr></thead><tbody>${modelsRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></section>`
     + consensusBlock
@@ -382,6 +404,11 @@ export function renderPrMarkdown(result: ConsiliumResult): string {
   lines.push('');
   lines.push(`Время ${fmtDuration(result.totalTime)} (параллельно ${fmtDuration(result.parallelTime)}) · эксперты ${ok}/${total} · стоимость ${cost === null ? '—' : money(cost)}`);
   lines.push('');
+  const policyGate = policyGateStatusFromMetadata(result.metadata);
+  if (policyGate !== null) {
+    lines.push(`**Policy gate:** ${escapeMarkdownText(describePolicyGate(policyGate))}`);
+    lines.push('');
+  }
   const findings = findingsSummaryOf(result);
   if (findings !== null && findings.items.length > 0) lines.push(...buildPrFindings(findings));
   const experts = Array.isArray(result.experts) ? result.experts : [];
@@ -454,7 +481,11 @@ export function renderSarifReport(
   result: ConsiliumResult,
   version: string = DEFAULT_CONFIG.version ?? '0.0.0'
 ): string {
-  const document = buildSarifReport(findingsSummaryOf(result) ?? undefined, { version });
+  const policyGate = policyGateStatusFromMetadata(result.metadata) ?? undefined;
+  const document = buildSarifReport(findingsSummaryOf(result) ?? undefined, {
+    version,
+    ...(policyGate === undefined ? {} : { policyGate })
+  });
   return `${JSON.stringify(document, null, 2)}\n`;
 }
 

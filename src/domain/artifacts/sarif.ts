@@ -8,6 +8,7 @@ import type {
   FindingSeverity,
   FindingsSummary
 } from '../council/findings.js';
+import type { PolicyGateStatus } from './policy-gate.js';
 
 /** Имя инструмента в SARIF-документе. */
 export const SARIF_TOOL_NAME = 'lv24-opencode-consilium';
@@ -25,6 +26,8 @@ export interface SarifOptions {
   version: string;
   /** Ссылка на документацию инструмента. */
   informationUri?: string;
+  /** Состояние policy gate; попадает в `runs[0].properties.policyGate`. */
+  policyGate?: PolicyGateStatus;
 }
 
 /** Уровень SARIF для серьёзности находки. */
@@ -164,7 +167,10 @@ export function buildSarifReport(
           }
         },
         results,
-        invocations: [{ executionSuccessful: true }]
+        invocations: [{ executionSuccessful: true }],
+        ...(options.policyGate === undefined
+          ? {}
+          : { properties: { policyGate: options.policyGate } })
       }
     ]
   };

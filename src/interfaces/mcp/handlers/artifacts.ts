@@ -4,6 +4,7 @@ import type { ArtifactRun } from '../../../domain/artifacts/artifacts.js';
 import { ID_PATTERN } from '../../../domain/artifacts/artifacts/types.js';
 import { findingsSummaryFromMetadata } from '../../../domain/artifacts/report.js';
 import { buildSarifReport } from '../../../domain/artifacts/sarif.js';
+import { policyGateStatusFromMetadata } from '../../../domain/artifacts/policy-gate.js';
 import {
   listArtifacts,
   loadArtifact,
@@ -130,7 +131,11 @@ export async function toolSarif(args: Record<string, unknown>): Promise<McpToolR
   const artifact = loadRun(run, artifactRoot());
 
   const findings = findingsSummaryFromMetadata(artifact.metadata) ?? undefined;
-  const document = buildSarifReport(findings, { version: DEFAULT_VERSION });
+  const policyGate = policyGateStatusFromMetadata(artifact.metadata) ?? undefined;
+  const document = buildSarifReport(findings, {
+    version: DEFAULT_VERSION,
+    ...(policyGate === undefined ? {} : { policyGate })
+  });
   const json = `${JSON.stringify(document, null, 2)}\n`;
   const count = findings?.items.length ?? 0;
 
