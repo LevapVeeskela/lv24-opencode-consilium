@@ -50,6 +50,14 @@ export interface EvalMatchResult {
   catchRate: number;
   /** falsePositives / (caught + falsePositives); 0, если знаменатель пуст */
   falsePositiveRate: number;
+  /**
+   * Находки, не совпавшие ни с одним ожиданием mustFind: лишний шум или
+   * выдумка модели. `falsePositives` считает только заранее названные
+   * mustNotFind, поэтому без этого поля шум в метриках не виден.
+   */
+  unexpected: Finding[];
+  /** (findings − unexpected) / findings; 0, если находок нет */
+  precision: number;
 }
 
 /** Число раундов дебатов в eval-прогоне: 1 — обычный, 2 — с peer-review */
@@ -144,6 +152,12 @@ export interface EvalSummary {
   catchRate: number;
   /** Суммарная доля ложных срабатываний среди caught + falsePositives */
   falsePositiveRate: number;
+  /** Всего находок, выданных на всех фикстурах */
+  findings: number;
+  /** Находки, не совпавшие ни с одним mustFind (суммарно) */
+  unexpected: number;
+  /** (findings − unexpected) / findings по всем фикстурам; 0, если находок нет */
+  precision: number;
   /** Медиана latency по фикстурам, мс (среднее двух центральных значений) */
   p50LatencyMs: number;
   /** Суммарная стоимость runner-ов; 0, если стоимость не передавалась */

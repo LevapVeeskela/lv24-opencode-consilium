@@ -6,6 +6,7 @@
 
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import type { CLIOptions, ConsiliumConfig } from '../../../domain/types.js';
 import {
   formatEvalComparison,
@@ -32,6 +33,19 @@ export interface EvalCommandDependencies {
 
 /** Каталог фикстур по умолчанию относительно cwd */
 const DEFAULT_FIXTURES_DIR = 'eval/fixtures';
+
+/** Фикстуры, поставляемые в npm-пакете (dist/interfaces/cli/commands → корень пакета) */
+export function packagedFixturesDir(): string {
+  return fileURLToPath(new URL('../../../../eval/fixtures', import.meta.url));
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Создаёт runner, который для каждой фикстуры запускает Consilium
@@ -155,18 +169,16 @@ export async function commandEval(
     ? resolve(cwd, options.fixtures)
     : resolve(cwd, DEFAULT_FIXTURES_DIR);
 
-  let directory = false;
-  if (existsSync(fixturesDir)) {
-    try {
-      directory = statSync(fixturesDir).isDirectory();
-    } catch {
-      directory = false;
-    }
-  }
-  if (!directory) {
+  if (!isDirectory(fixturesDir)) {
+    // Набор из пакета не подставляется молча: eval — это десятки вызовов
+    // моделей, запуск должен быть явным. Сообщаем, где лежит готовый набор.
+    const packaged = packagedFixturesDir();
+    const hint = isDirectory(packaged)
+      ? ` Готовый набор из пакета: --fixtures "${packaged}".`
+      : '';
     throw new UsageError(
       `Каталог eval-фикстур не найден: ${fixturesDir}. ` +
-        'Создайте eval/fixtures или укажите --fixtures <dir>.'
+        `Создайте eval/fixtures или укажите --fixtures <dir>.${hint}`
     );
   }
 

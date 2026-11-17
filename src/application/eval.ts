@@ -160,6 +160,8 @@ export function formatEvalSummary(
       `Catch rate: ${formatRate(summary.catchRate)} (${summary.caught}/${totalExpected}) | ` +
       `False-positive rate: ${formatRate(summary.falsePositiveRate)} ` +
       `(${summary.falsePositives}/${summary.caught + summary.falsePositives}) | ` +
+      `Precision: ${formatRate(summary.precision)} ` +
+      `(${summary.findings - summary.unexpected}/${summary.findings}, unexpected: ${summary.unexpected}) | ` +
       `p50 latency: ${formatNumber(summary.p50LatencyMs)} ms | ` +
       `Total cost: $${summary.totalCost.toFixed(4)}`,
     '',
@@ -295,6 +297,8 @@ function buildResult(
     falsePositives: match.falsePositives,
     catchRate: match.catchRate,
     falsePositiveRate: match.falsePositiveRate,
+    unexpected: match.unexpected,
+    precision: match.precision,
     latencyMs
   };
   if (cost !== undefined) result.cost = cost;
@@ -306,6 +310,8 @@ function summarize(results: EvalFixtureResult[]): EvalSummary {
   let caught = 0;
   let missed = 0;
   let falsePositives = 0;
+  let findings = 0;
+  let unexpected = 0;
   let totalCost = 0;
   const latencies: number[] = [];
   const errors: EvalSummary['errors'] = [];
@@ -314,6 +320,8 @@ function summarize(results: EvalFixtureResult[]): EvalSummary {
     caught += result.caught.length;
     missed += result.missed.length;
     falsePositives += result.falsePositives.length;
+    findings += result.findings.length;
+    unexpected += result.unexpected.length;
     totalCost += result.cost ?? 0;
     latencies.push(result.latencyMs);
     if (result.error !== undefined) {
@@ -330,6 +338,9 @@ function summarize(results: EvalFixtureResult[]): EvalSummary {
     catchRate: caught + missed === 0 ? 0 : caught / (caught + missed),
     falsePositiveRate:
       caught + falsePositives === 0 ? 0 : falsePositives / (caught + falsePositives),
+    findings,
+    unexpected,
+    precision: findings === 0 ? 0 : (findings - unexpected) / findings,
     p50LatencyMs: median(latencies),
     totalCost,
     errors

@@ -48,12 +48,19 @@ export function matchFindings(
     if (finding !== undefined) falsePositives.push({ expected: target, finding });
   }
 
+  const targets = expected.mustFind ?? [];
+  const unexpected = findings.filter(
+    item => !targets.some(target => matchesExpected(item, target))
+  );
+
   return {
     caught,
     missed,
     falsePositives,
     catchRate: rate(caught.length, caught.length + missed.length),
-    falsePositiveRate: rate(falsePositives.length, caught.length + falsePositives.length)
+    falsePositiveRate: rate(falsePositives.length, caught.length + falsePositives.length),
+    unexpected,
+    precision: rate(findings.length - unexpected.length, findings.length)
   };
 }
 
