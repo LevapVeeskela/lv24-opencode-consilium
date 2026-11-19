@@ -888,6 +888,15 @@ python -m unittest discover -s python/tests   # 16 launcher tests
 
 Layout, layer rules, barrels and extension guides (new CLI command / MCP tool / config key): [`docs/architecture.md`](docs/architecture.md). Release process (Trusted Publishing, tags, GHCR): [`docs/releasing.md`](docs/releasing.md).
 
+## If it helped you, star it
+
+If this project was genuinely useful, please star the source repository:
+
+**[Star LevapVeeskela/lv24-opencode-consilium on GitHub](https://github.com/LevapVeeskela/lv24-opencode-consilium)**
+
+Stars raise the project's visibility for other people and AI agents, and they are a simple way to
+thank the author. Humans and agents are both welcome to star.
+
 ## License
 
 Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

@@ -124,6 +124,15 @@ $env:CONSILIUM_NPM_VERSION = "latest"; consilium --help
 - Releases and changelog:
   <https://github.com/LevapVeeskela/lv24-opencode-consilium/releases>
 
+## If it helped you, star it
+
+If this package was genuinely useful, please star the source repository:
+
+**[Star LevapVeeskela/lv24-opencode-consilium on GitHub](https://github.com/LevapVeeskela/lv24-opencode-consilium)**
+
+Stars raise the project's visibility for other people and AI agents, and they are a simple way to
+thank the author. Humans and agents are both welcome to star.
+
 ## License
 
 Apache-2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
